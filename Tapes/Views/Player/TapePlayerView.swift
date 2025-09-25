@@ -61,13 +61,13 @@ public struct TapePlayerView: View {
             
             VStack(spacing: Tokens.Space.xs) {
                 Text(tape.title)
-                    .font(Tokens.Typography.title)
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(Tokens.Colors.text)
                     .lineLimit(1)
                 
                 Text("\(tape.clipCount) clips • \(formatDuration(composer.totalDuration))")
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Tokens.Colors.textMuted)
+                    .foregroundColor(Tokens.Colors.muted)
             }
             
             Spacer()
@@ -76,7 +76,7 @@ public struct TapePlayerView: View {
             Button(action: {}) {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Tokens.Colors.textMuted)
+                    .foregroundColor(Tokens.Colors.muted)
             }
             .opacity(0.5) // Placeholder styling
         }
@@ -115,19 +115,19 @@ public struct TapePlayerView: View {
                 .aspectRatio(tape.orientation == .portrait ? 9/16 : 16/9, contentMode: .fit)
             
             // Video Content Placeholder
-            VStack(spacing: Tokens.Space.s16) {
+            VStack(spacing: Tokens.Space.l) {
                 Image(systemName: "play.rectangle.fill")
                     .font(.system(size: 48, weight: .light))
-                    .foregroundColor(Tokens.Colors.textMuted)
+                    .foregroundColor(Tokens.Colors.muted)
                 
                 Text("Video Preview")
-                    .font(Tokens.Typography.title)
-                    .foregroundColor(Tokens.Colors.textMuted)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(Tokens.Colors.muted)
                 
                 if composer.currentClip != nil {
                     Text("Clip \(composer.currentClipIndex + 1) of \(tape.clipCount)")
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Tokens.Colors.textMuted)
+                        .foregroundColor(Tokens.Colors.muted)
                 }
             }
         }
@@ -210,13 +210,13 @@ public struct TapePlayerView: View {
             HStack {
                 Text(formatTime(composer.currentTime))
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Tokens.Colors.textMuted)
+                    .foregroundColor(Tokens.Colors.muted)
                 
                 Spacer()
                 
                 Text(formatTime(composer.totalDuration))
                     .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Tokens.Colors.textMuted)
+                    .foregroundColor(Tokens.Colors.muted)
             }
         }
     }
@@ -241,7 +241,7 @@ public struct TapePlayerView: View {
             Button(action: {}) {
                 Image(systemName: "forward.end.fill")
                     .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Tokens.Colors.textMuted)
+                    .foregroundColor(Tokens.Colors.muted)
             }
             .opacity(0.5) // Placeholder styling
         }

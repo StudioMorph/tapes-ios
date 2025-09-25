@@ -6,105 +6,119 @@ struct ClipEditSheet: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: Tokens.Space.s24) {
-                // Trim option
-                Button(action: {
-                    onAction(.trim)
-                    isPresented = false
-                }) {
-                    HStack {
-                        Text("Trim the clip's length")
-                            .font(Tokens.Typography.title)
-                            .foregroundColor(Tokens.Colors.textOnAccent)
-                        Spacer()
+            VStack(spacing: Tokens.Space.xl) {
+                trimSection
+                fitInCanvasSection
+                Spacer()
+            }
+            .padding(Tokens.Space.xl)
+            .background(Tokens.Colors.bg)
+            .navigationTitle("Edit Clip")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        isPresented = false
                     }
-                    .padding(Tokens.Space.s16)
-                    .background(Tokens.Colors.brandRed)
-                    .cornerRadius(Tokens.Radius.card)
+                    .foregroundColor(Tokens.Colors.text)
+                }
+            }
+        }
+    }
+    
+    private var trimSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.s) {
+            Button(action: {
+                onAction(.trim)
+                isPresented = false
+            }) {
+                HStack {
+                    Text("Trim the clip's length")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.onAccent)
+                    Spacer()
+                }
+                .padding(Tokens.Space.l)
+                .background(Tokens.Colors.brandRed)
+                .cornerRadius(Tokens.Radius.card)
+            }
+            
+            Text("Trim the start or the end of the clip")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(Tokens.Colors.muted)
+        }
+    }
+    
+    private var fitInCanvasSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            Text("Fit in canvas")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Tokens.Colors.text)
+            
+            VStack(spacing: Tokens.Space.s) {
+                fillOption
+                fitOption
+            }
+        }
+    }
+    
+    private var fillOption: some View {
+        Button(action: {
+            onAction(.setFitFill(.fill))
+            isPresented = false
+        }) {
+            HStack {
+                Image(systemName: "rectangle.fill")
+                    .font(.title2)
+                    .foregroundColor(Tokens.Colors.text)
+                
+                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                    Text("Fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.text)
+                    
+                    Text("Scale the clip to fill the canvas")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Tokens.Colors.muted)
                 }
                 
-                VStack(alignment: .leading, spacing: Tokens.Space.s8) {
-                    Text("Trim the start or the end of the clip")
-                        .font(Tokens.Typography.caption)
-                        .foregroundColor(Tokens.Colors.textMuted)
-                }
+                Spacer()
                 
-                // Fit in canvas section
-                VStack(alignment: .leading, spacing: Tokens.Space.s16) {
-                    Text("Fit in canvas")
-                        .font(Tokens.Typography.title)
-                        .foregroundColor(Tokens.Colors.textPrimary)
+                Image(systemName: "checkmark")
+                    .font(.title2)
+                    .foregroundColor(Tokens.Colors.brandRed)
+            }
+            .padding(Tokens.Space.l)
+            .background(Tokens.Colors.elevated)
+            .cornerRadius(Tokens.Radius.card)
+        }
+    }
+    
+    private var fitOption: some View {
+        Button(action: {
+            onAction(.setFitFill(.fit))
+            isPresented = false
+        }) {
+            HStack {
+                Image(systemName: "rectangle")
+                    .font(.title2)
+                    .foregroundColor(Tokens.Colors.text)
+                
+                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                    Text("Fit")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.text)
                     
-                    // Fill option
-                    Button(action: {
-                        onAction(.setFitFill(.fill))
-                        isPresented = false
-                    }) {
-                        HStack {
-                            Image(systemName: "rectangle.fill")
-                                .font(.title2)
-                                .foregroundColor(Tokens.Colors.textPrimary)
-                            
-                            VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-                                Text("Fill")
-                                    .font(Tokens.Typography.title)
-                                    .foregroundColor(Tokens.Colors.textPrimary)
-                                
-                                Text("Scale the clip to fill the canvas")
-                                    .font(Tokens.Typography.caption)
-                                    .foregroundColor(Tokens.Colors.textMuted)
-                            }
-                            
-                            Spacer()
-                            
-                            Image(systemName: "checkmark")
-                                .font(.title2)
-                                .foregroundColor(Tokens.Colors.brandRed)
-                        }
-                        .padding(Tokens.Space.s16)
-                        .background(Tokens.Colors.surfaceElevated)
-                        .cornerRadius(Tokens.Radius.card)
-                    }
-                    
-                    // Fit option
-                    Button(action: {
-                        onAction(.setFitFill(.fit))
-                        isPresented = false
-                    }) {
-                        HStack {
-                            Image(systemName: "rectangle")
-                                .font(.title2)
-                                .foregroundColor(Tokens.Colors.textPrimary)
-                            
-                            VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-                                Text("Fit")
-                                    .font(Tokens.Typography.title)
-                                    .foregroundColor(Tokens.Colors.textPrimary)
-                                
-                                Text("Fits the whole clip in the canvas")
-                                    .font(Tokens.Typography.caption)
-                                    .foregroundColor(Tokens.Colors.textMuted)
-                            }
-                            
-                            Spacer()
-                        }
-                        .padding(Tokens.Space.s16)
-                        .background(Tokens.Colors.surfaceElevated)
-                        .cornerRadius(Tokens.Radius.card)
-                    }
+                    Text("Fits the whole clip in the canvas")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Tokens.Colors.muted)
                 }
                 
                 Spacer()
             }
-            .padding(Tokens.Space.s20)
-            .background(Tokens.Colors.bg)
-            .navigationTitle("Edit Clip")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                trailing: Button("Done") {
-                    isPresented = false
-                }
-            )
+            .padding(Tokens.Space.l)
+            .background(Tokens.Colors.elevated)
+            .cornerRadius(Tokens.Radius.card)
         }
     }
 }

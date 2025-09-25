@@ -71,14 +71,14 @@ struct TapesListView: View {
     
     private var settingsSheet: some View {
         if let selectedTape = tapesStore.selectedTape {
-            return TapeSettingsSheet(
+            return AnyView(TapeSettingsSheet(
                 tape: Binding(
                     get: { selectedTape },
                     set: { tapesStore.updateTape($0) }
                 )
-            )
+            ))
         } else {
-            return EmptyView()
+            return AnyView(EmptyView())
         }
     }
     
@@ -99,9 +99,9 @@ struct TapesListView: View {
     
     private var playerView: some View {
         if let tape = tapesStore.tapes.first {
-            return TapePlayerView(tape: tape, onDismiss: { showingPlayer = false })
+            return AnyView(TapePlayerView(tape: tape, onDismiss: { showingPlayer = false }))
         } else {
-            return EmptyView()
+            return AnyView(EmptyView())
         }
     }
     

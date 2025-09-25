@@ -53,11 +53,37 @@ struct TapeCardView: View {
                 }
             }
             
-            // Carousel with FAB
-            Carousel(
-                tape: tape,
-                onThumbnailDelete: onThumbnailDelete
-            )
+            // Carousel with FAB and centerline
+            GeometryReader { geometry in
+                let horizPadding: CGFloat = 32   // 16pt left + 16pt right inside card
+                let interItem: CGFloat = 16
+                let thumbW = max((geometry.size.width - horizPadding - 64) / 2, 128)  // 64 = FAB diameter space visually; choose min 128
+                let thumbH = thumbW * 9.0 / 16.0
+                let carouselHeight = thumbH + 24 // some breathing room
+                
+                ZStack(alignment: .center) {
+                    // 1. Centerline
+                    Rectangle()
+                        .fill(Tokens.Colors.brandRed.opacity(0.9))
+                        .frame(width: 2)
+                        .frame(height: carouselHeight)
+                        .allowsHitTesting(false)
+                    
+                    // 2. Carousel (beneath)
+                    ClipCarousel(
+                        tape: tape,
+                        thumbSize: CGSize(width: thumbW, height: thumbH),
+                        interItem: interItem,
+                        onThumbnailDelete: onThumbnailDelete
+                    )
+                    .frame(height: carouselHeight)
+                    
+                    // 3. FAB (above)
+                    RecordFAB()
+                        .frame(width: 64, height: 64)
+                }
+            }
+            .frame(height: 200) // Fixed height for the carousel area
         }
         .padding(Tokens.Space.xl)
         .background(

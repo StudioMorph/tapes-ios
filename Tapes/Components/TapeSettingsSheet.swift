@@ -21,223 +21,200 @@ struct TapeSettingsSheet: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: Tokens.Space.s24) {
-                // Transition options
-                VStack(alignment: .leading, spacing: Tokens.Space.s16) {
-                    Text("Transition")
-                        .font(Tokens.Typography.title)
-                        .foregroundColor(Tokens.Colors.textPrimary)
-                    
-                    VStack(spacing: Tokens.Space.s12) {
-                        // None option
-                        Button(action: {
-                            transition = .none
-                            hasChanges = true
-                        }) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-                                    Text("None (Hard Cut)")
-                                        .font(Tokens.Typography.title)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                    
-                                    Text("Default for speed and clarity")
-                                        .font(Tokens.Typography.caption)
-                                        .foregroundColor(Tokens.Colors.textMuted)
-                                }
-                                
-                                Spacer()
-                                
-                                if transition == .none {
-                                    Image(systemName: "checkmark")
-                                        .font(.title2)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                }
-                            }
-                            .padding(Tokens.Space.s16)
-                            .background(Tokens.Colors.surfaceElevated)
-                            .cornerRadius(Tokens.Radius.card)
-                        }
-                        
-                        // Crossfade option
-                        Button(action: {
-                            transition = .crossfade
-                            hasChanges = true
-                        }) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-                                    Text("Crossfade")
-                                        .font(Tokens.Typography.title)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                    
-                                    Text("The industry-standard, smooth and safe choice")
-                                        .font(Tokens.Typography.caption)
-                                        .foregroundColor(Tokens.Colors.textMuted)
-                                }
-                                
-                                Spacer()
-                                
-                                if transition == .crossfade {
-                                    Image(systemName: "checkmark")
-                                        .font(.title2)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                }
-                            }
-                            .padding(Tokens.Space.s16)
-                            .background(Tokens.Colors.surfaceElevated)
-                            .cornerRadius(Tokens.Radius.card)
-                        }
-                        
-                        // Slide left to right option
-                        Button(action: {
-                            transition = .slideLR
-                            hasChanges = true
-                        }) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-                                    Text("Slide (left→right)")
-                                        .font(Tokens.Typography.title)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                    
-                                    Text("Simple directional motion")
-                                        .font(Tokens.Typography.caption)
-                                        .foregroundColor(Tokens.Colors.textMuted)
-                                }
-                                
-                                Spacer()
-                                
-                                if transition == .slideLR {
-                                    Image(systemName: "checkmark")
-                                        .font(.title2)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                }
-                            }
-                            .padding(Tokens.Space.s16)
-                            .background(Tokens.Colors.surfaceElevated)
-                            .cornerRadius(Tokens.Radius.card)
-                        }
-                        
-                        // Slide right to left option
-                        Button(action: {
-                            transition = .slideRL
-                            hasChanges = true
-                        }) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-                                    Text("Slide (right→left)")
-                                        .font(Tokens.Typography.title)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                    
-                                    Text("Simple directional motion")
-                                        .font(Tokens.Typography.caption)
-                                        .foregroundColor(Tokens.Colors.textMuted)
-                                }
-                                
-                                Spacer()
-                                
-                                if transition == .slideRL {
-                                    Image(systemName: "checkmark")
-                                        .font(.title2)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                }
-                            }
-                            .padding(Tokens.Space.s16)
-                            .background(Tokens.Colors.surfaceElevated)
-                            .cornerRadius(Tokens.Radius.card)
-                        }
+            VStack(spacing: Tokens.Space.xl) {
+                transitionSection
+                if transition != .none {
+                    transitionDurationSection
+                }
+                orientationSection
+                scaleModeSection
+                Spacer()
+            }
+            .padding(Tokens.Space.xl)
+            .background(Tokens.Colors.bg)
+            .navigationTitle("Tape Settings")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        onDismiss()
                     }
+                    .foregroundColor(Tokens.Colors.text)
                 }
                 
-                // Conflicting aspect ratios section
-                VStack(alignment: .leading, spacing: Tokens.Space.s16) {
-                    Text("Conflicting aspect ratios")
-                        .font(Tokens.Typography.title)
-                        .foregroundColor(Tokens.Colors.textPrimary)
-                    
-                    VStack(spacing: Tokens.Space.s12) {
-                        // Fill option
-                        Button(action: {
-                            scaleMode = .fill
-                            hasChanges = true
-                        }) {
-                            HStack {
-                                Image(systemName: "rectangle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(Tokens.Colors.textPrimary)
-                                
-                                VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-                                    Text("Fill")
-                                        .font(Tokens.Typography.title)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                    
-                                    Text("Scale the clip to fill the canvas")
-                                        .font(Tokens.Typography.caption)
-                                        .foregroundColor(Tokens.Colors.textMuted)
-                                }
-                                
-                                Spacer()
-                                
-                                if scaleMode == .fill {
-                                    Image(systemName: "checkmark")
-                                        .font(.title2)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                }
-                            }
-                            .padding(Tokens.Space.s16)
-                            .background(Tokens.Colors.surfaceElevated)
-                            .cornerRadius(Tokens.Radius.card)
-                        }
-                        
-                        // Fit option
-                        Button(action: {
-                            scaleMode = .fit
-                            hasChanges = true
-                        }) {
-                            HStack {
-                                Image(systemName: "rectangle")
-                                    .font(.title2)
-                                    .foregroundColor(Tokens.Colors.textPrimary)
-                                
-                                VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-                                    Text("Fit")
-                                        .font(Tokens.Typography.title)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                    
-                                    Text("Fits the whole clip in the canvas")
-                                        .font(Tokens.Typography.caption)
-                                        .foregroundColor(Tokens.Colors.textMuted)
-                                }
-                                
-                                Spacer()
-                                
-                                if scaleMode == .fit {
-                                    Image(systemName: "checkmark")
-                                        .font(.title2)
-                                        .foregroundColor(Tokens.Colors.textPrimary)
-                                }
-                            }
-                            .padding(Tokens.Space.s16)
-                            .background(Tokens.Colors.surfaceElevated)
-                            .cornerRadius(Tokens.Radius.card)
-                        }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        saveChanges()
                     }
+                    .foregroundColor(hasChanges ? Tokens.Colors.brandRed : Tokens.Colors.muted)
+                    .disabled(!hasChanges)
+                }
+            }
+        }
+    }
+    
+    private var transitionSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            Text("Transition")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Tokens.Colors.text)
+            
+            VStack(spacing: Tokens.Space.m) {
+                transitionOption(title: "None (Hard Cut)", description: "Default for speed and clarity", value: .none)
+                transitionOption(title: "Crossfade", description: "The industry-standard, smooth and safe choice", value: .crossfade)
+                transitionOption(title: "Slide (left→right)", description: "Horizontal slide between clips", value: .slideLR)
+                transitionOption(title: "Slide (right→left)", description: "Horizontal slide between clips", value: .slideRL)
+            }
+        }
+    }
+    
+    private var transitionDurationSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            Text("Transition Duration")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Tokens.Colors.text)
+            
+            VStack(spacing: Tokens.Space.s) {
+                HStack {
+                    Text("0.1s")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Tokens.Colors.muted)
+                    
+                    Slider(value: $transitionDuration, in: 0.1...2.0, step: 0.1)
+                        .accentColor(Tokens.Colors.brandRed)
+                    
+                    Text("2.0s")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Tokens.Colors.muted)
+                }
+                
+                Text("\(String(format: "%.1f", transitionDuration))s")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Tokens.Colors.text)
+            }
+            .padding(Tokens.Space.l)
+            .background(Tokens.Colors.elevated)
+            .cornerRadius(Tokens.Radius.card)
+        }
+    }
+    
+    private var orientationSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            Text("Orientation")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Tokens.Colors.text)
+            
+            VStack(spacing: Tokens.Space.m) {
+                orientationOption(title: "Portrait", description: "9:16 aspect ratio", value: .portrait)
+                orientationOption(title: "Landscape", description: "16:9 aspect ratio", value: .landscape)
+            }
+        }
+    }
+    
+    private var scaleModeSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+            Text("Scale Mode")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Tokens.Colors.text)
+            
+            VStack(spacing: Tokens.Space.m) {
+                scaleModeOption(title: "Fill", description: "Crop to fill frame", value: .fill)
+                scaleModeOption(title: "Fit", description: "Scale to fit frame", value: .fit)
+            }
+        }
+    }
+    
+    private func transitionOption(title: String, description: String, value: TransitionType) -> some View {
+        Button(action: {
+            transition = value
+            hasChanges = true
+        }) {
+            HStack {
+                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                    Text(title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.text)
+                    
+                    Text(description)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Tokens.Colors.muted)
                 }
                 
                 Spacer()
-            }
-            .padding(Tokens.Space.s20)
-            .background(Tokens.Colors.bg)
-            .navigationTitle("This settings apply across the whole Tape")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Done") {
-                    onDismiss()
-                },
-                trailing: Button("Save") {
-                    saveChanges()
+                
+                if transition == value {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Tokens.Colors.brandRed)
+                        .font(.system(size: 20))
                 }
-                .disabled(!hasChanges)
-            )
+            }
+            .padding(Tokens.Space.l)
+            .background(Tokens.Colors.elevated)
+            .cornerRadius(Tokens.Radius.card)
         }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private func orientationOption(title: String, description: String, value: TapeOrientation) -> some View {
+        Button(action: {
+            orientation = value
+            hasChanges = true
+        }) {
+            HStack {
+                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                    Text(title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.text)
+                    
+                    Text(description)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Tokens.Colors.muted)
+                }
+                
+                Spacer()
+                
+                if orientation == value {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Tokens.Colors.brandRed)
+                        .font(.system(size: 20))
+                }
+            }
+            .padding(Tokens.Space.l)
+            .background(Tokens.Colors.elevated)
+            .cornerRadius(Tokens.Radius.card)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private func scaleModeOption(title: String, description: String, value: ScaleMode) -> some View {
+        Button(action: {
+            scaleMode = value
+            hasChanges = true
+        }) {
+            HStack {
+                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                    Text(title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.text)
+                    
+                    Text(description)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Tokens.Colors.muted)
+                }
+                
+                Spacer()
+                
+                if scaleMode == value {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(Tokens.Colors.brandRed)
+                        .font(.system(size: 20))
+                }
+            }
+            .padding(Tokens.Space.l)
+            .background(Tokens.Colors.elevated)
+            .cornerRadius(Tokens.Radius.card)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
     
     private func saveChanges() {
@@ -249,18 +226,6 @@ struct TapeSettingsSheet: View {
     }
 }
 
-#Preview("Dark Mode") {
-    TapeSettingsSheet(
-        tape: .constant(Tape.sampleTapes[0]),
-        onDismiss: {}
-    )
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Light Mode") {
-    TapeSettingsSheet(
-        tape: .constant(Tape.sampleTapes[0]),
-        onDismiss: {}
-    )
-    .preferredColorScheme(.light)
+#Preview {
+    TapeSettingsSheet(tape: .constant(Tape.sampleTapes[0]))
 }

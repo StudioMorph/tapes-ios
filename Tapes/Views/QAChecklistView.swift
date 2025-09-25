@@ -44,10 +44,10 @@ struct QAChecklistView: View {
                     .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 2: Insert Clips
-                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.m) {
                         Text("2) Insert Clips")
-                            .font(Tokens.Typography.title)
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.text)
                         
                         QAChecklistItem(
                             step: "2.1",
@@ -70,10 +70,10 @@ struct QAChecklistView: View {
                     .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 3: Edit Sheet
-                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.m) {
                         Text("3) Edit Sheet")
-                            .font(Tokens.Typography.title)
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.text)
                         
                         QAChecklistItem(
                             step: "3.1",
@@ -96,10 +96,10 @@ struct QAChecklistView: View {
                     .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 4: Settings
-                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.m) {
                         Text("4) Settings (Tape-Level)")
-                            .font(Tokens.Typography.title)
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.text)
                         
                         QAChecklistItem(
                             step: "4.1",
@@ -146,10 +146,10 @@ struct QAChecklistView: View {
                     .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 5: Preview
-                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.m) {
                         Text("5) Preview")
-                            .font(Tokens.Typography.title)
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.text)
                         
                         QAChecklistItem(
                             step: "5.1",
@@ -166,10 +166,10 @@ struct QAChecklistView: View {
                     .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 6: Export
-                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.m) {
                         Text("6) Export")
-                            .font(Tokens.Typography.title)
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.text)
                         
                         QAChecklistItem(
                             step: "6.1",
@@ -198,10 +198,10 @@ struct QAChecklistView: View {
                     .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 7: Casting UI
-                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.m) {
                         Text("7) Casting UI")
-                            .font(Tokens.Typography.title)
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.text)
                         
                         QAChecklistItem(
                             step: "7.1",
@@ -259,7 +259,7 @@ struct QAChecklistItem: View {
                     
                     Text("Expected: \(expected)")
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Tokens.Colors.textMuted)
+                        .foregroundColor(Tokens.Colors.muted)
                 }
                 
                 Spacer()
