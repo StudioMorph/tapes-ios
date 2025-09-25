@@ -4,7 +4,7 @@ import Foundation
 /// Pool includes: .none, .crossfade, .slideLR, .slideRL.
 enum TransitionPicker {
     static func sequenceForTape(tapeId: UUID, boundaries: Int) -> [TransitionStyle] {
-        var rng = SeededGenerator(seed: tapeId.uuidString.hashValue)
+        var rng = SeededGenerator(seed: UInt64(tapeId.hashValue))
         let pool: [TransitionStyle] = [.none, .crossfade, .slideLR, .slideRL]
         return (0..<max(0,boundaries)).map { _ in pool.randomElement(using: &rng)! }
     }
@@ -14,9 +14,10 @@ enum TransitionPicker {
 
 struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
-    init(seed: Int) { self.state = UInt64(bitPattern: Int64(seed)) }
+    init(seed: UInt64) { self.state = seed }
     mutating func next() -> UInt64 {
-        state = 6364136223846793005 &* state &+ 1
+        // Use the same LCG as the Tapes module for consistency
+        state = (state &* 1103515245 &+ 12345) & 0x7fffffff
         return state
     }
 }
