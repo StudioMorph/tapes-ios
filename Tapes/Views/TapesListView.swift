@@ -95,6 +95,9 @@ public struct TapesListView: View {
                                     onThumbnailLongPress: { thumbnail in
                                         handleThumbnailLongPress(thumbnail, in: tape)
                                     },
+                                    onThumbnailDelete: { thumbnail in
+                                        handleThumbnailDelete(thumbnail, in: tape)
+                                    },
                                     onFABAction: { mode in
                                         handleFABAction(mode, for: tape)
                                     }
@@ -154,6 +157,15 @@ public struct TapesListView: View {
     private func handleThumbnailLongPress(_ thumbnail: ClipThumbnail, in tape: Tape) {
         print("Thumbnail long pressed: \(thumbnail.id) in tape: \(tape.title)")
         // TODO: Implement thumbnail long press functionality
+    }
+    
+    private func handleThumbnailDelete(_ thumbnail: ClipThumbnail, in tape: Tape) {
+        print("Thumbnail delete: \(thumbnail.id) in tape: \(tape.title)")
+        
+        // Find the clip by ID and delete it
+        if let clipId = UUID(uuidString: thumbnail.id) {
+            tapesStore.deleteClip(from: tape.id, clip: Clip(id: clipId, assetLocalId: "", createdAt: Date(), updatedAt: Date()))
+        }
     }
     
     private func handleFABAction(_ mode: FABMode, for tape: Tape) {

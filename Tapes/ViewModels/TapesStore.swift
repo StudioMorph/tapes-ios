@@ -59,6 +59,38 @@ public class TapesStore: ObservableObject {
         updateTape(tape)
     }
     
+    public func deleteClip(from tapeId: UUID, at index: Int) {
+        guard var tape = getTape(by: tapeId) else { return }
+        
+        // Remove the clip at the specified index
+        if index < tape.clips.count {
+            tape.clips.remove(at: index)
+        }
+        
+        // If this was the last clip, ensure we have an empty tape state
+        if tape.clips.isEmpty {
+            // Keep the tape but ensure it's in the correct empty state
+            tape.clips = []
+        }
+        
+        updateTape(tape)
+    }
+    
+    public func deleteClip(from tapeId: UUID, clip: Clip) {
+        guard var tape = getTape(by: tapeId) else { return }
+        
+        // Find and remove the specific clip
+        tape.clips.removeAll { $0.id == clip.id }
+        
+        // If this was the last clip, ensure we have an empty tape state
+        if tape.clips.isEmpty {
+            // Keep the tape but ensure it's in the correct empty state
+            tape.clips = []
+        }
+        
+        updateTape(tape)
+    }
+    
     public func updateClip(in tapeId: UUID, clip: Clip) {
         guard var tape = getTape(by: tapeId) else { return }
         tape.updateClip(clip)

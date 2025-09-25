@@ -9,6 +9,7 @@ public struct TapeCardView: View {
     let onAirPlay: () -> Void
     let onThumbnailTap: (ClipThumbnail) -> Void
     let onThumbnailLongPress: (ClipThumbnail) -> Void
+    let onThumbnailDelete: (ClipThumbnail) -> Void
     let onFABAction: (FABMode) -> Void
     
     @State private var showingClipEditSheet = false
@@ -21,6 +22,7 @@ public struct TapeCardView: View {
         onAirPlay: @escaping () -> Void,
         onThumbnailTap: @escaping (ClipThumbnail) -> Void,
         onThumbnailLongPress: @escaping (ClipThumbnail) -> Void,
+        onThumbnailDelete: @escaping (ClipThumbnail) -> Void,
         onFABAction: @escaping (FABMode) -> Void
     ) {
         self.tape = tape
@@ -29,6 +31,7 @@ public struct TapeCardView: View {
         self.onAirPlay = onAirPlay
         self.onThumbnailTap = onThumbnailTap
         self.onThumbnailLongPress = onThumbnailLongPress
+        self.onThumbnailDelete = onThumbnailDelete
         self.onFABAction = onFABAction
     }
     
@@ -80,6 +83,7 @@ public struct TapeCardView: View {
             // Carousel with FAB
             GeometryReader { geometry in
                 Carousel(
+                    tape: tape,
                     screenWidth: geometry.size.width,
                     onThumbnailTap: { thumbnail in
                         if !thumbnail.isPlaceholder {
@@ -91,6 +95,9 @@ public struct TapeCardView: View {
                     },
                     onThumbnailLongPress: { thumbnail in
                         onThumbnailLongPress(thumbnail)
+                    },
+                    onThumbnailDelete: { thumbnail in
+                        onThumbnailDelete(thumbnail)
                     },
                     onFABAction: onFABAction
                 )
@@ -169,6 +176,9 @@ struct TapeCardView_Previews: PreviewProvider {
             },
             onThumbnailLongPress: { thumbnail in
                 print("Thumbnail long pressed: \(thumbnail.id)")
+            },
+            onThumbnailDelete: { thumbnail in
+                print("Thumbnail delete: \(thumbnail.id)")
             },
             onFABAction: { mode in
                 print("FAB action: \(mode)")

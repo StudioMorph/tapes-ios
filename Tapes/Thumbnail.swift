@@ -33,20 +33,26 @@ public struct Thumbnail: View {
     let width: CGFloat
     let onTap: () -> Void
     let onLongPress: () -> Void
+    let onDelete: () -> Void
     
     @State private var isPressed: Bool = false
     @State private var image: UIImage?
+    @State private var dragOffset: CGSize = .zero
+    @State private var isLongPressing: Bool = false
+    @State private var showDeleteConfirmation: Bool = false
     
     public init(
         thumbnail: ClipThumbnail,
         width: CGFloat,
         onTap: @escaping () -> Void,
-        onLongPress: @escaping () -> Void = {}
+        onLongPress: @escaping () -> Void = {},
+        onDelete: @escaping () -> Void = {}
     ) {
         self.thumbnail = thumbnail
         self.width = width
         self.onTap = onTap
         self.onLongPress = onLongPress
+        self.onDelete = onDelete
     }
     
     private var height: CGFloat {
@@ -116,17 +122,71 @@ public struct Thumbnail: View {
                         Spacer()
                     }
                 }
+                
+                // Delete indicator overlay (when dragging up)
+                if isLongPressing && dragOffset.height < -50 {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, DesignTokens.Spacing.s8)
+                                .padding(.vertical, DesignTokens.Spacing.s4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: DesignTokens.Radius.thumbnail)
+                                        .fill(DesignTokens.Colors.primaryRed)
+                                )
+                                .padding(.bottom, DesignTokens.Spacing.s8)
+                                .padding(.trailing, DesignTokens.Spacing.s8)
+                        }
+                    }
+                }
             }
         }
         .buttonStyle(ThumbnailButtonStyle())
         .scaleEffect(isPressed ? 0.95 : 1.0)
+        .offset(dragOffset)
         .animation(.easeInOut(duration: 0.1), value: isPressed)
+        .animation(.easeInOut(duration: 0.2), value: dragOffset)
         .onLongPressGesture(minimumDuration: 0.5) {
+            isLongPressing = true
             onLongPress()
         } onPressingChanged: { pressing in
             withAnimation(.easeInOut(duration: 0.1)) {
                 isPressed = pressing
             }
+            if !pressing {
+                isLongPressing = false
+                dragOffset = .zero
+            }
+        }
+        .simultaneousGesture(
+            DragGesture()
+                .onChanged { value in
+                    if isLongPressing && !thumbnail.isPlaceholder {
+                        dragOffset = value.translation
+                    }
+                }
+                .onEnded { value in
+                    if isLongPressing && !thumbnail.isPlaceholder {
+                        // Check if dragged up significantly
+                        if value.translation.height < -50 {
+                            showDeleteConfirmation = true
+                        }
+                        dragOffset = .zero
+                        isLongPressing = false
+                    }
+                }
+        )
+        .alert("Delete Clip", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                onDelete()
+            }
+        } message: {
+            Text("Are you sure you want to delete this clip? This action cannot be undone.")
         }
         .onAppear {
             loadThumbnailImage()
@@ -187,7 +247,8 @@ struct Thumbnail_Previews: PreviewProvider {
                 ),
                 width: 150,
                 onTap: { print("Placeholder tapped") },
-                onLongPress: { print("Placeholder long pressed") }
+                onLongPress: { print("Placeholder long pressed") },
+                onDelete: { print("Placeholder delete") }
             )
             
             // Regular thumbnail
@@ -199,7 +260,8 @@ struct Thumbnail_Previews: PreviewProvider {
                 ),
                 width: 150,
                 onTap: { print("Clip tapped") },
-                onLongPress: { print("Clip long pressed") }
+                onLongPress: { print("Clip long pressed") },
+                onDelete: { print("Clip delete") }
             )
         }
         .padding()

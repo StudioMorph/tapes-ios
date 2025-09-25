@@ -80,22 +80,28 @@ public struct Carousel: View {
     @State private var dragOffset: CGFloat = 0
     @State private var isDragging: Bool = false
     
+    let tape: Tape
     let screenWidth: CGFloat
     let onThumbnailTap: (ClipThumbnail) -> Void
     let onThumbnailLongPress: (ClipThumbnail) -> Void
+    let onThumbnailDelete: (ClipThumbnail) -> Void
     let onFABAction: (FABMode) -> Void
     
     private let calculator: SnapCalculator
     
     public init(
+        tape: Tape,
         screenWidth: CGFloat,
         onThumbnailTap: @escaping (ClipThumbnail) -> Void,
         onThumbnailLongPress: @escaping (ClipThumbnail) -> Void,
+        onThumbnailDelete: @escaping (ClipThumbnail) -> Void,
         onFABAction: @escaping (FABMode) -> Void
     ) {
+        self.tape = tape
         self.screenWidth = screenWidth
         self.onThumbnailTap = onThumbnailTap
         self.onThumbnailLongPress = onThumbnailLongPress
+        self.onThumbnailDelete = onThumbnailDelete
         self.onFABAction = onFABAction
         self.calculator = SnapCalculator(screenWidth: screenWidth)
     }
@@ -108,40 +114,77 @@ public struct Carousel: View {
                 
                 // Thumbnails
                 HStack(spacing: calculator.spacing) {
-                    // Start placeholder
-                    if state.thumbnails.isEmpty {
+                    // Start placeholder (always show when empty or at the beginning)
+                    Thumbnail(
+                        thumbnail: ClipThumbnail(
+                            id: "start-placeholder",
+                            isPlaceholder: true,
+                            index: 0,
+                            tapeName: tape.title
+                        ),
+                        width: calculator.itemWidth,
+                        onTap: { onFABAction(.camera) },
+                        onLongPress: {},
+                        onDelete: {}
+                    )
+                    
+                    // Actual clips from the tape
+                    ForEach(Array(tape.clips.enumerated()), id: \.element.id) { index, clip in
                         Thumbnail(
                             thumbnail: ClipThumbnail(
-                                id: "start-placeholder",
-                                isPlaceholder: true,
-                                index: 0,
-                                tapeName: "Tape"
+                                id: clip.id.uuidString,
+                                asset: nil, // Will be loaded by the thumbnail component
+                                isPlaceholder: false,
+                                index: index,
+                                tapeName: tape.title
                             ),
                             width: calculator.itemWidth,
-                            onTap: { onFABAction(.camera) },
-                            onLongPress: {}
+                            onTap: { 
+                                let thumbnail = ClipThumbnail(
+                                    id: clip.id.uuidString,
+                                    asset: nil,
+                                    isPlaceholder: false,
+                                    index: index,
+                                    tapeName: tape.title
+                                )
+                                onThumbnailTap(thumbnail)
+                            },
+                            onLongPress: {
+                                let thumbnail = ClipThumbnail(
+                                    id: clip.id.uuidString,
+                                    asset: nil,
+                                    isPlaceholder: false,
+                                    index: index,
+                                    tapeName: tape.title
+                                )
+                                onThumbnailLongPress(thumbnail)
+                            },
+                            onDelete: {
+                                let thumbnail = ClipThumbnail(
+                                    id: clip.id.uuidString,
+                                    asset: nil,
+                                    isPlaceholder: false,
+                                    index: index,
+                                    tapeName: tape.title
+                                )
+                                onThumbnailDelete(thumbnail)
+                            }
                         )
-                    } else {
-                        ForEach(Array(state.thumbnails.enumerated()), id: \.element.id) { index, thumbnail in
-                            Thumbnail(
-                                thumbnail: thumbnail,
-                                width: calculator.itemWidth,
-                                onTap: { onThumbnailTap(thumbnail) },
-                                onLongPress: { onThumbnailLongPress(thumbnail) }
-                            )
-                        }
-                        
-                        // End placeholder
+                    }
+                    
+                    // End placeholder (only show if there are clips)
+                    if !tape.clips.isEmpty {
                         Thumbnail(
                             thumbnail: ClipThumbnail(
                                 id: "end-placeholder",
                                 isPlaceholder: true,
-                                index: state.thumbnails.count,
-                                tapeName: "Tape"
+                                index: tape.clips.count,
+                                tapeName: tape.title
                             ),
                             width: calculator.itemWidth,
                             onTap: { onFABAction(.camera) },
-                            onLongPress: {}
+                            onLongPress: {},
+                            onDelete: {}
                         )
                     }
                 }
@@ -232,12 +275,16 @@ struct Carousel_Previews: PreviewProvider {
     static var previews: some View {
         GeometryReader { geometry in
             Carousel(
+                tape: Tape(),
                 screenWidth: geometry.size.width,
                 onThumbnailTap: { thumbnail in
                     print("Thumbnail tapped: \(thumbnail.id)")
                 },
                 onThumbnailLongPress: { thumbnail in
                     print("Thumbnail long pressed: \(thumbnail.id)")
+                },
+                onThumbnailDelete: { thumbnail in
+                    print("Thumbnail delete: \(thumbnail.id)")
                 },
                 onFABAction: { mode in
                     print("FAB action: \(mode)")
