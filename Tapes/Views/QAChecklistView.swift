@@ -6,22 +6,22 @@ struct QAChecklistView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.s16) {
+                VStack(alignment: .leading, spacing: Tokens.Space.s16) {
                     Text("QA Smoke Test Checklist")
-                        .font(DesignTokens.Typography.heading(24, weight: .bold))
-                        .foregroundColor(DesignTokens.Colors.onSurface(.light))
-                        .padding(.bottom, DesignTokens.Spacing.s8)
+                        .font(Tokens.Typography.headline)
+                        .foregroundColor(Tokens.Colors.textPrimary)
+                        .padding(.bottom, Tokens.Space.s8)
                     
                     Text("Follow these steps to verify the app functionality:")
-                        .font(DesignTokens.Typography.body)
-                        .foregroundColor(DesignTokens.Colors.muted(60))
-                        .padding(.bottom, DesignTokens.Spacing.s16)
+                        .font(Tokens.Typography.body)
+                        .foregroundColor(Tokens.Colors.textMuted)
+                        .padding(.bottom, Tokens.Space.s16)
                     
                     // Section 1: App Launch & New Tape
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
                         Text("1) App Launch & New Tape")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.textPrimary)
                         
                         QAChecklistItem(
                             step: "1.1",
@@ -41,13 +41,13 @@ struct QAChecklistView: View {
                             expected: "Carousel snaps so a thumbnail/+ sits on each side of the fixed center button."
                         )
                     }
-                    .padding(.bottom, DesignTokens.Spacing.s20)
+                    .padding(.bottom, Tokens.Space.s20)
                     
                     // Section 2: Insert Clips
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
                         Text("2) Insert Clips")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.textPrimary)
                         
                         QAChecklistItem(
                             step: "2.1",
@@ -67,13 +67,13 @@ struct QAChecklistView: View {
                             expected: "Clip appears at index 0 via the start +."
                         )
                     }
-                    .padding(.bottom, DesignTokens.Spacing.s20)
+                    .padding(.bottom, Tokens.Space.s20)
                     
                     // Section 3: Edit Sheet
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
                         Text("3) Edit Sheet")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.textPrimary)
                         
                         QAChecklistItem(
                             step: "3.1",
@@ -93,13 +93,13 @@ struct QAChecklistView: View {
                             expected: "Confirmation dialog; if Tape empty → only start + remains."
                         )
                     }
-                    .padding(.bottom, DesignTokens.Spacing.s20)
+                    .padding(.bottom, Tokens.Space.s20)
                     
                     // Section 4: Settings
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
                         Text("4) Settings (Tape-Level)")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.textPrimary)
                         
                         QAChecklistItem(
                             step: "4.1",
@@ -143,13 +143,13 @@ struct QAChecklistView: View {
                             expected: "Deterministic per Tape; 0.5s clamp."
                         )
                     }
-                    .padding(.bottom, DesignTokens.Spacing.s20)
+                    .padding(.bottom, Tokens.Space.s20)
                     
                     // Section 5: Preview
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
                         Text("5) Preview")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.textPrimary)
                         
                         QAChecklistItem(
                             step: "5.1",
@@ -163,13 +163,13 @@ struct QAChecklistView: View {
                             expected: "Seeks to 0; plays."
                         )
                     }
-                    .padding(.bottom, DesignTokens.Spacing.s20)
+                    .padding(.bottom, Tokens.Space.s20)
                     
                     // Section 6: Export
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
                         Text("6) Export")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.textPrimary)
                         
                         QAChecklistItem(
                             step: "6.1",
@@ -195,13 +195,13 @@ struct QAChecklistView: View {
                             expected: "Alerts/Toasts on failure."
                         )
                     }
-                    .padding(.bottom, DesignTokens.Spacing.s20)
+                    .padding(.bottom, Tokens.Space.s20)
                     
                     // Section 7: Casting UI
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
                         Text("7) Casting UI")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.textPrimary)
                         
                         QAChecklistItem(
                             step: "7.1",
@@ -221,10 +221,10 @@ struct QAChecklistView: View {
                             expected: "Cast button appears; toast \"not implemented\"."
                         )
                     }
-                    .padding(.bottom, DesignTokens.Spacing.s20)
+                    .padding(.bottom, Tokens.Space.s20)
                 }
-                .padding(.horizontal, DesignTokens.Spacing.s20)
-                .padding(.vertical, DesignTokens.Spacing.s16)
+                .padding(.horizontal, Tokens.Space.s20)
+                .padding(.vertical, Tokens.Space.s16)
             }
             .navigationTitle("QA Checklist")
             .navigationBarTitleDisplayMode(.inline)
@@ -245,30 +245,37 @@ struct QAChecklistItem: View {
     let expected: String
     
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.s4) {
+        VStack(alignment: .leading, spacing: Tokens.Space.s4) {
             HStack(alignment: .top) {
                 Text(step)
-                    .font(DesignTokens.Typography.caption)
-                    .foregroundColor(DesignTokens.Colors.primaryRed)
+                    .font(Tokens.Typography.caption)
+                    .foregroundColor(Tokens.Colors.brandRed)
                     .frame(width: 30, alignment: .leading)
                 
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.s4) {
+                VStack(alignment: .leading, spacing: Tokens.Space.s4) {
                     Text(action)
-                        .font(DesignTokens.Typography.body)
-                        .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                        .font(Tokens.Typography.body)
+                        .foregroundColor(Tokens.Colors.textPrimary)
                     
                     Text("Expected: \(expected)")
-                        .font(DesignTokens.Typography.caption)
-                        .foregroundColor(DesignTokens.Colors.muted(60))
+                        .font(Tokens.Typography.caption)
+                        .foregroundColor(Tokens.Colors.textMuted)
                 }
                 
                 Spacer()
             }
         }
-        .padding(.vertical, DesignTokens.Spacing.s4)
+        .padding(.vertical, Tokens.Space.s4)
     }
 }
 
-#Preview {
+#Preview("Dark Mode") {
     QAChecklistView()
+        .preferredColorScheme(.dark)
 }
+
+#Preview("Light Mode") {
+    QAChecklistView()
+        .preferredColorScheme(.light)
+}
+

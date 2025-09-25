@@ -398,10 +398,10 @@
 				DEVELOPMENT_ASSET_PATHS = "\"Tapes/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Tapes needs access to your photo library to create video compositions from your photos and videos.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Tapes needs permission to save your completed video compositions to your photo library.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Tapes needs access to your camera to capture new video clips for your compositions.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Tapes needs access to your microphone to record audio for your video compositions.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Tapes needs permission to save your completed video compositions to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Tapes needs access to your photo library to create video compositions from your photos and videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -430,10 +430,10 @@
 				DEVELOPMENT_ASSET_PATHS = "\"Tapes/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Tapes needs access to your photo library to create video compositions from your photos and videos.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Tapes needs permission to save your completed video compositions to your photo library.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Tapes needs access to your camera to capture new video clips for your compositions.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Tapes needs access to your microphone to record audio for your video compositions.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Tapes needs permission to save your completed video compositions to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Tapes needs access to your photo library to create video compositions from your photos and videos.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

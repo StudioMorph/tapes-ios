@@ -175,6 +175,41 @@ public struct Tape: Identifiable, Codable, Equatable {
         }
         updatedAt = Date()
     }
+    
+    // MARK: - Sample Data
+    
+    public static var sampleTapes: [Tape] {
+        [
+            Tape(
+                title: "New Reel",
+                orientation: .portrait,
+                scaleMode: .fit,
+                transition: .none,
+                transitionDuration: 0.5
+            ),
+            Tape(
+                title: "Summer Holidays 2025 - P...",
+                orientation: .portrait,
+                scaleMode: .fill,
+                transition: .crossfade,
+                transitionDuration: 0.8,
+                clips: [
+                    Clip(assetLocalId: "sample1", rotateQuarterTurns: 0, overrideScaleMode: nil),
+                    Clip(assetLocalId: "sample2", rotateQuarterTurns: 0, overrideScaleMode: nil)
+                ]
+            ),
+            Tape(
+                title: "Summer Holidays 2025 - L...",
+                orientation: .landscape,
+                scaleMode: .fit,
+                transition: .slideLR,
+                transitionDuration: 0.6,
+                clips: [
+                    Clip(assetLocalId: "sample3", rotateQuarterTurns: 0, overrideScaleMode: nil)
+                ]
+            )
+        ]
+    }
 }
 
 // MARK: - Equatable

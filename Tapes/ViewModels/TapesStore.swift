@@ -8,10 +8,65 @@ import SwiftUI
 public class TapesStore: ObservableObject {
     @Published public var tapes: [Tape] = []
     @Published public var selectedTape: Tape?
+    @Published public var showingSettingsSheet = false
     
     public init() {
-        // Create one empty "New Tape" on init as per acceptance criteria
-        _ = createNewTape()
+        // Create sample data that matches the screenshots
+        createSampleData()
+    }
+    
+    private func createSampleData() {
+        // Create "New Reel" tape (empty)
+        let newReel = Tape(
+            title: "New Reel",
+            orientation: .portrait,
+            scaleMode: .fit,
+            transition: .none,
+            transitionDuration: 0.5
+        )
+        tapes.append(newReel)
+        
+        // Create "Summer Holidays 2025..." tape with clips
+        var summerHolidays = Tape(
+            title: "Summer Holidays 2025 - P...",
+            orientation: .portrait,
+            scaleMode: .fill,
+            transition: .crossfade,
+            transitionDuration: 0.8
+        )
+        
+        // Add some sample clips
+        let clip1 = Clip(
+            assetLocalId: "sample1",
+            rotateQuarterTurns: 0,
+            overrideScaleMode: nil
+        )
+        let clip2 = Clip(
+            assetLocalId: "sample2", 
+            rotateQuarterTurns: 0,
+            overrideScaleMode: nil
+        )
+        
+        summerHolidays.clips = [clip1, clip2]
+        tapes.append(summerHolidays)
+        
+        // Create another "Summer Holidays 2025..." tape
+        var summerHolidays2 = Tape(
+            title: "Summer Holidays 2025 - P...",
+            orientation: .landscape,
+            scaleMode: .fit,
+            transition: .slideLR,
+            transitionDuration: 0.6
+        )
+        
+        let clip3 = Clip(
+            assetLocalId: "sample3",
+            rotateQuarterTurns: 0,
+            overrideScaleMode: nil
+        )
+        
+        summerHolidays2.clips = [clip3]
+        tapes.append(summerHolidays2)
     }
     
     // MARK: - Tape CRUD Operations
@@ -49,6 +104,7 @@ public class TapesStore: ObservableObject {
     
     public func selectTape(_ tape: Tape) {
         selectedTape = tape
+        showingSettingsSheet = true
     }
     
     public func selectTape(by id: UUID) {

@@ -1,226 +1,132 @@
 import SwiftUI
 
-// MARK: - Tapes List View
-
-public struct TapesListView: View {
+struct TapesListView: View {
     @StateObject private var tapesStore = TapesStore()
     @StateObject private var exportCoordinator = ExportCoordinator()
-    @State private var showingSettings = false
-    @State private var showingPlayOptions = false
     @State private var showingPlayer = false
+    @State private var showingPlayOptions = false
     @State private var showingQAChecklist = false
     
-    public init() {}
-    
-    public var body: some View {
+    var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                // Header with New Tape button and QA link
-                HStack {
-                    Text("Tapes")
-                        .font(DesignTokens.Typography.heading(24, weight: .bold))
-                        .foregroundColor(DesignTokens.Colors.onSurface(.light))
-                    
-                    Spacer()
-                    
-                    // QA Link
-                    Button(action: openQAChecklist) {
-                        Image(systemName: "checklist")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(DesignTokens.Colors.muted(60))
-                    }
-                    .padding(.trailing, DesignTokens.Spacing.s8)
-                    
-                    Button(action: createNewTape) {
-                        HStack(spacing: DesignTokens.Spacing.s8) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 16, weight: .medium))
-                            Text("New Tape")
-                                .font(DesignTokens.Typography.body)
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, DesignTokens.Spacing.s16)
-                        .padding(.vertical, DesignTokens.Spacing.s8)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignTokens.Radius.thumbnail)
-                                .fill(DesignTokens.Colors.primaryRed)
-                        )
-                    }
-                }
-                .padding(.horizontal, DesignTokens.Spacing.s20)
-                .padding(.top, DesignTokens.Spacing.s16)
-                .padding(.bottom, DesignTokens.Spacing.s20)
-                
-                // Tapes list
-                if tapesStore.tapes.isEmpty {
-                    // Empty state
-                    VStack(spacing: DesignTokens.Spacing.s16) {
-                        Image(systemName: "video.badge.plus")
-                            .font(.system(size: 48, weight: .light))
-                            .foregroundColor(DesignTokens.Colors.muted(40))
-                        
-                        Text("No Tapes Yet")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.muted(60))
-                        
-                        Text("Create your first tape to get started")
-                            .font(DesignTokens.Typography.body)
-                            .foregroundColor(DesignTokens.Colors.muted(60))
-                            .multilineTextAlignment(.center)
-                        
-                        Button(action: createNewTape) {
-                            Text("Create New Tape")
-                                .font(DesignTokens.Typography.body)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, DesignTokens.Spacing.s24)
-                                .padding(.vertical, DesignTokens.Spacing.s12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: DesignTokens.Radius.thumbnail)
-                                        .fill(DesignTokens.Colors.primaryRed)
-                                )
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    // Tapes list
-                    ScrollView {
-                        LazyVStack(spacing: DesignTokens.Spacing.s20) {
-                            ForEach(tapesStore.tapes) { tape in
-                                TapeCardView(
-                                    tape: tape,
-                                    onSettings: {
-                                        tapesStore.selectTape(tape)
-                                        showingSettings = true
-                                    },
-                                    onPlay: {
-                                        tapesStore.selectTape(tape)
-                                        showingPlayOptions = true
-                                    },
-                                    onAirPlay: {
-                                        handleAirPlay(for: tape)
-                                    },
-                                    onThumbnailTap: { thumbnail in
-                                        handleThumbnailTap(thumbnail, in: tape)
-                                    },
-                                    onThumbnailLongPress: { thumbnail in
-                                        handleThumbnailLongPress(thumbnail, in: tape)
-                                    },
-                                    onThumbnailDelete: { thumbnail in
-                                        handleThumbnailDelete(thumbnail, in: tape)
-                                    },
-                                    onFABAction: { mode in
-                                        handleFABAction(mode, for: tape)
-                                    }
-                                )
-                            }
-                        }
-                        .padding(.horizontal, DesignTokens.Spacing.s20)
-                        .padding(.bottom, DesignTokens.Spacing.s32)
-                    }
-                }
+            VStack {
+                headerView
+                tapesList
+                Spacer()
             }
-            .background(DesignTokens.Colors.muted(10))
             .navigationBarHidden(true)
         }
-        .sheet(isPresented: $showingSettings) {
-            if let selectedTape = tapesStore.selectedTape {
-                TapeSettingsSheet(tape: Binding(
-                    get: { selectedTape },
-                    set: { tapesStore.updateTape($0) }
-                )) {
-                    showingSettings = false
-                }
-            }
-        }
-        .fullScreenCover(isPresented: $showingPlayer) {
-            if let selectedTape = tapesStore.selectedTape {
-                TapePlayerView(tape: selectedTape) {
-                    showingPlayer = false
-                }
-            }
+        .background(Tokens.Colors.bg)
+        .sheet(isPresented: $tapesStore.showingSettingsSheet) {
+            settingsSheet
         }
         .actionSheet(isPresented: $showingPlayOptions) {
-            ActionSheet(
-                title: Text("Play Options"),
-                message: Text("Choose how to play this tape"),
-                buttons: [
-                    .default(Text("Preview Tape")) {
-                        showingPlayer = true
-                    },
-                    .default(Text("Merge & Save")) {
-                        if let selectedTape = tapesStore.selectedTape {
-                            exportCoordinator.exportTape(selectedTape)
-                        }
-                    },
-                    .cancel()
-                ]
-            )
+            playOptionsSheet
         }
-        .overlay(
-            // Export Progress Overlay
-            ExportProgressOverlay(coordinator: exportCoordinator)
-        )
-        .overlay(
-            // Completion Toast
-            CompletionToast(coordinator: exportCoordinator)
-        )
-        .overlay(
-            // Error Alert
-            ExportErrorAlert(coordinator: exportCoordinator)
-        )
+        .fullScreenCover(isPresented: $showingPlayer) {
+            playerView
+        }
+        .overlay(exportOverlay)
         .sheet(isPresented: $showingQAChecklist) {
             QAChecklistView()
         }
     }
     
-    // MARK: - Actions
-    
-    private func createNewTape() {
-        let newTape = tapesStore.createNewTape()
-        print("Created new tape: \(newTape.id)")
+    private var headerView: some View {
+        HStack {
+            Text("TAPES")
+                .font(Tokens.Typography.headline)
+                .fontWeight(.bold)
+                .foregroundColor(Tokens.Colors.brandRed)
+            
+            Spacer()
+            
+            Button(action: { showingQAChecklist = true }) {
+                Image(systemName: "checklist")
+                    .font(.title2)
+                    .foregroundColor(Tokens.Colors.brandRed)
+            }
+        }
+        .padding(.horizontal, Tokens.Space.s20)
+        .padding(.top, Tokens.Space.s8)
     }
     
-    private func openQAChecklist() {
-        showingQAChecklist = true
-    }
-    
-    private func handleAirPlay(for tape: Tape) {
-        print("AirPlay for tape: \(tape.title)")
-        // TODO: Implement AirPlay functionality
-    }
-    
-    private func handleThumbnailTap(_ thumbnail: ClipThumbnail, in tape: Tape) {
-        print("Thumbnail tapped: \(thumbnail.id) in tape: \(tape.title)")
-        // TODO: Implement thumbnail tap functionality
-    }
-    
-    private func handleThumbnailLongPress(_ thumbnail: ClipThumbnail, in tape: Tape) {
-        print("Thumbnail long pressed: \(thumbnail.id) in tape: \(tape.title)")
-        // TODO: Implement thumbnail long press functionality
-    }
-    
-    private func handleThumbnailDelete(_ thumbnail: ClipThumbnail, in tape: Tape) {
-        print("Thumbnail delete: \(thumbnail.id) in tape: \(tape.title)")
-        
-        // Find the clip by ID and delete it
-        if let clipId = UUID(uuidString: thumbnail.id) {
-            tapesStore.deleteClip(from: tape.id, clip: Clip(id: clipId, assetLocalId: "", createdAt: Date(), updatedAt: Date()))
+    private var tapesList: some View {
+        ScrollView {
+            LazyVStack(spacing: Tokens.Space.s20) {
+                ForEach(tapesStore.tapes) { tape in
+                    TapeCardView(
+                        tape: tape,
+                        onSettings: { tapesStore.selectTape(tape) },
+                        onPlay: { showingPlayOptions = true },
+                        onAirPlay: { },
+                        onThumbnailDelete: { clip in
+                            tapesStore.deleteClip(from: tape.id, clip: clip)
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, Tokens.Space.s20)
         }
     }
     
-    private func handleFABAction(_ mode: FABMode, for tape: Tape) {
-        print("FAB action: \(mode) for tape: \(tape.title)")
-        // TODO: Implement FAB action functionality
+    private var settingsSheet: some View {
+        if let selectedTape = tapesStore.selectedTape {
+            return TapeSettingsSheet(
+                tape: Binding(
+                    get: { selectedTape },
+                    set: { tapesStore.updateTape($0) }
+                )
+            )
+        } else {
+            return EmptyView()
+        }
     }
     
+    private var playOptionsSheet: ActionSheet {
+        ActionSheet(
+            title: Text("Play Options"),
+            buttons: [
+                .default(Text("Preview Tape")) { showingPlayer = true },
+                .default(Text("Merge & Save")) {
+                    if let tape = tapesStore.tapes.first {
+                        exportCoordinator.exportTape(tape)
+                    }
+                },
+                .cancel()
+            ]
+        )
+    }
+    
+    private var playerView: some View {
+        if let tape = tapesStore.tapes.first {
+            return TapePlayerView(tape: tape, onDismiss: { showingPlayer = false })
+        } else {
+            return EmptyView()
+        }
+    }
+    
+    private var exportOverlay: some View {
+        return ZStack {
+            if exportCoordinator.isExporting {
+                ExportProgressOverlay(coordinator: exportCoordinator)
+            }
+            if exportCoordinator.showCompletionToast {
+                CompletionToast(coordinator: exportCoordinator)
+            }
+            if exportCoordinator.exportError != nil {
+                ExportErrorAlert(coordinator: exportCoordinator)
+            }
+        }
+    }
 }
 
+#Preview("Dark Mode") {
+    TapesListView()
+        .preferredColorScheme(.dark)
+}
 
-// MARK: - Preview
-
-struct TapesListView_Previews: PreviewProvider {
-    static var previews: some View {
-        TapesListView()
-            .previewDisplayName("Tapes List")
-    }
+#Preview("Light Mode") {
+    TapesListView()
+        .preferredColorScheme(.light)
 }

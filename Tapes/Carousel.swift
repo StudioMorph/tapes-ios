@@ -1,297 +1,165 @@
 import SwiftUI
 
-// MARK: - Carousel State
-
-public class CarouselState: ObservableObject {
-    @Published public var thumbnails: [ClipThumbnail] = []
-    @Published public var currentIndex: Int = 0
-    @Published public var insertionIndex: Int = 0
-    
-    public init() {}
-    
-    public func addThumbnail(_ thumbnail: ClipThumbnail, at index: Int) {
-        thumbnails.insert(thumbnail, at: index)
-        updateInsertionIndex()
-    }
-    
-    public func removeThumbnail(at index: Int) {
-        guard index < thumbnails.count else { return }
-        thumbnails.remove(at: index)
-        updateInsertionIndex()
-    }
-    
-    public func updateInsertionIndex() {
-        // Insertion index is always at the center (where FAB is)
-        insertionIndex = thumbnails.count
-    }
-}
-
-// MARK: - Snap Calculation
-
-public struct SnapCalculator {
-    let itemWidth: CGFloat
-    let fabWidth: CGFloat = 64
-    let spacing: CGFloat = 16
-    
-    public init(screenWidth: CGFloat) {
-        // Width = (screenWidth - 64)/2 as per runbook
-        self.itemWidth = (screenWidth - 64) / 2
-    }
-    
-    public func calculateSnapOffset(for scrollOffset: CGFloat) -> CGFloat {
-        let totalItemWidth = itemWidth + spacing
-        let fabCenter = itemWidth + spacing + fabWidth / 2
-        
-        // Calculate which items should be on left and right of FAB
-        let leftIndex = max(0, Int((scrollOffset + fabCenter - itemWidth / 2) / totalItemWidth))
-        _ = leftIndex + 1
-        
-        // Snap to position where left item is left of FAB, right item is right of FAB
-        let snapOffset = CGFloat(leftIndex) * totalItemWidth - (fabCenter - itemWidth / 2)
-        
-        return snapOffset
-    }
-    
-    public func getInsertionIndex(for scrollOffset: CGFloat, thumbnailsCount: Int) -> Int {
-        let totalItemWidth = itemWidth + spacing
-        let fabCenter = itemWidth + spacing + fabWidth / 2
-        
-        // Insertion happens at the gap under the FAB
-        let insertionIndex = max(0, Int((scrollOffset + fabCenter) / totalItemWidth))
-        return min(insertionIndex, thumbnailsCount)
-    }
-    
-    public func getLeftRightIndices(for scrollOffset: CGFloat) -> (left: Int, right: Int) {
-        let totalItemWidth = itemWidth + spacing
-        let fabCenter = itemWidth + spacing + fabWidth / 2
-        
-        let leftIndex = max(0, Int((scrollOffset + fabCenter - itemWidth / 2) / totalItemWidth))
-        _ = leftIndex + 1
-        
-        return (left: leftIndex, right: leftIndex + 1)
-    }
-}
-
-// MARK: - Carousel Component
-
-public struct Carousel: View {
-    @StateObject private var state = CarouselState()
-    @State private var scrollOffset: CGFloat = 0
-    @State private var dragOffset: CGFloat = 0
-    @State private var isDragging: Bool = false
-    
+struct Carousel: View {
     let tape: Tape
-    let screenWidth: CGFloat
-    let onThumbnailTap: (ClipThumbnail) -> Void
-    let onThumbnailLongPress: (ClipThumbnail) -> Void
-    let onThumbnailDelete: (ClipThumbnail) -> Void
-    let onFABAction: (FABMode) -> Void
+    let onThumbnailDelete: (Clip) -> Void
     
-    private let calculator: SnapCalculator
+    @StateObject private var state = CarouselState()
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging = false
     
-    public init(
-        tape: Tape,
-        screenWidth: CGFloat,
-        onThumbnailTap: @escaping (ClipThumbnail) -> Void,
-        onThumbnailLongPress: @escaping (ClipThumbnail) -> Void,
-        onThumbnailDelete: @escaping (ClipThumbnail) -> Void,
-        onFABAction: @escaping (FABMode) -> Void
-    ) {
-        self.tape = tape
-        self.screenWidth = screenWidth
-        self.onThumbnailTap = onThumbnailTap
-        self.onThumbnailLongPress = onThumbnailLongPress
-        self.onThumbnailDelete = onThumbnailDelete
-        self.onFABAction = onFABAction
-        self.calculator = SnapCalculator(screenWidth: screenWidth)
-    }
-    
-    public var body: some View {
+    var body: some View {
         GeometryReader { geometry in
+            let screenWidth = geometry.size.width
+            let itemWidth: CGFloat = 80
+            let spacing: CGFloat = Tokens.Space.s16
+            let fabWidth: CGFloat = 60
+            
             ZStack {
-                // Background
-                Color.clear
+                // Vertical centerline behind FAB
+                Rectangle()
+                    .fill(Tokens.Colors.brandRed)
+                    .frame(width: 2, height: 80)
+                    .position(x: screenWidth / 2, y: 40)
                 
-                // Thumbnails
-                HStack(spacing: calculator.spacing) {
-                    // Start placeholder (always show when empty or at the beginning)
-                    Thumbnail(
-                        thumbnail: ClipThumbnail(
-                            id: "start-placeholder",
-                            isPlaceholder: true,
-                            index: 0,
-                            tapeName: tape.title
-                        ),
-                        width: calculator.itemWidth,
-                        onTap: { onFABAction(.camera) },
-                        onLongPress: {},
-                        onDelete: {}
-                    )
+                // Carousel content that moves beneath the FAB
+                HStack(spacing: spacing) {
+                    // Start placeholder
+                    if tape.clips.isEmpty {
+                        VStack {
+                            Image(systemName: "plus")
+                                .font(.system(size: 24, weight: .medium))
+                                .foregroundColor(Tokens.Colors.textPrimary)
+                        }
+                        .frame(width: itemWidth, height: itemWidth * 9/16)
+                        .background(Tokens.Colors.surfaceElevated)
+                        .cornerRadius(Tokens.Radius.thumbnail)
+                    }
                     
-                    // Actual clips from the tape
+                    // Thumbnails
                     ForEach(Array(tape.clips.enumerated()), id: \.element.id) { index, clip in
                         Thumbnail(
                             thumbnail: ClipThumbnail(
                                 id: clip.id.uuidString,
-                                asset: nil, // Will be loaded by the thumbnail component
-                                isPlaceholder: false,
-                                index: index,
-                                tapeName: tape.title
+                                assetLocalId: clip.assetLocalId,
+                                index: index + 1,
+                                isPlaceholder: false
                             ),
-                            width: calculator.itemWidth,
-                            onTap: { 
-                                let thumbnail = ClipThumbnail(
-                                    id: clip.id.uuidString,
-                                    asset: nil,
-                                    isPlaceholder: false,
-                                    index: index,
-                                    tapeName: tape.title
-                                )
-                                onThumbnailTap(thumbnail)
-                            },
-                            onLongPress: {
-                                let thumbnail = ClipThumbnail(
-                                    id: clip.id.uuidString,
-                                    asset: nil,
-                                    isPlaceholder: false,
-                                    index: index,
-                                    tapeName: tape.title
-                                )
-                                onThumbnailLongPress(thumbnail)
-                            },
-                            onDelete: {
-                                let thumbnail = ClipThumbnail(
-                                    id: clip.id.uuidString,
-                                    asset: nil,
-                                    isPlaceholder: false,
-                                    index: index,
-                                    tapeName: tape.title
-                                )
-                                onThumbnailDelete(thumbnail)
-                            }
+                            onDelete: { onThumbnailDelete(clip) }
                         )
                     }
                     
-                    // End placeholder (only show if there are clips)
+                    // End placeholder
                     if !tape.clips.isEmpty {
-                        Thumbnail(
-                            thumbnail: ClipThumbnail(
-                                id: "end-placeholder",
-                                isPlaceholder: true,
-                                index: tape.clips.count,
-                                tapeName: tape.title
-                            ),
-                            width: calculator.itemWidth,
-                            onTap: { onFABAction(.camera) },
-                            onLongPress: {},
-                            onDelete: {}
-                        )
+                        VStack {
+                            Image(systemName: "plus")
+                                .font(.system(size: 24, weight: .medium))
+                                .foregroundColor(Tokens.Colors.textPrimary)
+                        }
+                        .frame(width: itemWidth, height: itemWidth * 9/16)
+                        .background(Tokens.Colors.surfaceElevated)
+                        .cornerRadius(Tokens.Radius.thumbnail)
                     }
                 }
-                .offset(x: scrollOffset + dragOffset)
+                .offset(x: dragOffset)
                 .gesture(
                     DragGesture()
-                        .onChanged { value in
-                            isDragging = true
-                            dragOffset = value.translation.width
-                        }
+                    .onChanged { value in
+                        isDragging = true
+                        dragOffset = value.translation.width
+                    }
                         .onEnded { value in
                             isDragging = false
-                            
-                            // Calculate snap position
-                            let snapOffset = calculator.calculateSnapOffset(for: scrollOffset + value.translation.width)
-                            
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                scrollOffset = snapOffset
+                            withAnimation(.spring()) {
                                 dragOffset = 0
                             }
-                            
-                            // Update insertion index
-                            state.insertionIndex = calculator.getInsertionIndex(for: scrollOffset, thumbnailsCount: state.thumbnails.count)
-                            
-                            // Haptic feedback
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
                         }
                 )
                 
-                // Fixed FAB at center
+                // FAB - Fixed in center, always visible
                 VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        FAB(onAction: onFABAction)
-                        Spacer()
-                    }
-                    Spacer()
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Tokens.Colors.textOnAccent)
                 }
+                .frame(width: fabWidth, height: fabWidth)
+                .background(Tokens.Colors.brandRed)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
+                .position(x: screenWidth / 2, y: 40)
             }
         }
-        .onAppear {
-            // Initialize with start placeholder
-            if state.thumbnails.isEmpty {
-                // Update insertion index when thumbnails change
-                state.insertionIndex = state.thumbnails.count
-            }
-        }
-    }
-    
-    // MARK: - Public Methods
-    
-    public func addThumbnail(_ thumbnail: ClipThumbnail) {
-        state.addThumbnail(thumbnail, at: state.insertionIndex)
-        
-        // Snap to show the new thumbnail
-        let snapOffset = calculator.calculateSnapOffset(for: scrollOffset)
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-            scrollOffset = snapOffset
-        }
-    }
-    
-    public func removeThumbnail(_ thumbnail: ClipThumbnail) {
-        if let index = state.thumbnails.firstIndex(of: thumbnail) {
-            state.removeThumbnail(at: index)
-            
-            // Snap to maintain proper positioning
-            let snapOffset = calculator.calculateSnapOffset(for: scrollOffset)
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                scrollOffset = snapOffset
-            }
-        }
-    }
-    
-    public func getCurrentThumbnails() -> [ClipThumbnail] {
-        return state.thumbnails
-    }
-    
-    public func getInsertionIndex() -> Int {
-        return state.insertionIndex
+        .frame(height: 80)
     }
 }
 
-// MARK: - Preview
+// MARK: - Carousel State
 
-struct Carousel_Previews: PreviewProvider {
-    static var previews: some View {
-        GeometryReader { geometry in
-            Carousel(
-                tape: Tape(),
-                screenWidth: geometry.size.width,
-                onThumbnailTap: { thumbnail in
-                    print("Thumbnail tapped: \(thumbnail.id)")
-                },
-                onThumbnailLongPress: { thumbnail in
-                    print("Thumbnail long pressed: \(thumbnail.id)")
-                },
-                onThumbnailDelete: { thumbnail in
-                    print("Thumbnail delete: \(thumbnail.id)")
-                },
-                onFABAction: { mode in
-                    print("FAB action: \(mode)")
-                }
-            )
-        }
-        .background(DesignTokens.Colors.surface(.light))
-        .previewDisplayName("Carousel Component")
+class CarouselState: ObservableObject {
+    @Published var thumbnails: [ClipThumbnail] = []
+    @Published var currentIndex: Int = 0
+    @Published var scrollOffset: CGFloat = 0
+}
+
+// MARK: - Snap Calculator
+
+struct SnapCalculator {
+    let itemWidth: CGFloat
+    let fabWidth: CGFloat
+    let spacing: CGFloat
+    let screenWidth: CGFloat
+    
+    init(itemWidth: CGFloat, fabWidth: CGFloat, spacing: CGFloat, screenWidth: CGFloat) {
+        self.itemWidth = itemWidth
+        self.fabWidth = fabWidth
+        self.spacing = spacing
+        self.screenWidth = screenWidth
     }
+    
+    func getLeftIndex(for scrollOffset: CGFloat) -> Int {
+        let centerX = screenWidth / 2
+        let fabCenterX = centerX
+        let leftEdge = fabCenterX - fabWidth / 2 - spacing - itemWidth
+        return max(0, Int((leftEdge - scrollOffset) / (itemWidth + spacing)))
+    }
+    
+    func getRightIndex(for scrollOffset: CGFloat) -> Int {
+        let centerX = screenWidth / 2
+        let fabCenterX = centerX
+        let rightEdge = fabCenterX + fabWidth / 2 + spacing
+        return Int((rightEdge - scrollOffset) / (itemWidth + spacing))
+    }
+    
+    func getInsertionIndex(for scrollOffset: CGFloat, thumbnailsCount: Int) -> Int {
+        let centerX = screenWidth / 2
+        let fabCenterX = centerX
+        let leftIndex = getLeftIndex(for: scrollOffset)
+        let rightIndex = getRightIndex(for: scrollOffset)
+        
+        if scrollOffset < fabCenterX - fabWidth / 2 {
+            return leftIndex
+        } else {
+            return min(thumbnailsCount, rightIndex)
+        }
+    }
+}
+
+#Preview("Dark Mode") {
+    Carousel(
+        tape: Tape.sampleTapes[0],
+        onThumbnailDelete: { _ in }
+    )
+    .preferredColorScheme(.dark)
+    .padding()
+    .background(Tokens.Colors.bg)
+}
+
+#Preview("Light Mode") {
+    Carousel(
+        tape: Tape.sampleTapes[0],
+        onThumbnailDelete: { _ in }
+    )
+    .preferredColorScheme(.light)
+    .padding()
+    .background(Tokens.Colors.bg)
 }

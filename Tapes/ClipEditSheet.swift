@@ -1,304 +1,139 @@
 import SwiftUI
-import PhotosUI
-import AVFoundation
 
-// MARK: - Clip Edit Actions
-
-public enum ClipEditAction {
-    case trim
-    case rotate
-    case fitFill
-    case share
-    case remove
-}
-
-// MARK: - Fit/Fill Mode
-
-public enum FitFillMode: String, CaseIterable {
-    case fit = "Fit"
-    case fill = "Fill"
-    
-    var description: String {
-        switch self {
-        case .fit:
-            return "Shows entire clip, may have black bars"
-        case .fill:
-            return "Fills entire frame, may crop content"
-        }
-    }
-}
-
-// MARK: - Clip Edit Sheet
-
-public struct ClipEditSheet: View {
-    let thumbnail: ClipThumbnail
+struct ClipEditSheet: View {
+    @Binding var isPresented: Bool
     let onAction: (ClipEditAction) -> Void
-    let onDismiss: () -> Void
     
-    @State private var rotation: Double = 0
-    @State private var fitFillMode: FitFillMode = .fit
-    @State private var showingRemoveConfirmation = false
-    @State private var showingShareSheet = false
-    @State private var showingTrimEditor = false
-    
-    public init(
-        thumbnail: ClipThumbnail,
-        onAction: @escaping (ClipEditAction) -> Void,
-        onDismiss: @escaping () -> Void
-    ) {
-        self.thumbnail = thumbnail
-        self.onAction = onAction
-        self.onDismiss = onDismiss
-    }
-    
-    public var body: some View {
+    var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                // Header
-                VStack(spacing: DesignTokens.Spacing.s16) {
+            VStack(spacing: Tokens.Space.s24) {
+                // Trim option
+                Button(action: {
+                    onAction(.trim)
+                    isPresented = false
+                }) {
                     HStack {
-                        Text("Edit Clip")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
-                        
-                        Spacer()
-                        
-                        Button("Done") {
-                            onDismiss()
-                        }
-                        .font(DesignTokens.Typography.body)
-                        .foregroundColor(DesignTokens.Colors.primaryRed)
-                    }
-                    
-                    // Clip info
-                    HStack {
-                        Text(thumbnail.displayLabel)
-                            .font(DesignTokens.Typography.caption)
-                            .foregroundColor(DesignTokens.Colors.muted(60))
-                        
+                        Text("Trim the clip's length")
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.textOnAccent)
                         Spacer()
                     }
+                    .padding(Tokens.Space.s16)
+                    .background(Tokens.Colors.brandRed)
+                    .cornerRadius(Tokens.Radius.card)
                 }
-                .padding(.horizontal, DesignTokens.Spacing.s20)
-                .padding(.top, DesignTokens.Spacing.s20)
                 
-                Divider()
-                    .padding(.vertical, DesignTokens.Spacing.s16)
+                VStack(alignment: .leading, spacing: Tokens.Space.s8) {
+                    Text("Trim the start or the end of the clip")
+                        .font(Tokens.Typography.caption)
+                        .foregroundColor(Tokens.Colors.textMuted)
+                }
                 
-                // Actions
-                VStack(spacing: DesignTokens.Spacing.s8) {
-                    // Trim Action
-                    ClipEditActionRow(
-                        icon: "scissors",
-                        title: "Trim",
-                        subtitle: "Edit start and end points",
-                        action: {
-                            onAction(.trim)
-                            onDismiss()
-                        }
-                    )
+                // Fit in canvas section
+                VStack(alignment: .leading, spacing: Tokens.Space.s16) {
+                    Text("Fit in canvas")
+                        .font(Tokens.Typography.title)
+                        .foregroundColor(Tokens.Colors.textPrimary)
                     
-                    Divider()
-                        .padding(.horizontal, DesignTokens.Spacing.s20)
-                    
-                    // Rotate Action
-                    ClipEditActionRow(
-                        icon: "rotate.right",
-                        title: "Rotate 90°",
-                        subtitle: "Rotate clip clockwise",
-                        action: {
-                            onAction(.rotate)
-                        }
-                    )
-                    
-                    Divider()
-                        .padding(.horizontal, DesignTokens.Spacing.s20)
-                    
-                    // Fit/Fill Toggle
-                    VStack(spacing: DesignTokens.Spacing.s12) {
+                    // Fill option
+                    Button(action: {
+                        onAction(.setFitFill(.fill))
+                        isPresented = false
+                    }) {
                         HStack {
-                            Image(systemName: "aspectratio")
-                                .font(.system(size: 20, weight: .medium))
-                                .foregroundColor(DesignTokens.Colors.primaryRed)
-                                .frame(width: 24)
+                            Image(systemName: "rectangle.fill")
+                                .font(.title2)
+                                .foregroundColor(Tokens.Colors.textPrimary)
                             
-                            VStack(alignment: .leading, spacing: DesignTokens.Spacing.s4) {
-                                Text("Aspect Ratio")
-                                    .font(DesignTokens.Typography.body)
-                                    .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            VStack(alignment: .leading, spacing: Tokens.Space.s4) {
+                                Text("Fill")
+                                    .font(Tokens.Typography.title)
+                                    .foregroundColor(Tokens.Colors.textPrimary)
                                 
-                                Text(fitFillMode.description)
-                                    .font(DesignTokens.Typography.caption)
-                                    .foregroundColor(DesignTokens.Colors.muted(60))
+                                Text("Scale the clip to fill the canvas")
+                                    .font(Tokens.Typography.caption)
+                                    .foregroundColor(Tokens.Colors.textMuted)
                             }
                             
                             Spacer()
                             
-                            Picker("Fit/Fill", selection: $fitFillMode) {
-                                ForEach(FitFillMode.allCases, id: \.self) { mode in
-                                    Text(mode.rawValue).tag(mode)
-                                }
-                            }
-                            .pickerStyle(SegmentedPickerStyle())
-                            .frame(width: 120)
-                            .onChange(of: fitFillMode) { _ in
-                                onAction(.fitFill)
-                            }
+                            Image(systemName: "checkmark")
+                                .font(.title2)
+                                .foregroundColor(Tokens.Colors.brandRed)
                         }
-                        .padding(.horizontal, DesignTokens.Spacing.s20)
-                        .padding(.vertical, DesignTokens.Spacing.s12)
+                        .padding(Tokens.Space.s16)
+                        .background(Tokens.Colors.surfaceElevated)
+                        .cornerRadius(Tokens.Radius.card)
                     }
                     
-                    Divider()
-                        .padding(.horizontal, DesignTokens.Spacing.s20)
-                    
-                    // Share Action
-                    ClipEditActionRow(
-                        icon: "square.and.arrow.up",
-                        title: "Share",
-                        subtitle: "Export or AirDrop this clip",
-                        action: {
-                            onAction(.share)
-                            onDismiss()
+                    // Fit option
+                    Button(action: {
+                        onAction(.setFitFill(.fit))
+                        isPresented = false
+                    }) {
+                        HStack {
+                            Image(systemName: "rectangle")
+                                .font(.title2)
+                                .foregroundColor(Tokens.Colors.textPrimary)
+                            
+                            VStack(alignment: .leading, spacing: Tokens.Space.s4) {
+                                Text("Fit")
+                                    .font(Tokens.Typography.title)
+                                    .foregroundColor(Tokens.Colors.textPrimary)
+                                
+                                Text("Fits the whole clip in the canvas")
+                                    .font(Tokens.Typography.caption)
+                                    .foregroundColor(Tokens.Colors.textMuted)
+                            }
+                            
+                            Spacer()
                         }
-                    )
-                    
-                    Divider()
-                        .padding(.horizontal, DesignTokens.Spacing.s20)
-                    
-                    // Remove Action
-                    ClipEditActionRow(
-                        icon: "trash",
-                        title: "Remove",
-                        subtitle: "Delete this clip from tape",
-                        isDestructive: true,
-                        action: {
-                            showingRemoveConfirmation = true
-                        }
-                    )
+                        .padding(Tokens.Space.s16)
+                        .background(Tokens.Colors.surfaceElevated)
+                        .cornerRadius(Tokens.Radius.card)
+                    }
                 }
                 
                 Spacer()
             }
-            .background(DesignTokens.Colors.surface(.light))
-        }
-        .alert("Remove Clip", isPresented: $showingRemoveConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Remove", role: .destructive) {
-                onAction(.remove)
-                onDismiss()
-            }
-        } message: {
-            Text("Are you sure you want to remove this clip from the tape? This action cannot be undone.")
-        }
-    }
-}
-
-// MARK: - Clip Edit Action Row
-
-private struct ClipEditActionRow: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let isDestructive: Bool
-    let action: () -> Void
-    
-    init(
-        icon: String,
-        title: String,
-        subtitle: String,
-        isDestructive: Bool = false,
-        action: @escaping () -> Void
-    ) {
-        self.icon = icon
-        self.title = title
-        self.subtitle = subtitle
-        self.isDestructive = isDestructive
-        self.action = action
-    }
-    
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: DesignTokens.Spacing.s16) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(isDestructive ? .red : DesignTokens.Colors.primaryRed)
-                    .frame(width: 24)
-                
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.s4) {
-                    Text(title)
-                        .font(DesignTokens.Typography.body)
-                        .foregroundColor(isDestructive ? .red : DesignTokens.Colors.onSurface(.light))
-                    
-                    Text(subtitle)
-                        .font(DesignTokens.Typography.caption)
-                        .foregroundColor(DesignTokens.Colors.muted(60))
-                }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(DesignTokens.Colors.muted(40))
-            }
-            .padding(.horizontal, DesignTokens.Spacing.s20)
-            .padding(.vertical, DesignTokens.Spacing.s12)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-// MARK: - Clip Edit Sheet Presenter
-
-public struct ClipEditSheetPresenter: View {
-    @Binding var isPresented: Bool
-    let thumbnail: ClipThumbnail
-    let onAction: (ClipEditAction) -> Void
-    
-    public init(
-        isPresented: Binding<Bool>,
-        thumbnail: ClipThumbnail,
-        onAction: @escaping (ClipEditAction) -> Void
-    ) {
-        self._isPresented = isPresented
-        self.thumbnail = thumbnail
-        self.onAction = onAction
-    }
-    
-    public var body: some View {
-        if isPresented {
-            ClipEditSheet(
-                thumbnail: thumbnail,
-                onAction: { action in
-                    onAction(action)
-                },
-                onDismiss: {
+            .padding(Tokens.Space.s20)
+            .background(Tokens.Colors.bg)
+            .navigationTitle("Edit Clip")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(
+                trailing: Button("Done") {
                     isPresented = false
                 }
             )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
         }
     }
 }
 
-// MARK: - Preview
+enum ClipEditAction {
+    case trim
+    case rotate
+    case setFitFill(FitFillMode)
+    case share
+    case remove
+}
 
-struct ClipEditSheet_Previews: PreviewProvider {
-    static var previews: some View {
-        ClipEditSheet(
-            thumbnail: ClipThumbnail(
-                id: "preview-clip",
-                index: 1,
-                tapeName: "My Tape"
-            ),
-            onAction: { action in
-                print("Action: \(action)")
-            },
-            onDismiss: {
-                print("Dismissed")
-            }
-        )
-        .previewDisplayName("Clip Edit Sheet")
-    }
+enum FitFillMode {
+    case fit
+    case fill
+}
+
+#Preview("Dark Mode") {
+    ClipEditSheet(
+        isPresented: .constant(true),
+        onAction: { _ in }
+    )
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Light Mode") {
+    ClipEditSheet(
+        isPresented: .constant(true),
+        onAction: { _ in }
+    )
+    .preferredColorScheme(.light)
 }
