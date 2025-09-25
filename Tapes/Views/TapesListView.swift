@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct TapesListView: View {
     @StateObject private var tapesStore = TapesStore()
+    @StateObject private var exportCoordinator = ExportCoordinator()
     @State private var showingSettings = false
     @State private var showingPlayOptions = false
     @State private var showingPlayer = false
@@ -84,7 +85,7 @@ public struct TapesListView: View {
                                     },
                                     onPlay: {
                                         tapesStore.selectTape(tape)
-                                        showingPlayer = true
+                                        showingPlayOptions = true
                                     },
                                     onAirPlay: {
                                         handleAirPlay(for: tape)
@@ -135,15 +136,29 @@ public struct TapesListView: View {
                 message: Text("Choose how to play this tape"),
                 buttons: [
                     .default(Text("Preview Tape")) {
-                        handlePreviewTape()
+                        showingPlayer = true
                     },
                     .default(Text("Merge & Save")) {
-                        handleMergeAndSave()
+                        if let selectedTape = tapesStore.selectedTape {
+                            exportCoordinator.exportTape(selectedTape)
+                        }
                     },
                     .cancel()
                 ]
             )
         }
+        .overlay(
+            // Export Progress Overlay
+            ExportProgressOverlay(coordinator: exportCoordinator)
+        )
+        .overlay(
+            // Completion Toast
+            CompletionToast(coordinator: exportCoordinator)
+        )
+        .overlay(
+            // Error Alert
+            ExportErrorAlert(coordinator: exportCoordinator)
+        )
     }
     
     // MARK: - Actions
@@ -182,15 +197,6 @@ public struct TapesListView: View {
         // TODO: Implement FAB action functionality
     }
     
-    private func handlePreviewTape() {
-        print("Preview tape")
-        // TODO: Implement preview functionality
-    }
-    
-    private func handleMergeAndSave() {
-        print("Merge and save tape")
-        // TODO: Implement merge and save functionality
-    }
 }
 
 
