@@ -1,0 +1,44 @@
+# Cursor Rules — TAPES iOS (SwiftUI)
+
+# Mission
+- Build the **TAPES** MVP for iOS following `cursor_prompt.md` (and docs if present).
+- Platform: **iOS 16+**, Swift 5.9+, **SwiftUI** only.
+- Default bundle id: `com.studiomorph.Tapes`.
+
+# Architecture
+- No third‑party dependencies. Use **AVFoundation**, **Photos**, **AVKit**.
+- Keep folders: `Models/`, `Views/`, `ViewModels/`, `Components/`, `Services/`, `Export/`, `Theme/`.
+- Small, focused files. Document non‑obvious math with comments.
+
+# Styling
+- Create/Use `Tapes/DesignSystem/Tokens.swift` for **colors, typography, spacing, radii**, supporting **dark & light**. 
+- Do not hardcode colors/fonts. Use tokens helpers.
+
+# Behaviour — must match spec
+- **Carousel**: Thumbnails move; **FAB is fixed** in the center. Snap so one item sits on each side of the FAB.
+- **Insert**: New clip inserts at the **gap under FAB** (between left/right items).
+- **Placeholders**: When empty, show **start “+”** only; once at least one clip exists, also show **end “+”**. After deleting back to empty → keep **start “+”** only.
+- **Edit Sheet**: Trim (native), Rotate 90°, Fit/Fill, Share (stub), Remove (confirm).
+- **Settings (Tape-level)**: Orientation (Portrait/Landscape), Fit/Fill, Transitions (None, Crossfade, Slide L→R, Slide R→L, Randomise), Duration slider 0.2–1.0s. Randomise duration **clamps to 0.5s max**.
+- **Randomise**: Deterministic per tape (seed RNG with Tape UUID); same sequence for preview and export.
+- **Preview vs Export parity**: Must match transitions sequence and timings.
+
+# Export
+- iOS exporter in `Export/TapeExporter.swift`: AVFoundation composition with
+  - video **opacity crossfade** and **slide (L→R, R→L)** via transform ramps;
+  - **audio crossfades** using `AVMutableAudioMix` ramps;
+  - output **1080p** MP4 to Photos › “Tapes” album.
+- Provide `Export/TransitionPicker.swift` with seeded sequence + 0.5s clamp.
+
+# Casting
+- AirPlay button (AVRoutePickerView) shown **only when devices available** (poll `AVRouteDetector` ~10s).
+
+# Process
+- Make **small, incremental commits** with descriptive messages.
+- Ask before renaming or moving large parts of the tree.
+- Keep public API stable unless the prompt explicitly allows refactor.
+- Prefer SwiftUI previews and light unit tests where practical.
+
+# Non‑Goals (MVP)
+- No cloud sync. No social share SDKs. No analytics.
+- No third‑party UI libs. No background processing beyond export.
