@@ -55,42 +55,38 @@ struct TapeCardView: View {
             }
             
             // Carousel with FAB and centerline
-            GeometryReader { geometry in
-                let outerHPad: CGFloat = 16     // left/right inside the card
-                let fabDiameter: CGFloat = 64
-                let interItem: CGFloat = 16
-                let usable = geometry.size.width - (outerHPad * 2)
-                // two thumbnails plus one inter-item gap share space with the FAB visually occupying fabDiameter
-                let thumbW = max((usable - fabDiameter - interItem) / 2, 128)
-                let thumbH = thumbW * 9.0 / 16.0
-                let carouselH = thumbH           // do NOT add extra vertical padding
-                
-                ZStack(alignment: .center) {
-                    // 1. Centerline
-                    Rectangle()
-                        .fill(Tokens.Colors.brandRed.opacity(0.9))
-                        .frame(width: 2)
-                        .frame(height: carouselH)
-                        .allowsHitTesting(false)
-                    
-                    // 2. ClipCarousel (beneath)
-                    ClipCarousel(
-                        tape: tape,
-                        thumbSize: CGSize(width: thumbW, height: thumbH),
-                        interItem: interItem,
-                        onThumbnailDelete: onThumbnailDelete,
-                        insertionIndex: $insertionIndex
-                    )
+            let screenW = UIScreen.main.bounds.width
+            let fab: CGFloat = 64
+            let thumbW = floor((screenW - fab) / 2)
+            let thumbH = floor(thumbW * 9.0 / 16.0)
+            let carouselH = thumbH
+            
+            ZStack(alignment: .center) {
+                // 1. Centerline
+                Rectangle()
+                    .fill(Tokens.Colors.brandRed.opacity(0.9))
+                    .frame(width: 2)
                     .frame(height: carouselH)
-                    
-                    // 3. FAB (above)
-                    FAB { _ in }
-                        .frame(width: fabDiameter, height: fabDiameter)
-                }
+                    .allowsHitTesting(false)
+                
+                // 2. ClipCarousel (beneath)
+                ClipCarousel(
+                    tape: tape,
+                    thumbSize: CGSize(width: thumbW, height: thumbH),
+                    interItem: 0, // Zero spacing
+                    onThumbnailDelete: onThumbnailDelete,
+                    insertionIndex: $insertionIndex
+                )
                 .frame(height: carouselH)
-                .clipped()                // prevent overflow
-                .padding(.horizontal, outerHPad)
+                
+                // 3. FAB (above)
+                FAB { _ in }
+                    .frame(width: fab, height: fab)
             }
+            .frame(height: carouselH)              // lock to thumbnail height
+            .clipped()
+            .padding(.horizontal, 16)              // card's inner padding is visual only
+            .padding(.vertical, 16)                // card hugs content: title + 16 + timeline + 16
         }
         .padding(Tokens.Space.xl)
         .background(

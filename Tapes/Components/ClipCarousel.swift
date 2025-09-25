@@ -56,7 +56,7 @@ struct ClipCarousel: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                                 .id("item-\(i)")
                             
-                            // gap between i and i+1
+                            // gap between i and i+1 (zero width for zero spacing)
                             if i < items.count - 1 {
                                 GapMarker(width: interItem)
                                     .id("gap-\(i)")

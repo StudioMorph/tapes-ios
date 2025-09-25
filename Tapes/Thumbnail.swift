@@ -16,7 +16,7 @@ struct Thumbnail: View {
     @State private var showDeleteConfirmation = false
     
     var body: some View {
-        // Thumbnail image - no extra spacing or padding
+        // Thumbnail image - exact sizing, no extra spacing or padding
         RoundedRectangle(cornerRadius: 8)
             .fill(Tokens.Colors.elevated)
             .overlay(
