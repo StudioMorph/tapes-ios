@@ -8,6 +8,7 @@ struct TapeCardView: View {
     let onThumbnailDelete: (Clip) -> Void
     
     @StateObject private var castManager = CastManager.shared
+    @State private var insertionIndex: Int = 0
     
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.l) {
@@ -55,35 +56,41 @@ struct TapeCardView: View {
             
             // Carousel with FAB and centerline
             GeometryReader { geometry in
-                let horizPadding: CGFloat = 32   // 16pt left + 16pt right inside card
+                let outerHPad: CGFloat = 16     // left/right inside the card
+                let fabDiameter: CGFloat = 64
                 let interItem: CGFloat = 16
-                let thumbW = max((geometry.size.width - horizPadding - 64) / 2, 128)  // 64 = FAB diameter space visually; choose min 128
+                let usable = geometry.size.width - (outerHPad * 2)
+                // two thumbnails plus one inter-item gap share space with the FAB visually occupying fabDiameter
+                let thumbW = max((usable - fabDiameter - interItem) / 2, 128)
                 let thumbH = thumbW * 9.0 / 16.0
-                let carouselHeight = thumbH + 24 // some breathing room
+                let carouselH = thumbH           // do NOT add extra vertical padding
                 
                 ZStack(alignment: .center) {
                     // 1. Centerline
                     Rectangle()
                         .fill(Tokens.Colors.brandRed.opacity(0.9))
                         .frame(width: 2)
-                        .frame(height: carouselHeight)
+                        .frame(height: carouselH)
                         .allowsHitTesting(false)
                     
-                    // 2. Carousel (beneath)
+                    // 2. ClipCarousel (beneath)
                     ClipCarousel(
                         tape: tape,
                         thumbSize: CGSize(width: thumbW, height: thumbH),
                         interItem: interItem,
-                        onThumbnailDelete: onThumbnailDelete
+                        onThumbnailDelete: onThumbnailDelete,
+                        insertionIndex: $insertionIndex
                     )
-                    .frame(height: carouselHeight)
+                    .frame(height: carouselH)
                     
                     // 3. FAB (above)
-                    RecordFAB()
-                        .frame(width: 64, height: 64)
+                    FAB { _ in }
+                        .frame(width: fabDiameter, height: fabDiameter)
                 }
+                .frame(height: carouselH)
+                .clipped()                // prevent overflow
+                .padding(.horizontal, outerHPad)
             }
-            .frame(height: 200) // Fixed height for the carousel area
         }
         .padding(Tokens.Space.xl)
         .background(

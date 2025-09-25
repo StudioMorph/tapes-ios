@@ -20,60 +20,116 @@ struct ClipCarousel: View {
     let interItem: CGFloat
     let onThumbnailDelete: (Clip) -> Void
     
-    @State private var insertionIndex: Int = 0
+    @Binding var insertionIndex: Int
+    
+    @State private var gapCenters: [String: CGFloat] = [:]
     
     private var items: [CarouselItem] {
         var result: [CarouselItem] = []
         
         // Always start with startPlus
-        result.append(CarouselItem(id: "item-0", type: .startPlus, clip: nil))
+        result.append(CarouselItem(id: "startPlus", type: .startPlus, clip: nil))
         
-        // Add clips
-        for (index, clip) in tape.clips.enumerated() {
-            result.append(CarouselItem(id: "item-\(index + 1)", type: .clip, clip: clip))
+        // Add existing clips
+        for clip in tape.clips {
+            result.append(CarouselItem(id: clip.id.uuidString, type: .clip, clip: clip))
         }
         
         // Add endPlus only if there are clips
         if !tape.clips.isEmpty {
-            result.append(CarouselItem(id: "item-\(tape.clips.count + 1)", type: .endPlus, clip: nil))
+            result.append(CarouselItem(id: "endPlus", type: .endPlus, clip: nil))
         }
         
         return result
     }
     
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: interItem) {
-                ForEach(items) { item in
-                    itemView(for: item)
+        GeometryReader { containerGeo in
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        ForEach(items.indices, id: \.self) { i in
+                            // item
+                            ThumbnailView(item: items[i])
+                                .frame(width: thumbSize.width, height: thumbSize.height)
+                                .background(Tokens.Colors.elevated)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .id("item-\(i)")
+                            
+                            // gap between i and i+1
+                            if i < items.count - 1 {
+                                GapMarker(width: interItem)
+                                    .id("gap-\(i)")
+                                    .anchorPreference(key: GapCentersKey.self, value: .bounds) { anchor in
+                                        ["gap-\(i)": containerGeo[anchor].midX]
+                                    }
+                            }
+                        }
+                    }
+                }
+                .onPreferenceChange(GapCentersKey.self) { gapCenters = $0 }
+                .gesture(
+                    DragGesture().onEnded { _ in
+                        snapToNearestGap(containerWidth: containerGeo.size.width, proxy: proxy)
+                    }
+                )
+                .onAppear {
+                    // start position: between startPlus and first clip (or 0 if empty)
+                    snapToNearestGap(containerWidth: containerGeo.size.width, proxy: proxy)
                 }
             }
-            .padding(.horizontal, 16) // Container padding
         }
+        .frame(height: thumbSize.height)   // lock height
     }
     
-    @ViewBuilder
-    private func itemView(for item: CarouselItem) -> some View {
+    private func snapToNearestGap(containerWidth: CGFloat, proxy: ScrollViewProxy) {
+        guard !gapCenters.isEmpty else { insertionIndex = 0; return }
+        let midX = containerWidth / 2
+        let nearest = gapCenters.min { abs($0.value - midX) < abs($1.value - midX) }?.key
+        guard let id = nearest, let idx = Int(id.replacingOccurrences(of: "gap-", with: "")) else { return }
+        insertionIndex = idx
+        withAnimation(.easeOut(duration: 0.22)) {
+            proxy.scrollTo(id, anchor: .center)
+        }
+    }
+}
+
+// MARK: - Gap Marker
+private struct GapMarker: View {
+    let width: CGFloat
+    var body: some View { Color.clear.frame(width: width, height: 1) }
+}
+
+// MARK: - Gap Centers Key
+private struct GapCentersKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+// MARK: - Thumbnail View
+private struct ThumbnailView: View {
+    let item: CarouselItem
+    
+    var body: some View {
         switch item.type {
         case .startPlus:
             StartPlusView()
-                .frame(width: thumbSize.width, height: thumbSize.height)
         case .clip:
             if let clip = item.clip {
                 Thumbnail(
                     thumbnail: ClipThumbnail(
                         id: clip.id.uuidString,
                         assetLocalId: clip.assetLocalId,
-                        index: tape.clips.firstIndex(where: { $0.id == clip.id }) ?? 0,
+                        index: 0, // Will be set properly by parent
                         isPlaceholder: false
                     ),
-                    onDelete: { onThumbnailDelete(clip) }
+                    onDelete: { }
                 )
-                .frame(width: thumbSize.width, height: thumbSize.height)
             }
         case .endPlus:
             EndPlusView()
-                .frame(width: thumbSize.width, height: thumbSize.height)
         }
     }
 }
@@ -82,17 +138,16 @@ struct ClipCarousel: View {
 struct StartPlusView: View {
     var body: some View {
         Button(action: {
-            // Handle start plus tap
+            // Action for adding a new clip at the start
+            print("Add new clip at start")
         }) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Tokens.Colors.elevated)
-                    .frame(width: 100, height: 100)
-                
-                Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Tokens.Colors.text)
-            }
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Tokens.Colors.elevated)
+                .overlay(
+                    Image(systemName: "plus")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(Tokens.Colors.text)
+                )
         }
     }
 }
@@ -101,60 +156,55 @@ struct StartPlusView: View {
 struct EndPlusView: View {
     var body: some View {
         Button(action: {
-            // Handle end plus tap
+            // Action for adding a new clip at the end
+            print("Add new clip at end")
         }) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Tokens.Colors.elevated)
-                    .frame(width: 100, height: 100)
-                
-                Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Tokens.Colors.text)
-            }
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Tokens.Colors.elevated)
+                .overlay(
+                    Image(systemName: "plus")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(Tokens.Colors.text)
+                )
         }
     }
 }
 
-// MARK: - Record FAB
-struct RecordFAB: View {
-    var body: some View {
-        Button(action: {
-            // Handle record action
-        }) {
-            ZStack {
-                Circle()
-                    .fill(Tokens.Colors.brandRed)
-                    .frame(width: 64, height: 64)
-                    .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
-                
-                Image(systemName: "video.fill")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Tokens.Colors.onAccent)
-            }
+// MARK: - Clip Thumbnail (defined in Thumbnail.swift)
+
+// MARK: - Previews
+struct ClipCarousel_Previews: PreviewProvider {
+    @State static var sampleTapeWithClips = Tape.sampleTapes[0]
+    @State static var sampleTapeEmpty = Tape(id: UUID(), title: "Empty Tape", clips: [])
+    @State static var insertionIndex: Int = 0
+    
+    static var previews: some View {
+        VStack {
+            ClipCarousel(
+                tape: sampleTapeWithClips,
+                thumbSize: CGSize(width: 128, height: 128 * 9 / 16),
+                interItem: 16,
+                onThumbnailDelete: { _ in },
+                insertionIndex: $insertionIndex
+            )
+            .previewLayout(.sizeThatFits)
+            .preferredColorScheme(.dark)
+            .padding()
+            .background(Tokens.Colors.bg)
+            .previewDisplayName("With Clips - Dark")
+            
+            ClipCarousel(
+                tape: sampleTapeEmpty,
+                thumbSize: CGSize(width: 128, height: 128 * 9 / 16),
+                interItem: 16,
+                onThumbnailDelete: { _ in },
+                insertionIndex: $insertionIndex
+            )
+            .previewLayout(.sizeThatFits)
+            .preferredColorScheme(.light)
+            .padding()
+            .background(Tokens.Colors.bg)
+            .previewDisplayName("Empty - Light")
         }
     }
-}
-
-// MARK: - Preview
-#Preview("Empty Tape") {
-    ClipCarousel(
-        tape: Tape(title: "Empty Tape", clips: []),
-        thumbSize: CGSize(width: 128, height: 72),
-        interItem: 16,
-        onThumbnailDelete: { _ in }
-    )
-    .frame(height: 100)
-    .background(Tokens.Colors.surface)
-}
-
-#Preview("With Clips") {
-    ClipCarousel(
-        tape: Tape.sampleTapes[1],
-        thumbSize: CGSize(width: 128, height: 72),
-        interItem: 16,
-        onThumbnailDelete: { _ in }
-    )
-    .frame(height: 100)
-    .background(Tokens.Colors.surface)
 }
