@@ -12,6 +12,7 @@ public struct TapeCardView: View {
     let onThumbnailDelete: (ClipThumbnail) -> Void
     let onFABAction: (FABMode) -> Void
     
+    @StateObject private var castManager = CastManager.shared
     @State private var showingClipEditSheet = false
     @State private var selectedClip: ClipThumbnail?
     
@@ -61,13 +62,14 @@ public struct TapeCardView: View {
                             .foregroundColor(DesignTokens.Colors.muted(60))
                     }
                     
-                    // AirPlay button (placeholder - only show if available)
-                    Button(action: onAirPlay) {
-                        Image(systemName: "airplayvideo")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(DesignTokens.Colors.muted(60))
+                    // AirPlay button (only show if available devices)
+                    if castManager.hasAvailableDevices {
+                        Button(action: onAirPlay) {
+                            Image(systemName: "airplayvideo")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(DesignTokens.Colors.muted(60))
+                        }
                     }
-                    .opacity(0.5) // Placeholder styling
                     
                     // Play button
                     Button(action: onPlay) {
