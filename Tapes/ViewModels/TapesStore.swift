@@ -7,6 +7,7 @@ import SwiftUI
 @MainActor
 public class TapesStore: ObservableObject {
     @Published public var tapes: [Tape] = []
+    @Published public var selectedTape: Tape?
     
     public init() {
         // Create one empty "New Tape" on init as per acceptance criteria
@@ -28,6 +29,11 @@ public class TapesStore: ObservableObject {
     public func updateTape(_ tape: Tape) {
         if let index = tapes.firstIndex(where: { $0.id == tape.id }) {
             tapes[index] = tape
+            
+            // Update selected tape if it's the same tape
+            if selectedTape?.id == tape.id {
+                selectedTape = tape
+            }
         }
     }
     
@@ -37,6 +43,20 @@ public class TapesStore: ObservableObject {
     
     public func deleteTape(by id: UUID) {
         tapes.removeAll { $0.id == id }
+    }
+    
+    // MARK: - Selected Tape Management
+    
+    public func selectTape(_ tape: Tape) {
+        selectedTape = tape
+    }
+    
+    public func selectTape(by id: UUID) {
+        selectedTape = getTape(by: id)
+    }
+    
+    public func clearSelectedTape() {
+        selectedTape = nil
     }
     
     // MARK: - Clip Operations

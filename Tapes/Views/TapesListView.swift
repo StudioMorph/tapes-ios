@@ -5,7 +5,6 @@ import SwiftUI
 public struct TapesListView: View {
     @StateObject private var tapesStore = TapesStore()
     @State private var showingSettings = false
-    @State private var selectedTape: Tape?
     @State private var showingPlayOptions = false
     
     public init() {}
@@ -79,11 +78,11 @@ public struct TapesListView: View {
                                 TapeCardView(
                                     tape: tape,
                                     onSettings: {
-                                        selectedTape = tape
+                                        tapesStore.selectTape(tape)
                                         showingSettings = true
                                     },
                                     onPlay: {
-                                        selectedTape = tape
+                                        tapesStore.selectTape(tape)
                                         showingPlayOptions = true
                                     },
                                     onAirPlay: {
@@ -113,10 +112,12 @@ public struct TapesListView: View {
             .navigationBarHidden(true)
         }
         .sheet(isPresented: $showingSettings) {
-            if let tape = selectedTape {
-                TapeSettingsSheet(tape: tape) {
+            if let selectedTape = tapesStore.selectedTape {
+                TapeSettingsSheet(tape: Binding(
+                    get: { selectedTape },
+                    set: { tapesStore.updateTape($0) }
+                )) {
                     showingSettings = false
-                    selectedTape = nil
                 }
             }
         }
@@ -184,34 +185,6 @@ public struct TapesListView: View {
     }
 }
 
-// MARK: - Tape Settings Sheet (Placeholder)
-
-struct TapeSettingsSheet: View {
-    let tape: Tape
-    let onDismiss: () -> Void
-    
-    var body: some View {
-        NavigationView {
-            VStack {
-                Text("Tape Settings")
-                    .font(DesignTokens.Typography.title)
-                    .padding()
-                
-                Text("Settings for: \(tape.title)")
-                    .font(DesignTokens.Typography.body)
-                    .foregroundColor(DesignTokens.Colors.muted(60))
-                
-                Spacer()
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                trailing: Button("Done") {
-                    onDismiss()
-                }
-            )
-        }
-    }
-}
 
 // MARK: - Preview
 
