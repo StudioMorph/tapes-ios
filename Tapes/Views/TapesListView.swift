@@ -6,6 +6,7 @@ public struct TapesListView: View {
     @StateObject private var tapesStore = TapesStore()
     @State private var showingSettings = false
     @State private var showingPlayOptions = false
+    @State private var showingPlayer = false
     
     public init() {}
     
@@ -83,7 +84,7 @@ public struct TapesListView: View {
                                     },
                                     onPlay: {
                                         tapesStore.selectTape(tape)
-                                        showingPlayOptions = true
+                                        showingPlayer = true
                                     },
                                     onAirPlay: {
                                         handleAirPlay(for: tape)
@@ -118,6 +119,13 @@ public struct TapesListView: View {
                     set: { tapesStore.updateTape($0) }
                 )) {
                     showingSettings = false
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showingPlayer) {
+            if let selectedTape = tapesStore.selectedTape {
+                TapePlayerView(tape: selectedTape) {
+                    showingPlayer = false
                 }
             }
         }
