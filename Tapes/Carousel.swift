@@ -20,7 +20,7 @@ public class CarouselState: ObservableObject {
         updateInsertionIndex()
     }
     
-    private func updateInsertionIndex() {
+    public func updateInsertionIndex() {
         // Insertion index is always at the center (where FAB is)
         insertionIndex = thumbnails.count
     }
@@ -44,7 +44,7 @@ public struct SnapCalculator {
         
         // Calculate which items should be on left and right of FAB
         let leftIndex = max(0, Int((scrollOffset + fabCenter - itemWidth / 2) / totalItemWidth))
-        let rightIndex = leftIndex + 1
+        _ = leftIndex + 1
         
         // Snap to position where left item is left of FAB, right item is right of FAB
         let snapOffset = CGFloat(leftIndex) * totalItemWidth - (fabCenter - itemWidth / 2)
@@ -52,13 +52,13 @@ public struct SnapCalculator {
         return snapOffset
     }
     
-    public func getInsertionIndex(for scrollOffset: CGFloat) -> Int {
+    public func getInsertionIndex(for scrollOffset: CGFloat, thumbnailsCount: Int) -> Int {
         let totalItemWidth = itemWidth + spacing
         let fabCenter = itemWidth + spacing + fabWidth / 2
         
         // Insertion happens at the gap under the FAB
         let insertionIndex = max(0, Int((scrollOffset + fabCenter) / totalItemWidth))
-        return min(insertionIndex, thumbnails.count)
+        return min(insertionIndex, thumbnailsCount)
     }
     
     public func getLeftRightIndices(for scrollOffset: CGFloat) -> (left: Int, right: Int) {
@@ -66,9 +66,9 @@ public struct SnapCalculator {
         let fabCenter = itemWidth + spacing + fabWidth / 2
         
         let leftIndex = max(0, Int((scrollOffset + fabCenter - itemWidth / 2) / totalItemWidth))
-        let rightIndex = leftIndex + 1
+        _ = leftIndex + 1
         
-        return (left: leftIndex, right: rightIndex)
+        return (left: leftIndex, right: leftIndex + 1)
     }
 }
 
@@ -150,13 +150,13 @@ public struct Carousel: View {
                     DragGesture()
                         .onChanged { value in
                             isDragging = true
-                            dragOffset = value.translation.x
+                            dragOffset = value.translation.width
                         }
                         .onEnded { value in
                             isDragging = false
                             
                             // Calculate snap position
-                            let snapOffset = calculator.calculateSnapOffset(for: scrollOffset + value.translation.x)
+                            let snapOffset = calculator.calculateSnapOffset(for: scrollOffset + value.translation.width)
                             
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                 scrollOffset = snapOffset
@@ -164,7 +164,7 @@ public struct Carousel: View {
                             }
                             
                             // Update insertion index
-                            state.insertionIndex = calculator.getInsertionIndex(for: scrollOffset)
+                            state.insertionIndex = calculator.getInsertionIndex(for: scrollOffset, thumbnailsCount: state.thumbnails.count)
                             
                             // Haptic feedback
                             let impactFeedback = UIImpactFeedbackGenerator(style: .light)
@@ -187,7 +187,8 @@ public struct Carousel: View {
         .onAppear {
             // Initialize with start placeholder
             if state.thumbnails.isEmpty {
-                state.updateInsertionIndex()
+                // Update insertion index when thumbnails change
+                state.insertionIndex = state.thumbnails.count
             }
         }
     }

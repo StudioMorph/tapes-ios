@@ -63,14 +63,14 @@ public struct FAB: View {
         .gesture(
             DragGesture()
                 .onChanged { value in
-                    dragOffset = value.translation.x
+                    dragOffset = value.translation.width
                 }
                 .onEnded { value in
                     let threshold: CGFloat = 30
-                    let velocity = value.velocity.x
+                    let velocity = value.velocity.width
                     
-                    if abs(value.translation.x) > threshold || abs(velocity) > 500 {
-                        if value.translation.x > 0 || velocity > 0 {
+                    if abs(value.translation.width) > threshold || abs(velocity) > 500 {
+                        if value.translation.width > 0 || velocity > 0 {
                             // Swipe right - cycle forward
                             cycleMode(forward: true)
                         } else {
@@ -84,9 +84,9 @@ public struct FAB: View {
                     }
                 }
         )
-        .onLongPressGesture(minimumDuration: 0) { pressing in
+        .onLongPressGesture(minimumDuration: 0) {
             withAnimation(.easeInOut(duration: 0.1)) {
-                isPressed = pressing
+                isPressed = true
             }
         }
     }
