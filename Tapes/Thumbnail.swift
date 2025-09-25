@@ -16,22 +16,22 @@ struct Thumbnail: View {
     @State private var showDeleteConfirmation = false
     
     var body: some View {
-        VStack(spacing: Tokens.Space.s4) {
+        VStack(spacing: Tokens.Space.xs) {
             // Thumbnail image
-            RoundedRectangle(cornerRadius: Tokens.Radius.thumbnail)
-                .fill(Tokens.Colors.surfaceElevated)
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Tokens.Colors.elevated)
                 .frame(width: 80, height: 80 * 9/16)
                 .overlay(
                     Group {
                         if thumbnail.isPlaceholder {
                             Image(systemName: "plus")
                                 .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(Tokens.Colors.textPrimary)
+                                .foregroundColor(Tokens.Colors.text)
                         } else {
                             // Placeholder for actual video thumbnail
                             Image(systemName: "video.fill")
                                 .font(.system(size: 20, weight: .medium))
-                                .foregroundColor(Tokens.Colors.textPrimary)
+                                .foregroundColor(Tokens.Colors.text)
                         }
                     }
                 )
@@ -43,14 +43,14 @@ struct Thumbnail: View {
                             Text("\(thumbnail.index)")
                                 .font(.caption2)
                                 .fontWeight(.bold)
-                                .foregroundColor(Tokens.Colors.textOnAccent)
-                                .padding(Tokens.Space.s4)
+                                .foregroundColor(Tokens.Colors.onAccent)
+                                .padding(Tokens.Space.xs)
                                 .background(Color.black.opacity(0.6))
-                                .cornerRadius(Tokens.Space.s4)
+                                .cornerRadius(Tokens.Space.xs)
                         }
                         Spacer()
                     }
-                    .padding(Tokens.Space.s4)
+                    .padding(Tokens.Space.xs)
                 )
                 .overlay(
                     // Delete confirmation overlay
@@ -59,13 +59,13 @@ struct Thumbnail: View {
                             VStack {
                                 Image(systemName: "trash")
                                     .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(Tokens.Colors.textOnAccent)
-                                    .padding(Tokens.Space.s8)
+                                    .foregroundColor(Tokens.Colors.onAccent)
+                                    .padding(Tokens.Space.s)
                                     .background(Tokens.Colors.brandRed)
                                     .clipShape(Circle())
                             }
                             .background(Color.black.opacity(0.7))
-                            .cornerRadius(Tokens.Radius.thumbnail)
+                            .cornerRadius(8)
                         }
                     }
                 )

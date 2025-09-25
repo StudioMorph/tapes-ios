@@ -12,7 +12,7 @@ struct Carousel: View {
         GeometryReader { geometry in
             let screenWidth = geometry.size.width
             let itemWidth: CGFloat = 80
-            let spacing: CGFloat = Tokens.Space.s16
+            let spacing: CGFloat = Tokens.Space.l
             let fabWidth: CGFloat = 60
             
             ZStack {
@@ -29,11 +29,11 @@ struct Carousel: View {
                         VStack {
                             Image(systemName: "plus")
                                 .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(Tokens.Colors.textPrimary)
+                                .foregroundColor(Tokens.Colors.text)
                         }
                         .frame(width: itemWidth, height: itemWidth * 9/16)
-                        .background(Tokens.Colors.surfaceElevated)
-                        .cornerRadius(Tokens.Radius.thumbnail)
+                        .background(Tokens.Colors.elevated)
+                        .cornerRadius(8)
                     }
                     
                     // Thumbnails
@@ -54,11 +54,11 @@ struct Carousel: View {
                         VStack {
                             Image(systemName: "plus")
                                 .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(Tokens.Colors.textPrimary)
+                                .foregroundColor(Tokens.Colors.text)
                         }
                         .frame(width: itemWidth, height: itemWidth * 9/16)
-                        .background(Tokens.Colors.surfaceElevated)
-                        .cornerRadius(Tokens.Radius.thumbnail)
+                        .background(Tokens.Colors.elevated)
+                        .cornerRadius(8)
                     }
                 }
                 .offset(x: dragOffset)
@@ -80,7 +80,7 @@ struct Carousel: View {
                 VStack {
                     Image(systemName: "camera.fill")
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Tokens.Colors.textOnAccent)
+                        .foregroundColor(Tokens.Colors.onAccent)
                 }
                 .frame(width: fabWidth, height: fabWidth)
                 .background(Tokens.Colors.brandRed)

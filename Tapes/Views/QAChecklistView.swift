@@ -6,22 +6,22 @@ struct QAChecklistView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(alignment: .leading, spacing: Tokens.Space.s16) {
+                VStack(alignment: .leading, spacing: Tokens.Space.l) {
                     Text("QA Smoke Test Checklist")
-                        .font(Tokens.Typography.headline)
-                        .foregroundColor(Tokens.Colors.textPrimary)
-                        .padding(.bottom, Tokens.Space.s8)
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.text)
+                        .padding(.bottom, Tokens.Space.s)
                     
                     Text("Follow these steps to verify the app functionality:")
-                        .font(Tokens.Typography.body)
-                        .foregroundColor(Tokens.Colors.textMuted)
-                        .padding(.bottom, Tokens.Space.s16)
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(Tokens.Colors.muted)
+                        .padding(.bottom, Tokens.Space.l)
                     
                     // Section 1: App Launch & New Tape
-                    VStack(alignment: .leading, spacing: Tokens.Space.s12) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.m) {
                         Text("1) App Launch & New Tape")
-                            .font(Tokens.Typography.title)
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.text)
                         
                         QAChecklistItem(
                             step: "1.1",
@@ -41,7 +41,7 @@ struct QAChecklistView: View {
                             expected: "Carousel snaps so a thumbnail/+ sits on each side of the fixed center button."
                         )
                     }
-                    .padding(.bottom, Tokens.Space.s20)
+                    .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 2: Insert Clips
                     VStack(alignment: .leading, spacing: Tokens.Space.s12) {
@@ -67,7 +67,7 @@ struct QAChecklistView: View {
                             expected: "Clip appears at index 0 via the start +."
                         )
                     }
-                    .padding(.bottom, Tokens.Space.s20)
+                    .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 3: Edit Sheet
                     VStack(alignment: .leading, spacing: Tokens.Space.s12) {
@@ -93,7 +93,7 @@ struct QAChecklistView: View {
                             expected: "Confirmation dialog; if Tape empty → only start + remains."
                         )
                     }
-                    .padding(.bottom, Tokens.Space.s20)
+                    .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 4: Settings
                     VStack(alignment: .leading, spacing: Tokens.Space.s12) {
@@ -143,7 +143,7 @@ struct QAChecklistView: View {
                             expected: "Deterministic per Tape; 0.5s clamp."
                         )
                     }
-                    .padding(.bottom, Tokens.Space.s20)
+                    .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 5: Preview
                     VStack(alignment: .leading, spacing: Tokens.Space.s12) {
@@ -163,7 +163,7 @@ struct QAChecklistView: View {
                             expected: "Seeks to 0; plays."
                         )
                     }
-                    .padding(.bottom, Tokens.Space.s20)
+                    .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 6: Export
                     VStack(alignment: .leading, spacing: Tokens.Space.s12) {
@@ -195,7 +195,7 @@ struct QAChecklistView: View {
                             expected: "Alerts/Toasts on failure."
                         )
                     }
-                    .padding(.bottom, Tokens.Space.s20)
+                    .padding(.bottom, Tokens.Space.xl)
                     
                     // Section 7: Casting UI
                     VStack(alignment: .leading, spacing: Tokens.Space.s12) {
@@ -221,10 +221,10 @@ struct QAChecklistView: View {
                             expected: "Cast button appears; toast \"not implemented\"."
                         )
                     }
-                    .padding(.bottom, Tokens.Space.s20)
+                    .padding(.bottom, Tokens.Space.xl)
                 }
-                .padding(.horizontal, Tokens.Space.s20)
-                .padding(.vertical, Tokens.Space.s16)
+                .padding(.horizontal, Tokens.Space.xl)
+                .padding(.vertical, Tokens.Space.l)
             }
             .navigationTitle("QA Checklist")
             .navigationBarTitleDisplayMode(.inline)
@@ -245,27 +245,27 @@ struct QAChecklistItem: View {
     let expected: String
     
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.s4) {
+        VStack(alignment: .leading, spacing: Tokens.Space.xs) {
             HStack(alignment: .top) {
                 Text(step)
-                    .font(Tokens.Typography.caption)
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Tokens.Colors.brandRed)
                     .frame(width: 30, alignment: .leading)
                 
-                VStack(alignment: .leading, spacing: Tokens.Space.s4) {
+                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
                     Text(action)
-                        .font(Tokens.Typography.body)
-                        .foregroundColor(Tokens.Colors.textPrimary)
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(Tokens.Colors.text)
                     
                     Text("Expected: \(expected)")
-                        .font(Tokens.Typography.caption)
+                        .font(.system(size: 12, weight: .regular))
                         .foregroundColor(Tokens.Colors.textMuted)
                 }
                 
                 Spacer()
             }
         }
-        .padding(.vertical, Tokens.Space.s4)
+        .padding(.vertical, Tokens.Space.xs)
     }
 }
 

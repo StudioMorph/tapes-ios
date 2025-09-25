@@ -54,19 +54,19 @@ public struct TapePlayerView: View {
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Tokens.Colors.textPrimary)
+                    .foregroundColor(Tokens.Colors.text)
             }
             
             Spacer()
             
-            VStack(spacing: Tokens.Space.s4) {
+            VStack(spacing: Tokens.Space.xs) {
                 Text(tape.title)
                     .font(Tokens.Typography.title)
-                    .foregroundColor(Tokens.Colors.textPrimary)
+                    .foregroundColor(Tokens.Colors.text)
                     .lineLimit(1)
                 
                 Text("\(tape.clipCount) clips • \(formatDuration(composer.totalDuration))")
-                    .font(Tokens.Typography.caption)
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Tokens.Colors.textMuted)
             }
             
@@ -80,9 +80,9 @@ public struct TapePlayerView: View {
             }
             .opacity(0.5) // Placeholder styling
         }
-        .padding(.horizontal, Tokens.Space.s20)
-        .padding(.top, Tokens.Space.s16)
-        .padding(.bottom, Tokens.Space.s20)
+        .padding(.horizontal, Tokens.Space.xl)
+        .padding(.top, Tokens.Space.l)
+        .padding(.bottom, Tokens.Space.xl)
     }
     
     // MARK: - Main Player Area
@@ -111,7 +111,7 @@ public struct TapePlayerView: View {
         ZStack {
             // Background
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                .fill(Tokens.Colors.surfaceElevated)
+                .fill(Tokens.Colors.elevated)
                 .aspectRatio(tape.orientation == .portrait ? 9/16 : 16/9, contentMode: .fit)
             
             // Video Content Placeholder
@@ -126,49 +126,49 @@ public struct TapePlayerView: View {
                 
                 if composer.currentClip != nil {
                     Text("Clip \(composer.currentClipIndex + 1) of \(tape.clipCount)")
-                        .font(Tokens.Typography.caption)
+                        .font(.system(size: 12, weight: .regular))
                         .foregroundColor(Tokens.Colors.textMuted)
                 }
             }
         }
-        .padding(.horizontal, Tokens.Space.s20)
+        .padding(.horizontal, Tokens.Space.xl)
     }
     
     private var clipIndicator: some View {
-        VStack(spacing: Tokens.Space.s8) {
+        VStack(spacing: Tokens.Space.s) {
             ForEach(0..<tape.clipCount, id: \.self) { index in
                 Circle()
                     .fill(index == composer.currentClipIndex ? 
                           Tokens.Colors.brandRed : 
-                          Tokens.Colors.textMuted)
+                          Tokens.Colors.muted)
                     .frame(width: 8, height: 8)
                     .scaleEffect(index == composer.currentClipIndex ? 1.2 : 1.0)
                     .animation(.easeInOut(duration: 0.2), value: composer.currentClipIndex)
             }
         }
-        .padding(.vertical, Tokens.Space.s12)
-        .padding(.horizontal, Tokens.Space.s8)
+        .padding(.vertical, Tokens.Space.m)
+        .padding(.horizontal, Tokens.Space.s)
         .background(
-            RoundedRectangle(cornerRadius: Tokens.Radius.thumbnail)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(.black.opacity(0.6))
         )
     }
     
     private func transitionIndicator(_ transition: TransitionInfo) -> some View {
-        VStack(spacing: Tokens.Space.s4) {
+        VStack(spacing: Tokens.Space.xs) {
             Text(transition.type.displayName)
-                .font(Tokens.Typography.caption)
+                .font(.system(size: 12, weight: .regular))
                 .foregroundColor(.white)
                 .fontWeight(.medium)
             
             Text("\(String(format: "%.1f", transition.duration))s")
-                .font(Tokens.Typography.caption)
+                .font(.system(size: 12, weight: .regular))
                 .foregroundColor(.white.opacity(0.8))
         }
-        .padding(.horizontal, Tokens.Space.s12)
-        .padding(.vertical, Tokens.Space.s8)
+        .padding(.horizontal, Tokens.Space.m)
+        .padding(.vertical, Tokens.Space.s)
         .background(
-            RoundedRectangle(cornerRadius: Tokens.Radius.thumbnail)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(Tokens.Colors.brandRed)
         )
     }
@@ -176,25 +176,25 @@ public struct TapePlayerView: View {
     // MARK: - Controls View
     
     private var controlsView: some View {
-        VStack(spacing: Tokens.Space.s20) {
+        VStack(spacing: Tokens.Space.xl) {
             // Progress Bar
             progressBar
             
             // Control Buttons
             controlButtons
         }
-        .padding(.horizontal, Tokens.Space.s20)
-        .padding(.bottom, Tokens.Space.s32)
+        .padding(.horizontal, Tokens.Space.xl)
+        .padding(.bottom, Tokens.Space.xxl)
     }
     
     private var progressBar: some View {
-        VStack(spacing: Tokens.Space.s8) {
+        VStack(spacing: Tokens.Space.s) {
             // Progress Slider
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     // Background
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Tokens.Colors.surfaceElevated)
+                        .fill(Tokens.Colors.elevated)
                         .frame(height: 4)
                     
                     // Progress
@@ -209,25 +209,25 @@ public struct TapePlayerView: View {
             // Time Labels
             HStack {
                 Text(formatTime(composer.currentTime))
-                    .font(Tokens.Typography.caption)
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Tokens.Colors.textMuted)
                 
                 Spacer()
                 
                 Text(formatTime(composer.totalDuration))
-                    .font(Tokens.Typography.caption)
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Tokens.Colors.textMuted)
             }
         }
     }
     
     private var controlButtons: some View {
-        HStack(spacing: Tokens.Space.s32) {
+        HStack(spacing: Tokens.Space.xxl) {
             // Restart Button
             Button(action: composer.restart) {
                 Image(systemName: "backward.end.fill")
                     .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Tokens.Colors.textPrimary)
+                    .foregroundColor(Tokens.Colors.text)
             }
             
             // Play/Pause Button

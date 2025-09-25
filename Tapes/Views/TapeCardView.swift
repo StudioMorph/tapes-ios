@@ -10,29 +10,29 @@ struct TapeCardView: View {
     @StateObject private var castManager = CastManager.shared
     
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.s16) {
+        VStack(alignment: .leading, spacing: Tokens.Space.l) {
             // Header with title and controls
             HStack {
                 // Title with edit icon
-                HStack(spacing: Tokens.Space.s8) {
+                HStack(spacing: Tokens.Space.s) {
                     Text(tape.title)
-                        .font(Tokens.Typography.title)
-                        .foregroundColor(Tokens.Colors.textPrimary)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.text)
                     
                     Image(systemName: "pencil")
-                        .font(Tokens.Typography.caption)
-                        .foregroundColor(Tokens.Colors.textPrimary)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Tokens.Colors.text)
                 }
                 
                 Spacer()
                 
                 // Action buttons
-                HStack(spacing: Tokens.Space.s16) {
+                HStack(spacing: Tokens.Space.l) {
                     // Settings button
                     Button(action: onSettings) {
                         Image(systemName: "gearshape")
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .foregroundColor(Tokens.Colors.text)
                     }
                     
                     // AirPlay button (only show if available devices)
@@ -40,7 +40,7 @@ struct TapeCardView: View {
                         Button(action: onAirPlay) {
                             Image(systemName: "airplayvideo")
                                 .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(Tokens.Colors.textPrimary)
+                                .foregroundColor(Tokens.Colors.text)
                         }
                     }
                     
@@ -48,7 +48,7 @@ struct TapeCardView: View {
                     Button(action: onPlay) {
                         Image(systemName: "play.fill")
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(Tokens.Colors.textPrimary)
+                            .foregroundColor(Tokens.Colors.text)
                     }
                 }
             }
@@ -59,7 +59,7 @@ struct TapeCardView: View {
                 onThumbnailDelete: onThumbnailDelete
             )
         }
-        .padding(Tokens.Space.s20)
+        .padding(Tokens.Space.xl)
         .background(
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.surface)

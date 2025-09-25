@@ -35,8 +35,7 @@ struct TapesListView: View {
     private var headerView: some View {
         HStack {
             Text("TAPES")
-                .font(Tokens.Typography.headline)
-                .fontWeight(.bold)
+                .font(.system(size: 24, weight: .bold))
                 .foregroundColor(Tokens.Colors.brandRed)
             
             Spacer()
@@ -47,13 +46,13 @@ struct TapesListView: View {
                     .foregroundColor(Tokens.Colors.brandRed)
             }
         }
-        .padding(.horizontal, Tokens.Space.s20)
-        .padding(.top, Tokens.Space.s8)
+        .padding(.horizontal, Tokens.Space.xl)
+        .padding(.top, Tokens.Space.s)
     }
     
     private var tapesList: some View {
         ScrollView {
-            LazyVStack(spacing: Tokens.Space.s20) {
+            LazyVStack(spacing: Tokens.Space.xl) {
                 ForEach(tapesStore.tapes) { tape in
                     TapeCardView(
                         tape: tape,
@@ -66,7 +65,7 @@ struct TapesListView: View {
                     )
                 }
             }
-            .padding(.horizontal, Tokens.Space.s20)
+            .padding(.horizontal, Tokens.Space.xl)
         }
     }
     

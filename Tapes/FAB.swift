@@ -39,7 +39,7 @@ struct FAB: View {
         VStack {
             Image(systemName: currentMode.icon)
                 .font(.system(size: 20, weight: .medium))
-                .foregroundColor(Tokens.Colors.textOnAccent)
+                .foregroundColor(Tokens.Colors.onAccent)
         }
         .frame(width: 60, height: 60)
         .background(Tokens.Colors.brandRed)

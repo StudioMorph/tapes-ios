@@ -1,99 +1,76 @@
 import SwiftUI
-import UIKit
 
-// MARK: - Design Tokens
-
-public struct Tokens {
-    
-    // MARK: - Colors
-    
-    public struct Colors {
-        // Brand colors
-        public static let brandRed = Color(UIColor(hex: "#E50914"))
-        public static let textOnAccent = Color.white
-        
-        // Dynamic colors
-        public static let bg = Color(UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? UIColor(hex: "#0B0B0F") : UIColor(hex: "#FFFFFF")
-        })
-        
-        public static let surface = Color(UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? UIColor(hex: "#15181D") : UIColor(hex: "#F2F4F7")
-        })
-        
-        public static let surfaceElevated = Color(UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? UIColor(hex: "#1E2229") : UIColor(hex: "#EEF1F5")
-        })
-        
-        public static let textPrimary = Color(UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? UIColor(hex: "#FFFFFF") : UIColor(hex: "#0B0B0F")
-        })
-        
-        public static let textMuted = Color(UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? UIColor(hex: "#9CA3AF") : UIColor(hex: "#6B7280")
-        })
-        
-        public static let border = Color(UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? UIColor(hex: "#2A2F36") : UIColor(hex: "#E5E7EB")
-        })
+struct Tokens {
+    struct Colors {
+        static let brandRed = Color(hex: 0xE50914)
+        static let bg       = Color.dynamic(light: 0xFFFFFF, dark: 0x0B0B0F)
+        static let surface  = Color.dynamic(light: 0xF2F4F7, dark: 0x15181D)
+        static let elevated = Color.dynamic(light: 0xEEF1F5, dark: 0x1E2229)
+        static let text     = Color.dynamic(light: 0x0B0B0F, dark: 0xFFFFFF)
+        static let muted    = Color.dynamic(light: 0x6B7280, dark: 0x9CA3AF)
+        static let border   = Color.dynamic(light: 0xE5E7EB, dark: 0x2A2F36)
+        static let onAccent = Color.white
     }
     
-    // MARK: - Spacing
-    
-    public struct Space {
-        public static let s4: CGFloat = 4
-        public static let s8: CGFloat = 8
-        public static let s12: CGFloat = 12
-        public static let s16: CGFloat = 16
-        public static let s20: CGFloat = 20
-        public static let s24: CGFloat = 24
-        public static let s32: CGFloat = 32
+    struct Space {
+        static let xs: CGFloat = 4
+        static let s: CGFloat = 8
+        static let m: CGFloat = 12
+        static let l: CGFloat = 16
+        static let xl: CGFloat = 24
+        static let xxl: CGFloat = 32
     }
     
-    // MARK: - Radius
-    
-    public struct Radius {
-        public static let card: CGFloat = 16
-        public static let sheet: CGFloat = 20
-        public static let fab: CGFloat = 32
-        public static let thumbnail: CGFloat = 8
+    struct Radius {
+        static let card: CGFloat = 16
+        static let sheet: CGFloat = 20
+        static let fab: CGFloat = 32
     }
     
-    // MARK: - Typography
-    
-    public struct Typography {
-        public static let headline: Font = .system(size: 24, weight: .semibold)
-        public static let title: Font = .system(size: 18, weight: .semibold)
-        public static let body: Font = .system(size: 16, weight: .regular)
-        public static let caption: Font = .system(size: 12, weight: .regular)
-    }
-}
-
-// MARK: - UIColor Hex Helper
-
-extension UIColor {
-    convenience init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (1, 1, 1, 0)
+    struct Typography {
+        static func headline(_ c: Color) -> some View { 
+            TextStyle(size: 24, weight: .semibold, color: c) 
         }
-        
-        self.init(
-            red: CGFloat(r) / 255,
-            green: CGFloat(g) / 255,
-            blue: CGFloat(b) / 255,
-            alpha: CGFloat(a) / 255
-        )
+        static func title(_ c: Color) -> some View { 
+            TextStyle(size: 18, weight: .semibold, color: c) 
+        }
+        static func body(_ c: Color) -> some View { 
+            TextStyle(size: 16, weight: .regular, color: c) 
+        }
+        static func caption(_ c: Color) -> some View { 
+            TextStyle(size: 12, weight: .regular, color: c) 
+        }
     }
 }
 
+extension Color {
+    init(hex: Int) {
+        self.init(.sRGB, 
+                 red: Double((hex >> 16) & 0xFF) / 255, 
+                 green: Double((hex >> 8) & 0xFF) / 255, 
+                 blue: Double(hex & 0xFF) / 255, 
+                 opacity: 1)
+    }
+    
+    static func dynamic(light: Int, dark: Int) -> Color {
+        Color(UIColor { tc in
+            let hex = (tc.userInterfaceStyle == .dark) ? dark : light
+            return UIColor(
+                red: CGFloat((hex >> 16) & 0xFF) / 255,
+                green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255,
+                alpha: 1
+            )
+        })
+    }
+}
+
+struct TextStyle: View {
+    let size: CGFloat
+    let weight: Font.Weight
+    let color: Color
+    
+    var body: some View { 
+        EmptyView() // marker; use .font(.system(size:..., weight:...)).foregroundStyle(color)
+    }
+}
