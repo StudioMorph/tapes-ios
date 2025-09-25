@@ -8,19 +8,28 @@ public struct TapesListView: View {
     @State private var showingSettings = false
     @State private var showingPlayOptions = false
     @State private var showingPlayer = false
+    @State private var showingQAChecklist = false
     
     public init() {}
     
     public var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Header with New Tape button
+                // Header with New Tape button and QA link
                 HStack {
                     Text("Tapes")
                         .font(DesignTokens.Typography.heading(24, weight: .bold))
                         .foregroundColor(DesignTokens.Colors.onSurface(.light))
                     
                     Spacer()
+                    
+                    // QA Link
+                    Button(action: openQAChecklist) {
+                        Image(systemName: "checklist")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(DesignTokens.Colors.muted(60))
+                    }
+                    .padding(.trailing, DesignTokens.Spacing.s8)
                     
                     Button(action: createNewTape) {
                         HStack(spacing: DesignTokens.Spacing.s8) {
@@ -159,6 +168,9 @@ public struct TapesListView: View {
             // Error Alert
             ExportErrorAlert(coordinator: exportCoordinator)
         )
+        .sheet(isPresented: $showingQAChecklist) {
+            QAChecklistView()
+        }
     }
     
     // MARK: - Actions
@@ -166,6 +178,10 @@ public struct TapesListView: View {
     private func createNewTape() {
         let newTape = tapesStore.createNewTape()
         print("Created new tape: \(newTape.id)")
+    }
+    
+    private func openQAChecklist() {
+        showingQAChecklist = true
     }
     
     private func handleAirPlay(for tape: Tape) {
