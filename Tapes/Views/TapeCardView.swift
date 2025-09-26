@@ -11,50 +11,57 @@ struct TapeCardView: View {
     @State private var insertionIndex: Int = 0
     
     var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
-            // Header with title and controls
-            HStack {
-                // Title with edit icon
-                HStack(spacing: Tokens.Space.s) {
-                    Text(tape.title)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.text)
-                    
-                    Image(systemName: "pencil")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Tokens.Colors.text)
-                }
-                
-                Spacer()
-                
-                // Action buttons
-                HStack(spacing: Tokens.Space.l) {
-                    // Settings button
-                    Button(action: onSettings) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 18, weight: .medium))
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with title and controls - with card padding
+            VStack(alignment: .leading, spacing: Tokens.Space.l) {
+                HStack {
+                    // Title with edit icon
+                    HStack(spacing: Tokens.Space.s) {
+                        Text(tape.title)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.text)
+                        
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .regular))
                             .foregroundColor(Tokens.Colors.text)
                     }
                     
-                    // AirPlay button (only show if available devices)
-                    if castManager.hasAvailableDevices {
-                        Button(action: onAirPlay) {
-                            Image(systemName: "airplayvideo")
+                    Spacer()
+                    
+                    // Action buttons
+                    HStack(spacing: Tokens.Space.l) {
+                        // Settings button
+                        Button(action: onSettings) {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(Tokens.Colors.text)
+                        }
+                        
+                        // AirPlay button (only show if available devices)
+                        if castManager.hasAvailableDevices {
+                            Button(action: onAirPlay) {
+                                Image(systemName: "airplayvideo")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundColor(Tokens.Colors.text)
+                            }
+                        }
+                        
+                        // Play button
+                        Button(action: onPlay) {
+                            Image(systemName: "play.fill")
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(Tokens.Colors.text)
                         }
                     }
-                    
-                    // Play button
-                    Button(action: onPlay) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(Tokens.Colors.text)
-                    }
                 }
             }
+            .padding(Tokens.Space.xl)
+            .background(
+                RoundedRectangle(cornerRadius: Tokens.Radius.card)
+                    .fill(Tokens.Colors.surface)
+            )
             
-            // Dynamic carousel with FAB and centerline
+            // Dynamic carousel with FAB and centerline - NO card padding, full width
             GeometryReader { geometry in
                 let screenW = UIScreen.main.bounds.width
                 let thumbW = floor((screenW - 64) / 2)
@@ -88,11 +95,6 @@ struct TapeCardView: View {
             .frame(height: nil)  // Remove fixed height constraint
             .padding(.vertical, 16)     // Card hugs content: title + 16 + thumbnails + 16
         }
-        .padding(Tokens.Space.xl)
-        .background(
-            RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                .fill(Tokens.Colors.surface)
-        )
     }
 }
 
