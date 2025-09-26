@@ -2,7 +2,54 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
-// MARK: - MediaPickerSheet
+// MARK: - SystemMediaPicker
+
+struct SystemMediaPicker: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let allowImages: Bool
+    let allowVideos: Bool
+    let onPicked: (_ orderedItems: [PHPickerResult]) -> Void
+
+    func makeCoordinator() -> Coordinator { 
+        Coordinator(self) 
+    }
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        var filters: [PHPickerFilter] = []
+        if allowImages { filters.append(.images) }
+        if allowVideos { filters.append(.videos) }
+        config.filter = .any(of: filters)
+        config.selectionLimit = 0 // multi-select
+        config.preferredAssetRepresentationMode = .current
+        
+        // Set selection order preservation (iOS 17+)
+        if #available(iOS 17.0, *) {
+            config.selection = .ordered
+        }
+
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator     // ✅ hook delegate
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: SystemMediaPicker
+        init(_ parent: SystemMediaPicker) { 
+            self.parent = parent 
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            // Called for both Add (with results) and Cancel (results = [])
+            parent.onPicked(results)              // let caller insert in order
+            parent.isPresented = false            // ✅ dismiss the sheet
+        }
+    }
+}
+
+// MARK: - MediaPickerSheet (Legacy - keeping for compatibility)
 
 enum MediaFilter: String, CaseIterable {
     case videos = "Videos"

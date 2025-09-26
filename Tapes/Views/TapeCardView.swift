@@ -138,35 +138,34 @@ struct TapeCardView: View {
                 .fill(Tokens.Colors.card)
         )
         .sheet(isPresented: $showingMediaPicker) {
-            MediaPickerSheet(
+            SystemMediaPicker(
                 isPresented: $showingMediaPicker,
-                onComplete: { results in
+                allowImages: true,
+                allowVideos: true
+            ) { results in
+                guard !results.isEmpty else { return } // Cancel path
+                Task {
                     // Process PHPickerResult array in order
-                    Task {
-                        let pickedMedia = await processPickerResults(results)
+                    let pickedMedia = await processPickerResults(results)
+                    
+                    await MainActor.run {
+                        guard let source = importSource else { return }
                         
-                        await MainActor.run {
-                            guard let source = importSource else { return }
-                            
-                            let finalStrategy: InsertionStrategy
-                            switch source {
-                            case .leftPlaceholder(let index):
-                                finalStrategy = .replaceThenAppend(startIndex: index)
-                            case .rightPlaceholder(let index):
-                                finalStrategy = .replaceThenAppend(startIndex: index)
-                            case .centerFAB:
-                                finalStrategy = .insertAtCenter
-                            }
-                            
-                            onMediaInserted(pickedMedia, finalStrategy)
-                            importSource = nil
+                        let finalStrategy: InsertionStrategy
+                        switch source {
+                        case .leftPlaceholder(let index):
+                            finalStrategy = .replaceThenAppend(startIndex: index)
+                        case .rightPlaceholder(let index):
+                            finalStrategy = .replaceThenAppend(startIndex: index)
+                        case .centerFAB:
+                            finalStrategy = .insertAtCenter
                         }
+                        
+                        onMediaInserted(pickedMedia, finalStrategy)
+                        importSource = nil
                     }
-                },
-                onClear: {
-                    // Clear any temporary selection state if needed
                 }
-            )
+            }
         }
     }
     
