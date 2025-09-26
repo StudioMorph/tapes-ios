@@ -15,14 +15,16 @@ struct TapeCardView: View {
             // Title row
             HStack {
                 // Title with edit icon
-                HStack(spacing: Tokens.Spacing.s) {
+                HStack(alignment: .firstTextBaseline, spacing: Tokens.Spacing.s) {
                     Text(tape.title)
                         .font(Tokens.Typography.title)
                         .foregroundColor(Tokens.Colors.onSurface)
+                        .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                     
                     Image(systemName: "pencil")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(Tokens.Typography.title)
                         .foregroundColor(Tokens.Colors.onSurface)
+                        .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                 }
                 
                 Spacer()
