@@ -20,8 +20,16 @@ struct ThumbnailView: View {
 struct StartPlusView: View {
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
+            Rectangle()
                 .fill(Tokens.Colors.elevated)
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: Tokens.Radius.thumb,
+                        bottomLeadingRadius: Tokens.Radius.thumb,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: 0
+                    )
+                )
             
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .medium))
@@ -33,8 +41,16 @@ struct StartPlusView: View {
 struct EndPlusView: View {
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
+            Rectangle()
                 .fill(Tokens.Colors.elevated)
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: Tokens.Radius.thumb,
+                        topTrailingRadius: Tokens.Radius.thumb
+                    )
+                )
             
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .medium))
@@ -48,8 +64,8 @@ struct ClipThumbnailView: View {
     
     var body: some View {
         ZStack {
-            // Thumbnail background
-            RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
+            // Thumbnail background - square corners
+            Rectangle()
                 .fill(Tokens.Colors.elevated)
             
             // Placeholder content (replace with actual thumbnail)

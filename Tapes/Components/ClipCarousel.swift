@@ -26,8 +26,6 @@ struct ClipCarousel: View {
                 ForEach(items.indices, id: \.self) { i in
                     ThumbnailView(item: items[i])
                         .frame(width: thumbSize.width, height: thumbSize.height)
-                        .background(Tokens.Colors.elevated)
-                        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
                         .id("item-\(i)")
                 }
                 
