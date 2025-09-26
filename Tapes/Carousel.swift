@@ -41,7 +41,7 @@ struct Carousel: View {
                         Thumbnail(
                             thumbnail: ClipThumbnail(
                                 id: clip.id.uuidString,
-                                assetLocalId: clip.assetLocalId,
+                                assetLocalId: clip.assetLocalId ?? "",
                                 index: index + 1,
                                 isPlaceholder: false
                             ),

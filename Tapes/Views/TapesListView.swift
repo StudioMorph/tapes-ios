@@ -61,6 +61,9 @@ struct TapesListView: View {
                         onAirPlay: { },
                         onThumbnailDelete: { clip in
                             tapesStore.deleteClip(from: tape.id, clip: clip)
+                        },
+                        onClipInserted: { clip, index in
+                            tapesStore.insertClip(clip, in: tape.id, atCenterOfCarouselIndex: index)
                         }
                     )
                     .padding(.horizontal, Tokens.Spacing.m)  // 16pt outer padding

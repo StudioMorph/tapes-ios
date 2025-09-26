@@ -194,8 +194,8 @@ public struct Tape: Identifiable, Codable, Equatable {
                 transition: .crossfade,
                 transitionDuration: 0.8,
                 clips: [
-                    Clip(assetLocalId: "sample1", rotateQuarterTurns: 0, overrideScaleMode: nil),
-                    Clip(assetLocalId: "sample2", rotateQuarterTurns: 0, overrideScaleMode: nil)
+                    Clip(assetLocalId: "sample1", duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil),
+                    Clip(assetLocalId: "sample2", duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil)
                 ]
             ),
             Tape(
@@ -205,7 +205,7 @@ public struct Tape: Identifiable, Codable, Equatable {
                 transition: .slideLR,
                 transitionDuration: 0.6,
                 clips: [
-                    Clip(assetLocalId: "sample3", rotateQuarterTurns: 0, overrideScaleMode: nil)
+                    Clip(assetLocalId: "sample3", duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil)
                 ]
             )
         ]

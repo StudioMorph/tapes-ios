@@ -68,28 +68,40 @@ struct ClipThumbnailView: View {
             Rectangle()
                 .fill(Tokens.Colors.elevated)
             
-            // Placeholder content (replace with actual thumbnail)
-            VStack {
-                Image(systemName: "video")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(Tokens.Colors.onSurface)
-                
-                Text("\(clip.assetLocalId)")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Tokens.Colors.onSurface)
+            // Actual thumbnail or placeholder
+            if let thumbnail = clip.thumbnailImage {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .clipped()
+            } else {
+                // Fallback content
+                VStack {
+                    Image(systemName: "video")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Tokens.Colors.onSurface)
+                    
+                    if let assetId = clip.assetLocalId {
+                        Text(assetId)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(Tokens.Colors.onSurface)
+                    } else if let url = clip.localURL {
+                        Text(url.lastPathComponent)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(Tokens.Colors.onSurface)
+                    }
+                }
             }
             
-            // Clip count badge in top-right corner
-            if clip.id.hashValue % 3 == 0 { // Show badge for some clips as example
-                VStack {
-                    HStack {
-                        Spacer()
-                        ClipBadge(count: clip.id.hashValue % 10)
-                    }
+            // Duration badge in bottom-right corner
+            VStack {
+                Spacer()
+                HStack {
                     Spacer()
+                    DurationBadge(duration: clip.duration)
                 }
-                .offset(x: -8, y: 8)
             }
+            .padding(8)
         }
     }
 }
@@ -107,6 +119,28 @@ struct ClipBadge: View {
                 Capsule()
                     .fill(Tokens.Colors.red)
             )
+    }
+}
+
+struct DurationBadge: View {
+    let duration: TimeInterval
+    
+    var body: some View {
+        Text(formatDuration(duration))
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.7))
+            )
+    }
+    
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 

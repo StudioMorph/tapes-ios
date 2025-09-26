@@ -6,10 +6,12 @@ struct TapeCardView: View {
     let onPlay: () -> Void
     let onAirPlay: () -> Void
     let onThumbnailDelete: (Clip) -> Void
+    let onClipInserted: (Clip, Int) -> Void
     
     @StateObject private var castManager = CastManager.shared
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
+    @State private var showingVideoPicker = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -87,7 +89,17 @@ struct TapeCardView: View {
                 
                 // 3) Floating action button (camera)
                 FabSwipableIcon(mode: $fabMode) {
-                    // Handle FAB tap action
+                    // Handle FAB tap action based on mode
+                    switch fabMode {
+                    case .gallery:
+                        showingVideoPicker = true
+                    case .camera:
+                        // Handle camera action
+                        break
+                    case .transition:
+                        // Handle transition action
+                        break
+                    }
                 }
                 .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
                 .zIndex(2) // on top of everything
@@ -99,6 +111,15 @@ struct TapeCardView: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.card)
         )
+        .sheet(isPresented: $showingVideoPicker) {
+            PHPickerVideo(
+                isPresented: $showingVideoPicker,
+                onVideoSelected: { url, duration, thumbnail in
+                    let clip = Clip.fromVideo(url: url, duration: duration, thumbnail: thumbnail)
+                    onClipInserted(clip, insertionIndex)
+                }
+            )
+        }
     }
 }
 
@@ -108,7 +129,8 @@ struct TapeCardView: View {
         onSettings: {},
         onPlay: {},
         onAirPlay: {},
-        onThumbnailDelete: { _ in }
+        onThumbnailDelete: { _ in },
+        onClipInserted: { _, _ in }
     )
     .preferredColorScheme(.dark)
     .padding()
@@ -121,7 +143,8 @@ struct TapeCardView: View {
         onSettings: {},
         onPlay: {},
         onAirPlay: {},
-        onThumbnailDelete: { _ in }
+        onThumbnailDelete: { _ in },
+        onClipInserted: { _, _ in }
     )
     .preferredColorScheme(.light)
     .padding()

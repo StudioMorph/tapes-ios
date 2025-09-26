@@ -1,26 +1,26 @@
 import Foundation
 import Photos
+import UIKit
 
 // MARK: - Clip Model
 
 public struct Clip: Identifiable, Codable, Equatable {
     public var id: UUID
-    public var assetLocalId: String
+    public var assetLocalId: String?
+    public var localURL: URL?
+    public var duration: TimeInterval
+    public var thumbnail: Data?
     public var rotateQuarterTurns: Int
     public var overrideScaleMode: ScaleMode?
     public var createdAt: Date
     public var updatedAt: Date
     
-    // Computed properties (not stored)
-    public var duration: TimeInterval {
-        // This would be fetched from PHAsset in real implementation
-        // For now, return a default duration
-        return 5.0
-    }
-    
     public init(
         id: UUID = UUID(),
-        assetLocalId: String,
+        assetLocalId: String? = nil,
+        localURL: URL? = nil,
+        duration: TimeInterval = 0,
+        thumbnail: Data? = nil,
         rotateQuarterTurns: Int = 0,
         overrideScaleMode: ScaleMode? = nil,
         createdAt: Date = Date(),
@@ -28,6 +28,9 @@ public struct Clip: Identifiable, Codable, Equatable {
     ) {
         self.id = id
         self.assetLocalId = assetLocalId
+        self.localURL = localURL
+        self.duration = duration
+        self.thumbnail = thumbnail
         self.rotateQuarterTurns = rotateQuarterTurns
         self.overrideScaleMode = overrideScaleMode
         self.createdAt = createdAt
@@ -69,23 +72,20 @@ public struct Clip: Identifiable, Codable, Equatable {
         overrideScaleMode = nil
         updatedAt = Date()
     }
-}
-
-// MARK: - Equatable
-
-extension Clip {
-    public static func == (lhs: Clip, rhs: Clip) -> Bool {
-        return lhs.id == rhs.id
-    }
-}
-
-// MARK: - PHAsset Integration
-
-extension Clip {
-    /// Fetches the PHAsset for this clip
-    public func fetchAsset() -> PHAsset? {
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
-        return fetchResult.firstObject
+    
+    // MARK: - Convenience Initializers
+    
+    /// Creates a Clip from a local video file
+    public static func fromVideo(
+        url: URL,
+        duration: TimeInterval,
+        thumbnail: UIImage? = nil
+    ) -> Clip {
+        return Clip(
+            localURL: url,
+            duration: duration,
+            thumbnail: thumbnail?.jpegData(compressionQuality: 0.8)
+        )
     }
     
     /// Creates a Clip from a PHAsset
@@ -104,5 +104,39 @@ extension Clip {
             rotateQuarterTurns: rotateQuarterTurns,
             overrideScaleMode: overrideScaleMode
         )
+    }
+    
+    // MARK: - Computed Properties
+    
+    public var thumbnailImage: UIImage? {
+        guard let thumbnailData = thumbnail else { return nil }
+        return UIImage(data: thumbnailData)
+    }
+    
+    public var isLocalVideo: Bool {
+        return localURL != nil
+    }
+    
+    public var isPhotoAsset: Bool {
+        return assetLocalId != nil
+    }
+}
+
+// MARK: - Equatable
+
+extension Clip {
+    public static func == (lhs: Clip, rhs: Clip) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
+
+// MARK: - PHAsset Integration
+
+extension Clip {
+    /// Fetches the PHAsset for this clip
+    public func fetchAsset() -> PHAsset? {
+        guard let assetLocalId = assetLocalId else { return nil }
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
+        return fetchResult.firstObject
     }
 }

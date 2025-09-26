@@ -313,4 +313,35 @@ extension TapesStore {
     public func getClipCount(for tapeId: UUID) -> Int {
         return getTape(by: tapeId)?.clipCount ?? 0
     }
+    
+    /// Inserts a clip at the center boundary of the carousel
+    public func insertClip(_ clip: Clip, in tapeId: UUID, atCenterOfCarouselIndex index: Int) {
+        guard var tape = getTape(by: tapeId) else { return }
+        
+        // Insert at the specified center index
+        let insertIndex = min(index, tape.clips.count)
+        tape.addClip(clip, at: insertIndex)
+        updateTape(tape)
+        
+        // Provide haptic feedback
+        #if os(iOS)
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        #endif
+    }
+    
+    /// Formats duration in seconds to mm:ss format
+    public func formatDuration(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+    
+    /// Gets the current center index for a tape (for carousel snapping)
+    public func getCenterIndex(for tapeId: UUID) -> Int {
+        guard let tape = getTape(by: tapeId) else { return 0 }
+        // For empty tape, center index is 0
+        // For non-empty tape, center index is the middle of clips
+        return tape.clips.isEmpty ? 0 : tape.clips.count / 2
+    }
 }
