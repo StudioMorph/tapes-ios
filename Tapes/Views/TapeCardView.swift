@@ -56,9 +56,8 @@ struct TapeCardView: View {
             
             // Dynamic carousel with FAB and centerline
             GeometryReader { geometry in
-                let screenW = geometry.size.width
-                let fab: CGFloat = 64
-                let thumbW = floor((screenW - fab) / 2)
+                let screenW = UIScreen.main.bounds.width
+                let thumbW = floor((screenW - 64) / 2)
                 let thumbH = floor(thumbW * 9.0 / 16.0)
                 
                 ZStack(alignment: .center) {
@@ -81,7 +80,7 @@ struct TapeCardView: View {
                     
                     // 3. FAB (above) - vertically centered between thumbnails
                     FAB { _ in }
-                        .frame(width: fab, height: fab)
+                        .frame(width: 64, height: 64)
                 }
                 .frame(height: thumbH)  // Container height hugs content
                 .clipped()
