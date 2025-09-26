@@ -2,12 +2,14 @@ import SwiftUI
 import AVFoundation
 import UIKit
 import PhotosUI
+import UniformTypeIdentifiers
 
 enum ImportSource {
     case leftPlaceholder(index: Int)
     case rightPlaceholder(index: Int)
     case centerFAB
 }
+
 
 
 struct TapeCardView: View {
@@ -145,7 +147,7 @@ struct TapeCardView: View {
             ) { results in
                 guard !results.isEmpty else { return } // Cancel path
                 Task {
-                    // Process PHPickerResult array in order
+                    // Process PHPickerResult array in order using existing method
                     let pickedMedia = await processPickerResults(results)
                     
                     await MainActor.run {
