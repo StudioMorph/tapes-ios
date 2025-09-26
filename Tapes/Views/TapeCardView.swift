@@ -7,11 +7,13 @@ struct TapeCardView: View {
     let onAirPlay: () -> Void
     let onThumbnailDelete: (Clip) -> Void
     let onClipInserted: (Clip, Int) -> Void
+    let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
     
     @StateObject private var castManager = CastManager.shared
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
     @State private var showingVideoPicker = false
+    @State private var tappedPlaceholder: CarouselItem? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -76,7 +78,12 @@ struct TapeCardView: View {
                 ClipCarousel(
                     tape: tape,
                     thumbSize: CGSize(width: thumbW, height: thumbH),
-                    insertionIndex: $insertionIndex
+                    insertionIndex: $insertionIndex,
+                    onPlaceholderTap: { item in
+                        // Store which placeholder was tapped and show picker
+                        tappedPlaceholder = item
+                        showingVideoPicker = true
+                    }
                 )
                 .zIndex(0) // always behind the line and FAB
                 
@@ -116,7 +123,15 @@ struct TapeCardView: View {
                 isPresented: $showingVideoPicker,
                 onVideoSelected: { url, duration, thumbnail in
                     let clip = Clip.fromVideo(url: url, duration: duration, thumbnail: thumbnail)
-                    onClipInserted(clip, insertionIndex)
+                    
+                    if let placeholder = tappedPlaceholder {
+                        // Insert at specific placeholder position
+                        onClipInsertedAtPlaceholder(clip, placeholder)
+                        tappedPlaceholder = nil
+                    } else {
+                        // Insert at center (FAB behavior)
+                        onClipInserted(clip, insertionIndex)
+                    }
                 }
             )
         }
@@ -130,7 +145,8 @@ struct TapeCardView: View {
         onPlay: {},
         onAirPlay: {},
         onThumbnailDelete: { _ in },
-        onClipInserted: { _, _ in }
+        onClipInserted: { _, _ in },
+        onClipInsertedAtPlaceholder: { _, _ in }
     )
     .preferredColorScheme(.dark)
     .padding()
@@ -144,7 +160,8 @@ struct TapeCardView: View {
         onPlay: {},
         onAirPlay: {},
         onThumbnailDelete: { _ in },
-        onClipInserted: { _, _ in }
+        onClipInserted: { _, _ in },
+        onClipInsertedAtPlaceholder: { _, _ in }
     )
     .preferredColorScheme(.light)
     .padding()

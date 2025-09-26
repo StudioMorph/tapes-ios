@@ -344,4 +344,29 @@ extension TapesStore {
         // For non-empty tape, center index is the middle of clips
         return tape.clips.isEmpty ? 0 : tape.clips.count / 2
     }
+    
+    /// Inserts a clip at a specific placeholder position
+    public func insertClipAtPlaceholder(_ clip: Clip, in tapeId: UUID, placeholder: CarouselItem) {
+        guard var tape = getTape(by: tapeId) else { return }
+        
+        let insertIndex: Int
+        switch placeholder {
+        case .startPlus:
+            insertIndex = 0
+        case .endPlus:
+            insertIndex = tape.clips.count
+        case .clip:
+            // This shouldn't happen, but fallback to center
+            insertIndex = tape.clips.count / 2
+        }
+        
+        tape.addClip(clip, at: insertIndex)
+        updateTape(tape)
+        
+        // Provide haptic feedback
+        #if os(iOS)
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        #endif
+    }
 }

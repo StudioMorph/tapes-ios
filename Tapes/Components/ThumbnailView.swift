@@ -2,16 +2,23 @@ import SwiftUI
 
 struct ThumbnailView: View {
     let item: CarouselItem
+    let onPlaceholderTap: (CarouselItem) -> Void
     
     var body: some View {
         ZStack {
             switch item {
             case .startPlus:
                 StartPlusView()
+                    .onTapGesture {
+                        onPlaceholderTap(item)
+                    }
             case .clip(let clip):
                 ClipThumbnailView(clip: clip)
             case .endPlus:
                 EndPlusView()
+                    .onTapGesture {
+                        onPlaceholderTap(item)
+                    }
             }
         }
     }
@@ -146,13 +153,13 @@ struct DurationBadge: View {
 
 #Preview {
     HStack(spacing: 0) {
-        ThumbnailView(item: .startPlus)
+        ThumbnailView(item: .startPlus, onPlaceholderTap: { _ in })
             .frame(width: 150, height: 84)
         
-        ThumbnailView(item: .clip(Clip(id: UUID(), assetLocalId: "test", rotateQuarterTurns: 0, overrideScaleMode: nil, createdAt: Date(), updatedAt: Date())))
+        ThumbnailView(item: .clip(Clip(id: UUID(), assetLocalId: "test", duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil, createdAt: Date(), updatedAt: Date())), onPlaceholderTap: { _ in })
             .frame(width: 150, height: 84)
         
-        ThumbnailView(item: .endPlus)
+        ThumbnailView(item: .endPlus, onPlaceholderTap: { _ in })
             .frame(width: 150, height: 84)
     }
     .background(Tokens.Colors.bg)

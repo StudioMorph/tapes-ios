@@ -64,6 +64,9 @@ struct TapesListView: View {
                         },
                         onClipInserted: { clip, index in
                             tapesStore.insertClip(clip, in: tape.id, atCenterOfCarouselIndex: index)
+                        },
+                        onClipInsertedAtPlaceholder: { clip, placeholder in
+                            tapesStore.insertClipAtPlaceholder(clip, in: tape.id, placeholder: placeholder)
                         }
                     )
                     .padding(.horizontal, Tokens.Spacing.m)  // 16pt outer padding

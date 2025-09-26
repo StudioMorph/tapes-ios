@@ -4,6 +4,7 @@ struct ClipCarousel: View {
     let tape: Tape
     let thumbSize: CGSize
     @Binding var insertionIndex: Int
+    let onPlaceholderTap: (CarouselItem) -> Void
     
     
     var items: [CarouselItem] {
@@ -24,7 +25,7 @@ struct ClipCarousel: View {
                 Color.clear.frame(width: 16)
                 
                 ForEach(items.indices, id: \.self) { i in
-                    ThumbnailView(item: items[i])
+                    ThumbnailView(item: items[i], onPlaceholderTap: onPlaceholderTap)
                         .frame(width: thumbSize.width, height: thumbSize.height)
                         .id("item-\(i)")
                 }
@@ -39,7 +40,7 @@ struct ClipCarousel: View {
 }
 
 
-enum CarouselItem {
+public enum CarouselItem {
     case startPlus
     case clip(Clip)
     case endPlus
@@ -50,7 +51,8 @@ enum CarouselItem {
         ClipCarousel(
             tape: Tape.sampleTapes[0],
             thumbSize: CGSize(width: 150, height: 84),
-            insertionIndex: .constant(0)
+            insertionIndex: .constant(0),
+            onPlaceholderTap: { _ in }
         )
         .frame(height: 84)
         .background(Color.gray.opacity(0.3))
