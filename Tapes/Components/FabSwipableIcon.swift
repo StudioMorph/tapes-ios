@@ -34,7 +34,7 @@ public struct FabSwipableIcon: View {
             // MOVING ICON LAYER — this is what must be masked
             ZStack {
                 Image(systemName: mode.icon)
-                    .font(.system(size: size * 0.42, weight: .semibold)) // proportional to FAB size
+                    .font(.system(size: size * 0.36, weight: .semibold)) // proportional to FAB size
                     .foregroundColor(iconColor)
                     .offset(x: iconOffsetX)               // <-- only the icon moves
                     .animation(.spring(response: 0.28, dampingFraction: 0.88), value: iconOffsetX)
