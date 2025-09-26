@@ -51,7 +51,8 @@ public enum TapeExporter {
             var bIdx = 0
 
             for (idx, clip) in tape.clips.enumerated() {
-                guard let asset = fetchAVAsset(localId: clip.assetLocalId),
+                guard let assetLocalId = clip.assetLocalId,
+                  let asset = fetchAVAsset(localId: assetLocalId),
                       let vSrc = asset.tracks(withMediaType: .video).first else { continue }
                 let aSrc = asset.tracks(withMediaType: .audio).first
                 let durClip = asset.duration

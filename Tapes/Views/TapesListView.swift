@@ -67,6 +67,9 @@ struct TapesListView: View {
                         },
                         onClipInsertedAtPlaceholder: { clip, placeholder in
                             tapesStore.insertClipAtPlaceholder(clip, in: tape.id, placeholder: placeholder)
+                        },
+                        onMediaInserted: { pickedMedia, strategy in
+                            tapesStore.insertMedia(pickedMedia, at: strategy, in: tape.id)
                         }
                     )
                     .padding(.horizontal, Tokens.Spacing.m)  // 16pt outer padding

@@ -369,4 +369,52 @@ extension TapesStore {
         impactFeedback.impactOccurred()
         #endif
     }
+    
+    /// Inserts multiple media items in order
+    public func insertMedia(_ items: [PickedMedia], at strategy: InsertionStrategy, in tapeID: UUID) {
+        guard var tape = getTape(by: tapeID) else { return }
+        
+        let startIndex: Int
+        switch strategy {
+        case .replaceThenAppend(let index):
+            startIndex = index
+        case .insertAtCenter:
+            startIndex = getCenterIndex(for: tapeID)
+        }
+        
+        // Convert picked media to clips
+        var newClips: [Clip] = []
+        for item in items {
+            let clip: Clip
+            switch item.type {
+            case .video:
+                if let url = item.localURL {
+                    clip = Clip.fromVideo(url: url, duration: item.duration, thumbnail: item.thumbnail)
+                } else {
+                    continue // Skip invalid video
+                }
+            case .image:
+                if let imageData = item.imageData {
+                    clip = Clip.fromImage(imageData: imageData, duration: item.duration, thumbnail: item.thumbnail)
+                } else {
+                    continue // Skip invalid image
+                }
+            }
+            newClips.append(clip)
+        }
+        
+        // Insert clips in order
+        for (offset, clip) in newClips.enumerated() {
+            let insertAt = startIndex + offset
+            tape.addClip(clip, at: min(insertAt, tape.clips.count))
+        }
+        
+        updateTape(tape)
+        
+        // Provide haptic feedback
+        #if os(iOS)
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        #endif
+    }
 }

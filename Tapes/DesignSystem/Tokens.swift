@@ -29,6 +29,10 @@ public struct Tokens {
     public enum Typography {
         public static let title = Font.system(size: 17, weight: .semibold)
     }
+    
+    public enum Timing {
+        public static let photoDefaultDuration: TimeInterval = 3.0
+    }
 }
 
 extension Color {

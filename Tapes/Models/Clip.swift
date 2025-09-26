@@ -4,10 +4,17 @@ import UIKit
 
 // MARK: - Clip Model
 
+public enum ClipType: String, Codable, CaseIterable {
+    case video
+    case image
+}
+
 public struct Clip: Identifiable, Codable, Equatable {
     public var id: UUID
     public var assetLocalId: String?
     public var localURL: URL?
+    public var imageData: Data?
+    public var clipType: ClipType
     public var duration: TimeInterval
     public var thumbnail: Data?
     public var rotateQuarterTurns: Int
@@ -19,6 +26,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         id: UUID = UUID(),
         assetLocalId: String? = nil,
         localURL: URL? = nil,
+        imageData: Data? = nil,
+        clipType: ClipType = .video,
         duration: TimeInterval = 0,
         thumbnail: Data? = nil,
         rotateQuarterTurns: Int = 0,
@@ -29,6 +38,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         self.id = id
         self.assetLocalId = assetLocalId
         self.localURL = localURL
+        self.imageData = imageData
+        self.clipType = clipType
         self.duration = duration
         self.thumbnail = thumbnail
         self.rotateQuarterTurns = rotateQuarterTurns
@@ -83,6 +94,20 @@ public struct Clip: Identifiable, Codable, Equatable {
     ) -> Clip {
         return Clip(
             localURL: url,
+            clipType: .video,
+            duration: duration,
+            thumbnail: thumbnail?.jpegData(compressionQuality: 0.8)
+        )
+    }
+    
+    public static func fromImage(
+        imageData: Data,
+        duration: TimeInterval = 3.0,
+        thumbnail: UIImage? = nil
+    ) -> Clip {
+        return Clip(
+            imageData: imageData,
+            clipType: .image,
             duration: duration,
             thumbnail: thumbnail?.jpegData(compressionQuality: 0.8)
         )

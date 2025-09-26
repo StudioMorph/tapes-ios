@@ -193,10 +193,10 @@ public struct Tape: Identifiable, Codable, Equatable {
                 scaleMode: .fill,
                 transition: .crossfade,
                 transitionDuration: 0.8,
-                clips: [
-                    Clip(assetLocalId: "sample1", duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil),
-                    Clip(assetLocalId: "sample2", duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil)
-                ]
+        clips: [
+            Clip(assetLocalId: "sample1", clipType: .video, duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil),
+            Clip(assetLocalId: "sample2", clipType: .video, duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil)
+        ]
             ),
             Tape(
                 title: "Summer Holidays 2025 - L...",
@@ -204,9 +204,9 @@ public struct Tape: Identifiable, Codable, Equatable {
                 scaleMode: .fit,
                 transition: .slideLR,
                 transitionDuration: 0.6,
-                clips: [
-                    Clip(assetLocalId: "sample3", duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil)
-                ]
+        clips: [
+            Clip(assetLocalId: "sample3", clipType: .video, duration: 5.0, rotateQuarterTurns: 0, overrideScaleMode: nil)
+        ]
             )
         ]
     }

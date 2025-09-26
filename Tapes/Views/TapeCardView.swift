@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum ImportSource {
+    case leftPlaceholder(index: Int)
+    case rightPlaceholder(index: Int)
+    case centerFAB
+}
+
 struct TapeCardView: View {
     let tape: Tape
     let onSettings: () -> Void
@@ -8,12 +14,13 @@ struct TapeCardView: View {
     let onThumbnailDelete: (Clip) -> Void
     let onClipInserted: (Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
+    let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void
     
     @StateObject private var castManager = CastManager.shared
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
-    @State private var showingVideoPicker = false
-    @State private var tappedPlaceholder: CarouselItem? = nil
+    @State private var showingPhotoPicker = false
+    @State private var importSource: ImportSource? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -80,9 +87,16 @@ struct TapeCardView: View {
                     thumbSize: CGSize(width: thumbW, height: thumbH),
                     insertionIndex: $insertionIndex,
                     onPlaceholderTap: { item in
-                        // Store which placeholder was tapped and show picker
-                        tappedPlaceholder = item
-                        showingVideoPicker = true
+                        // Store import source and show picker
+                        switch item {
+                        case .startPlus:
+                            importSource = .leftPlaceholder(index: 0)
+                        case .endPlus:
+                            importSource = .rightPlaceholder(index: tape.clips.count)
+                        case .clip:
+                            importSource = .centerFAB // Fallback
+                        }
+                        showingPhotoPicker = true
                     }
                 )
                 .zIndex(0) // always behind the line and FAB
@@ -99,7 +113,8 @@ struct TapeCardView: View {
                     // Handle FAB tap action based on mode
                     switch fabMode {
                     case .gallery:
-                        showingVideoPicker = true
+                        importSource = .centerFAB
+                        showingPhotoPicker = true
                     case .camera:
                         // Handle camera action
                         break
@@ -118,20 +133,24 @@ struct TapeCardView: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.card)
         )
-        .sheet(isPresented: $showingVideoPicker) {
-            PHPickerVideo(
-                isPresented: $showingVideoPicker,
-                onVideoSelected: { url, duration, thumbnail in
-                    let clip = Clip.fromVideo(url: url, duration: duration, thumbnail: thumbnail)
+        .sheet(isPresented: $showingPhotoPicker) {
+            PhotoImportCoordinator(
+                isPresented: $showingPhotoPicker,
+                onMediaSelected: { pickedMedia, strategy in
+                    guard let source = importSource else { return }
                     
-                    if let placeholder = tappedPlaceholder {
-                        // Insert at specific placeholder position
-                        onClipInsertedAtPlaceholder(clip, placeholder)
-                        tappedPlaceholder = nil
-                    } else {
-                        // Insert at center (FAB behavior)
-                        onClipInserted(clip, insertionIndex)
+                    let finalStrategy: InsertionStrategy
+                    switch source {
+                    case .leftPlaceholder(let index):
+                        finalStrategy = .replaceThenAppend(startIndex: index)
+                    case .rightPlaceholder(let index):
+                        finalStrategy = .replaceThenAppend(startIndex: index)
+                    case .centerFAB:
+                        finalStrategy = .insertAtCenter
                     }
+                    
+                    onMediaInserted(pickedMedia, finalStrategy)
+                    importSource = nil
                 }
             )
         }
@@ -146,7 +165,8 @@ struct TapeCardView: View {
         onAirPlay: {},
         onThumbnailDelete: { _ in },
         onClipInserted: { _, _ in },
-        onClipInsertedAtPlaceholder: { _, _ in }
+        onClipInsertedAtPlaceholder: { _, _ in },
+        onMediaInserted: { _, _ in }
     )
     .preferredColorScheme(.dark)
     .padding()
@@ -161,7 +181,8 @@ struct TapeCardView: View {
         onAirPlay: {},
         onThumbnailDelete: { _ in },
         onClipInserted: { _, _ in },
-        onClipInsertedAtPlaceholder: { _, _ in }
+        onClipInsertedAtPlaceholder: { _, _ in },
+        onMediaInserted: { _, _ in }
     )
     .preferredColorScheme(.light)
     .padding()
