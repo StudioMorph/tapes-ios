@@ -12,13 +12,13 @@ struct Carousel: View {
         GeometryReader { geometry in
             let screenWidth = geometry.size.width
             let itemWidth: CGFloat = 80
-            let spacing: CGFloat = Tokens.Space.l
+            let spacing: CGFloat = Tokens.Spacing.l
             let fabWidth: CGFloat = 60
             
             ZStack {
                 // Vertical centerline behind FAB
                 Rectangle()
-                    .fill(Tokens.Colors.brandRed)
+                    .fill(Tokens.Colors.red)
                     .frame(width: 2, height: 80)
                     .position(x: screenWidth / 2, y: 40)
                 
@@ -29,7 +29,7 @@ struct Carousel: View {
                         VStack {
                             Image(systemName: "plus")
                                 .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(Tokens.Colors.text)
+                                .foregroundColor(Tokens.Colors.onSurface)
                         }
                         .frame(width: itemWidth, height: itemWidth * 9/16)
                         .background(Tokens.Colors.elevated)
@@ -54,7 +54,7 @@ struct Carousel: View {
                         VStack {
                             Image(systemName: "plus")
                                 .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(Tokens.Colors.text)
+                                .foregroundColor(Tokens.Colors.onSurface)
                         }
                         .frame(width: itemWidth, height: itemWidth * 9/16)
                         .background(Tokens.Colors.elevated)
@@ -80,10 +80,10 @@ struct Carousel: View {
                 VStack {
                     Image(systemName: "camera.fill")
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Tokens.Colors.onAccent)
+                        .foregroundColor(Tokens.Colors.onSurface)
                 }
                 .frame(width: fabWidth, height: fabWidth)
-                .background(Tokens.Colors.brandRed)
+                .background(Tokens.Colors.red)
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
                 .position(x: screenWidth / 2, y: 40)

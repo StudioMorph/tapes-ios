@@ -36,23 +36,23 @@ struct TapesListView: View {
         HStack {
             Text("TAPES")
                 .font(.system(size: 24, weight: .bold))
-                .foregroundColor(Tokens.Colors.brandRed)
+                .foregroundColor(Tokens.Colors.red)
             
             Spacer()
             
             Button(action: { showingQAChecklist = true }) {
                 Image(systemName: "checklist")
                     .font(.title2)
-                    .foregroundColor(Tokens.Colors.brandRed)
+                    .foregroundColor(Tokens.Colors.red)
             }
         }
-        .padding(.horizontal, Tokens.Space.xl)
-        .padding(.top, Tokens.Space.s)
+        .padding(.horizontal, Tokens.Spacing.m)
+        .padding(.top, Tokens.Spacing.s)
     }
     
     private var tapesList: some View {
         ScrollView {
-            LazyVStack(spacing: Tokens.Space.xl) {
+            LazyVStack(spacing: Tokens.Spacing.m) {  // 16pt vertical spacing between cards
                 ForEach(tapesStore.tapes) { tape in
                     TapeCardView(
                         tape: tape,
@@ -63,9 +63,9 @@ struct TapesListView: View {
                             tapesStore.deleteClip(from: tape.id, clip: clip)
                         }
                     )
+                    .padding(.horizontal, Tokens.Spacing.m)  // 16pt outer padding
                 }
             }
-            // No horizontal padding to allow carousels to extend full width
         }
     }
     

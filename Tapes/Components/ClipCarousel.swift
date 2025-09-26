@@ -1,213 +1,97 @@
 import SwiftUI
 
-// MARK: - Carousel Item
-struct CarouselItem: Identifiable {
-    let id: String
-    let type: ItemType
-    let clip: Clip?
-    
-    enum ItemType {
-        case startPlus
-        case clip
-        case endPlus
-    }
-}
-
-// MARK: - Clip Carousel
 struct ClipCarousel: View {
     let tape: Tape
     let thumbSize: CGSize
-    let interItem: CGFloat
-    let onThumbnailDelete: (Clip) -> Void
-    
     @Binding var insertionIndex: Int
     
-    @State private var gapCenters: [String: CGFloat] = [:]
+    @State private var centers: [Int: CGFloat] = [:]
+    @State private var widths: [Int: CGFloat] = [:]
     
-    private var items: [CarouselItem] {
-        var result: [CarouselItem] = []
-        
-        // Always start with startPlus
-        result.append(CarouselItem(id: "startPlus", type: .startPlus, clip: nil))
-        
-        // Add existing clips
-        for clip in tape.clips {
-            result.append(CarouselItem(id: clip.id.uuidString, type: .clip, clip: clip))
+    var items: [CarouselItem] {
+        if tape.clips.isEmpty {
+            return [.startPlus]
+        } else {
+            return [.startPlus] + tape.clips.map { .clip($0) } + [.endPlus]
         }
-        
-        // Add endPlus only if there are clips
-        if !tape.clips.isEmpty {
-            result.append(CarouselItem(id: "endPlus", type: .endPlus, clip: nil))
-        }
-        
-        return result
     }
     
     var body: some View {
-        GeometryReader { containerGeo in
+        GeometryReader { container in
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 0) {  // Zero spacing - thumbnails sit directly side by side
+                    HStack(spacing: 0) {                        // ZERO GAP
                         ForEach(items.indices, id: \.self) { i in
-                            // Thumbnail item with exact 16:9 aspect ratio
                             ThumbnailView(item: items[i])
                                 .frame(width: thumbSize.width, height: thumbSize.height)
                                 .background(Tokens.Colors.elevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
+                                .background(GeometryReader { g in
+                                    let f = g.frame(in: .named("carousel"))
+                                    Color.clear
+                                        .preference(key: ItemCentersKey.self, value: [i: f.midX])
+                                        .preference(key: ItemWidthsKey.self, value: [i: f.size.width])
+                                })
                                 .id("item-\(i)")
-                            
-                            // Gap marker for snapping (zero width for zero spacing)
-                            if i < items.count - 1 {
-                                GapMarker(width: interItem)
-                                    .id("gap-\(i)")
-                                    .anchorPreference(key: GapCentersKey.self, value: .bounds) { anchor in
-                                        ["gap-\(i)": containerGeo[anchor].midX]
-                                    }
-                            }
                         }
                     }
-                    .padding(.horizontal, 0)  // Ensure no extra horizontal padding
+                    .coordinateSpace(name: "carousel")
                 }
-                .onPreferenceChange(GapCentersKey.self) { gapCenters = $0 }
-                .gesture(
-                    DragGesture().onEnded { _ in
-                        snapToNearestGap(containerWidth: containerGeo.size.width, proxy: proxy)
-                    }
-                )
-                .onAppear {
-                    // Start position: between startPlus and first clip (or 0 if empty)
-                    snapToNearestGap(containerWidth: containerGeo.size.width, proxy: proxy)
-                }
+                .onPreferenceChange(ItemCentersKey.self) { centers.merge($0, uniquingKeysWith: { _, new in new }) }
+                .onPreferenceChange(ItemWidthsKey.self) { widths.merge($0, uniquingKeysWith: { _, new in new }) }
+                .gesture(DragGesture().onEnded { _ in snap(container: container.size, proxy: proxy) })
+                .onAppear { snap(container: container.size, proxy: proxy) }
             }
         }
-        .frame(height: thumbSize.height)   // Lock height to thumbnail height
+        .frame(height: thumbSize.height) // hug
     }
     
-    private func snapToNearestGap(containerWidth: CGFloat, proxy: ScrollViewProxy) {
-        guard !gapCenters.isEmpty else { insertionIndex = 0; return }
-        let midX = containerWidth / 2
-        let nearest = gapCenters.min { abs($0.value - midX) < abs($1.value - midX) }?.key
-        guard let id = nearest, let idx = Int(id.replacingOccurrences(of: "gap-", with: "")) else { return }
-        insertionIndex = idx
+    private func snap(container: CGSize, proxy: ScrollViewProxy) {
+        guard !centers.isEmpty, !widths.isEmpty else { insertionIndex = 0; return }
+        let midX = container.width / 2
+        // trailing edge of item i = centers[i] + widths[i]/2
+        let trailing = centers.compactMap { (i, cx) -> (Int, CGFloat)? in
+            guard let w = widths[i] else { return nil }
+            return (i, cx + w/2)
+        }
+        guard let best = trailing.min(by: { abs($0.1 - midX) < abs($1.1 - midX) }) else { return }
+        insertionIndex = best.0 // gap is between i and i+1
         withAnimation(.easeOut(duration: 0.22)) {
-            proxy.scrollTo(id, anchor: .center)
+            proxy.scrollTo("item-\(best.0)", anchor: .trailing)
         }
     }
 }
 
-// MARK: - Gap Marker
-private struct GapMarker: View {
-    let width: CGFloat
-    var body: some View { Color.clear.frame(width: width, height: 1) }
-}
-
-// MARK: - Gap Centers Key
-private struct GapCentersKey: PreferenceKey {
-    static var defaultValue: [String: CGFloat] = [:]
-    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
-        value.merge(nextValue(), uniquingKeysWith: { $1 })
+struct ItemCentersKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, n in n })
     }
 }
 
-// MARK: - Thumbnail View
-private struct ThumbnailView: View {
-    let item: CarouselItem
-    
-    var body: some View {
-        switch item.type {
-        case .startPlus:
-            StartPlusView()
-        case .clip:
-            if let clip = item.clip {
-                Thumbnail(
-                    thumbnail: ClipThumbnail(
-                        id: clip.id.uuidString,
-                        assetLocalId: clip.assetLocalId,
-                        index: 0, // Will be set properly by parent
-                        isPlaceholder: false
-                    ),
-                    onDelete: { }
-                )
-            }
-        case .endPlus:
-            EndPlusView()
-        }
+struct ItemWidthsKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, n in n })
     }
 }
 
-// MARK: - Start Plus View
-struct StartPlusView: View {
-    var body: some View {
-        Button(action: {
-            // Action for adding a new clip at the start
-            print("Add new clip at start")
-        }) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Tokens.Colors.elevated)
-                .overlay(
-                    Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(Tokens.Colors.text)
-                )
-        }
-        .buttonStyle(PlainButtonStyle())  // Remove default button styling
-    }
+enum CarouselItem {
+    case startPlus
+    case clip(Clip)
+    case endPlus
 }
 
-// MARK: - End Plus View
-struct EndPlusView: View {
-    var body: some View {
-        Button(action: {
-            // Action for adding a new clip at the end
-            print("Add new clip at end")
-        }) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Tokens.Colors.elevated)
-                .overlay(
-                    Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(Tokens.Colors.text)
-                )
-        }
-        .buttonStyle(PlainButtonStyle())  // Remove default button styling
+#Preview {
+    VStack {
+        ClipCarousel(
+            tape: Tape.sampleTapes[0],
+            thumbSize: CGSize(width: 150, height: 84),
+            insertionIndex: .constant(0)
+        )
+        .frame(height: 84)
+        .background(Color.gray.opacity(0.3))
     }
-}
-
-// MARK: - Clip Thumbnail (defined in Thumbnail.swift)
-
-// MARK: - Previews
-struct ClipCarousel_Previews: PreviewProvider {
-    @State static var sampleTapeWithClips = Tape.sampleTapes[0]
-    @State static var sampleTapeEmpty = Tape(id: UUID(), title: "Empty Tape", clips: [])
-    @State static var insertionIndex: Int = 0
-    
-    static var previews: some View {
-        VStack {
-            ClipCarousel(
-                tape: sampleTapeWithClips,
-                thumbSize: CGSize(width: 128, height: 128 * 9 / 16),
-                interItem: 16,
-                onThumbnailDelete: { _ in },
-                insertionIndex: $insertionIndex
-            )
-            .previewLayout(.sizeThatFits)
-            .preferredColorScheme(.dark)
-            .padding()
-            .background(Tokens.Colors.bg)
-            .previewDisplayName("With Clips - Dark")
-            
-            ClipCarousel(
-                tape: sampleTapeEmpty,
-                thumbSize: CGSize(width: 128, height: 128 * 9 / 16),
-                interItem: 16,
-                onThumbnailDelete: { _ in },
-                insertionIndex: $insertionIndex
-            )
-            .previewLayout(.sizeThatFits)
-            .preferredColorScheme(.light)
-            .padding()
-            .background(Tokens.Colors.bg)
-            .previewDisplayName("Empty - Light")
-        }
-    }
+    .padding()
+    .background(Tokens.Colors.bg)
 }

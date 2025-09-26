@@ -39,24 +39,12 @@ struct FAB: View {
         VStack {
             Image(systemName: currentMode.icon)
                 .font(.system(size: 20, weight: .medium))
-                .foregroundColor(Tokens.Colors.onAccent)
+                .foregroundColor(Tokens.Colors.onSurface)
         }
-        .frame(width: 60, height: 60)
-        .background(Tokens.Colors.brandRed)
+        .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
+        .background(Tokens.Colors.red)
         .clipShape(Circle())
         .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
-        .overlay(
-            // Vertical lines extending from FAB
-            VStack {
-                Rectangle()
-                    .fill(Tokens.Colors.brandRed)
-                    .frame(width: 2, height: 20)
-                Spacer()
-                Rectangle()
-                    .fill(Tokens.Colors.brandRed)
-                    .frame(width: 2, height: 20)
-            }
-        )
         .offset(x: dragOffset)
         .gesture(
             DragGesture()

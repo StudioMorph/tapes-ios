@@ -12,91 +12,79 @@ struct TapeCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header section with card padding
-            VStack(alignment: .leading, spacing: Tokens.Space.l) {
-                HStack {
-                    // Title with edit icon
-                    HStack(spacing: Tokens.Space.s) {
-                        Text(tape.title)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(Tokens.Colors.text)
-                        
-                        Image(systemName: "pencil")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(Tokens.Colors.text)
-                    }
+            // Title row
+            HStack {
+                // Title with edit icon
+                HStack(spacing: Tokens.Spacing.s) {
+                    Text(tape.title)
+                        .font(Tokens.Typography.title)
+                        .foregroundColor(Tokens.Colors.onSurface)
                     
-                    Spacer()
-                    
-                    // Action buttons
-                    HStack(spacing: Tokens.Space.l) {
-                        // Settings button
-                        Button(action: onSettings) {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(Tokens.Colors.text)
-                        }
-                        
-                        // AirPlay button (only show if available devices)
-                        if castManager.hasAvailableDevices {
-                            Button(action: onAirPlay) {
-                                Image(systemName: "airplayvideo")
-                                    .font(.system(size: 18, weight: .medium))
-                                    .foregroundColor(Tokens.Colors.text)
-                            }
-                        }
-                        
-                        // Play button
-                        Button(action: onPlay) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(Tokens.Colors.text)
-                        }
-                    }
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Tokens.Colors.onSurface)
                 }
-            }
-            .padding(.horizontal, Tokens.Space.xl)
-            .padding(.top, 16)
-            
-            // Carousel section - full width within card
-            GeometryReader { geometry in
-                let screenW = UIScreen.main.bounds.width
-                let cardPadding = Tokens.Space.xl * 2 // Total horizontal padding of card
-                let availableWidth = screenW - cardPadding
-                let thumbW = floor((availableWidth - 64) / 2) // 64pt for FAB space
-                let thumbH = floor(thumbW * 9.0 / 16.0)
                 
-                ZStack(alignment: .center) {
-                    // 1. Centerline
-                    Rectangle()
-                        .fill(Tokens.Colors.brandRed.opacity(0.9))
-                        .frame(width: 2)
-                        .frame(height: thumbH)
-                        .allowsHitTesting(false)
+                Spacer()
+                
+                // Action buttons with 16pt spacing
+                HStack(spacing: Tokens.Spacing.m) {
+                    // Settings button
+                    Button(action: onSettings) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(Tokens.Colors.onSurface)
+                    }
                     
-                    // 2. ClipCarousel (beneath)
-                    ClipCarousel(
-                        tape: tape,
-                        thumbSize: CGSize(width: thumbW, height: thumbH),
-                        interItem: 0,
-                        onThumbnailDelete: onThumbnailDelete,
-                        insertionIndex: $insertionIndex
-                    )
-                    .frame(height: thumbH)
+                    // AirPlay button (only show if available devices)
+                    if castManager.hasAvailableDevices {
+                        Button(action: onAirPlay) {
+                            Image(systemName: "airplayvideo")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(Tokens.Colors.onSurface)
+                        }
+                    }
                     
-                    // 3. FAB (above)
-                    FAB { _ in }
-                        .frame(width: 64, height: 64)
+                    // Play button
+                    Button(action: onPlay) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(Tokens.Colors.onSurface)
+                    }
                 }
-                .frame(height: thumbH)
-                .clipped()
             }
-            .frame(height: nil)
-            .padding(.bottom, 16)
+            .padding(.horizontal, Tokens.Spacing.m)
+            .padding(.top, Tokens.Spacing.m)
+            
+            // Timeline container
+            let screenW = UIScreen.main.bounds.width
+            let thumbW = floor((screenW - Tokens.FAB.size) / 2.0)
+            let thumbH = floor(thumbW * 9.0 / 16.0)
+            
+            ZStack(alignment: .center) {
+                // 1) red centerline
+                Rectangle()
+                    .fill(Tokens.Colors.red.opacity(0.9))
+                    .frame(width: 2, height: thumbH)
+                    .allowsHitTesting(false)
+                
+                // 2) carousel
+                ClipCarousel(
+                    tape: tape,
+                    thumbSize: CGSize(width: thumbW, height: thumbH),
+                    insertionIndex: $insertionIndex
+                )
+                
+                // 3) FAB centered vertically
+                FAB { _ in }
+                    .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
+            }
+            .frame(height: thumbH)
+            .padding(.vertical, Tokens.Spacing.m)
         }
         .background(
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                .fill(Tokens.Colors.surface)
+                .fill(Tokens.Colors.card)
         )
     }
 }

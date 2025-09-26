@@ -1,76 +1,58 @@
 import SwiftUI
 
-struct Tokens {
-    struct Colors {
-        static let brandRed = Color(hex: 0xE50914)
-        static let bg       = Color.dynamic(light: 0xFFFFFF, dark: 0x0B0B0F)
-        static let surface  = Color.dynamic(light: 0xF2F4F7, dark: 0x15181D)
-        static let elevated = Color.dynamic(light: 0xEEF1F5, dark: 0x1E2229)
-        static let text     = Color.dynamic(light: 0x0B0B0F, dark: 0xFFFFFF)
-        static let muted    = Color.dynamic(light: 0x6B7280, dark: 0x9CA3AF)
-        static let border   = Color.dynamic(light: 0xE5E7EB, dark: 0x2A2F36)
-        static let onAccent = Color.white
+public struct Tokens {
+    public enum Spacing {
+        public static let s: CGFloat = 8
+        public static let m: CGFloat = 16
+        public static let l: CGFloat = 24
     }
     
-    struct Space {
-        static let xs: CGFloat = 4
-        static let s: CGFloat = 8
-        static let m: CGFloat = 12
-        static let l: CGFloat = 16
-        static let xl: CGFloat = 24
-        static let xxl: CGFloat = 32
+    public enum Radius {
+        public static let card: CGFloat = 20
+        public static let thumb: CGFloat = 12
+        public static let fab: CGFloat = 999
     }
     
-    struct Radius {
-        static let card: CGFloat = 16
-        static let sheet: CGFloat = 20
-        static let fab: CGFloat = 32
+    public enum FAB {
+        public static let size: CGFloat = 64
     }
     
-    struct Typography {
-        static func headline(_ c: Color) -> some View { 
-            TextStyle(size: 24, weight: .semibold, color: c) 
-        }
-        static func title(_ c: Color) -> some View { 
-            TextStyle(size: 18, weight: .semibold, color: c) 
-        }
-        static func body(_ c: Color) -> some View { 
-            TextStyle(size: 16, weight: .regular, color: c) 
-        }
-        static func caption(_ c: Color) -> some View { 
-            TextStyle(size: 12, weight: .regular, color: c) 
-        }
+    public enum Colors {
+        public static let bg = Color(hex: "#0F172A")        // dark navy, not pure black
+        public static let card = Color(hex: "#111827")       // slightly lighter than bg
+        public static let elevated = Color(hex: "#1F2937")   // thumbnail tile
+        public static let red = Color(hex: "#E50914")
+        public static let onSurface = Color.white
+    }
+    
+    public enum Typography {
+        public static let title = Font.system(size: 22, weight: .semibold)
     }
 }
 
 extension Color {
-    init(hex: Int) {
-        self.init(.sRGB, 
-                 red: Double((hex >> 16) & 0xFF) / 255, 
-                 green: Double((hex >> 8) & 0xFF) / 255, 
-                 blue: Double(hex & 0xFF) / 255, 
-                 opacity: 1)
-    }
-    
-    static func dynamic(light: Int, dark: Int) -> Color {
-        Color(UIColor { tc in
-            let hex = (tc.userInterfaceStyle == .dark) ? dark : light
-            return UIColor(
-                red: CGFloat((hex >> 16) & 0xFF) / 255,
-                green: CGFloat((hex >> 8) & 0xFF) / 255,
-                blue: CGFloat(hex & 0xFF) / 255,
-                alpha: 1
-            )
-        })
-    }
-}
-
-struct TextStyle: View {
-    let size: CGFloat
-    let weight: Font.Weight
-    let color: Color
-    
-    var body: some View { 
-        EmptyView() // marker; use .font(.system(size:..., weight:...)).foregroundStyle(color)
+    public init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (1, 1, 1, 0)
+        }
+        
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
     }
 }
