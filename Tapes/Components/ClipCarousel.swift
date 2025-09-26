@@ -47,16 +47,16 @@ struct ClipCarousel: View {
         GeometryReader { containerGeo in
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 0) {
+                    HStack(spacing: 0) {  // Zero spacing - thumbnails sit directly side by side
                         ForEach(items.indices, id: \.self) { i in
-                            // item
+                            // Thumbnail item with exact 16:9 aspect ratio
                             ThumbnailView(item: items[i])
                                 .frame(width: thumbSize.width, height: thumbSize.height)
                                 .background(Tokens.Colors.elevated)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                                 .id("item-\(i)")
                             
-                            // gap between i and i+1 (zero width for zero spacing)
+                            // Gap marker for snapping (zero width for zero spacing)
                             if i < items.count - 1 {
                                 GapMarker(width: interItem)
                                     .id("gap-\(i)")
@@ -66,6 +66,7 @@ struct ClipCarousel: View {
                             }
                         }
                     }
+                    .padding(.horizontal, 0)  // Ensure no extra horizontal padding
                 }
                 .onPreferenceChange(GapCentersKey.self) { gapCenters = $0 }
                 .gesture(
@@ -74,12 +75,12 @@ struct ClipCarousel: View {
                     }
                 )
                 .onAppear {
-                    // start position: between startPlus and first clip (or 0 if empty)
+                    // Start position: between startPlus and first clip (or 0 if empty)
                     snapToNearestGap(containerWidth: containerGeo.size.width, proxy: proxy)
                 }
             }
         }
-        .frame(height: thumbSize.height)   // lock height
+        .frame(height: thumbSize.height)   // Lock height to thumbnail height
     }
     
     private func snapToNearestGap(containerWidth: CGFloat, proxy: ScrollViewProxy) {
@@ -149,6 +150,7 @@ struct StartPlusView: View {
                         .foregroundColor(Tokens.Colors.text)
                 )
         }
+        .buttonStyle(PlainButtonStyle())  // Remove default button styling
     }
 }
 
@@ -167,6 +169,7 @@ struct EndPlusView: View {
                         .foregroundColor(Tokens.Colors.text)
                 )
         }
+        .buttonStyle(PlainButtonStyle())  // Remove default button styling
     }
 }
 
