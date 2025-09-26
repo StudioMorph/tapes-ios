@@ -62,22 +62,25 @@ struct TapeCardView: View {
             let thumbH = floor(thumbW * 9.0 / 16.0)
             
             ZStack(alignment: .center) {
-                // 1) red centerline
-                Rectangle()
-                    .fill(Tokens.Colors.red.opacity(0.9))
-                    .frame(width: 2, height: thumbH)
-                    .allowsHitTesting(false)
-                
-                // 2) carousel
+                // 1) Thumbnails / scrollable carousel
                 ClipCarousel(
                     tape: tape,
                     thumbSize: CGSize(width: thumbW, height: thumbH),
                     insertionIndex: $insertionIndex
                 )
+                .zIndex(0) // always behind the line and FAB
                 
-                // 3) FAB centered vertically
+                // 2) Red center line (between clips and FAB)
+                Rectangle()
+                    .fill(Tokens.Colors.red.opacity(0.9))
+                    .frame(width: 2, height: thumbH)
+                    .allowsHitTesting(false)
+                    .zIndex(1) // above thumbnails, below FAB
+                
+                // 3) Floating action button (camera)
                 FAB { _ in }
                     .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
+                    .zIndex(2) // on top of everything
             }
             .frame(height: thumbH)
             .padding(.vertical, Tokens.Spacing.m)
