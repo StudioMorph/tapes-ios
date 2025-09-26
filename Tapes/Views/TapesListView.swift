@@ -65,7 +65,7 @@ struct TapesListView: View {
                     )
                 }
             }
-            .padding(.horizontal, Tokens.Space.xl)  // Add horizontal padding back for card spacing
+            // No horizontal padding to allow carousels to extend full width
         }
     }
     

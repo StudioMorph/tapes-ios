@@ -1,5 +1,47 @@
 import SwiftUI
 
+// MARK: - Full Width Carousel
+struct FullWidthCarousel: View {
+    let tape: Tape
+    let onThumbnailDelete: (Clip) -> Void
+    @Binding var insertionIndex: Int
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let screenW = UIScreen.main.bounds.width
+            let thumbW = floor((screenW - 64) / 2)
+            let thumbH = floor(thumbW * 9.0 / 16.0)
+            
+            ZStack(alignment: .center) {
+                // 1. Centerline
+                Rectangle()
+                    .fill(Tokens.Colors.brandRed.opacity(0.9))
+                    .frame(width: 2)
+                    .frame(height: thumbH)
+                    .allowsHitTesting(false)
+                
+                // 2. ClipCarousel (beneath)
+                ClipCarousel(
+                    tape: tape,
+                    thumbSize: CGSize(width: thumbW, height: thumbH),
+                    interItem: 0, // Zero spacing - thumbnails sit directly side by side
+                    onThumbnailDelete: onThumbnailDelete,
+                    insertionIndex: $insertionIndex
+                )
+                .frame(height: thumbH)
+                
+                // 3. FAB (above) - vertically centered between thumbnails
+                FAB { _ in }
+                    .frame(width: 64, height: 64)
+            }
+            .frame(height: thumbH)  // Container height hugs content
+            .clipped()
+        }
+        .frame(height: nil)  // Remove fixed height constraint
+        .padding(.vertical, 16)     // Card hugs content: title + 16 + thumbnails + 16
+    }
+}
+
 struct TapeCardView: View {
     let tape: Tape
     let onSettings: () -> Void
@@ -61,42 +103,15 @@ struct TapeCardView: View {
                     .fill(Tokens.Colors.surface)
             )
             
-            // Dynamic carousel with FAB and centerline - FULL WIDTH, breaks out of card
-            GeometryReader { geometry in
-                let screenW = UIScreen.main.bounds.width
-                let thumbW = floor((screenW - 64) / 2)
-                let thumbH = floor(thumbW * 9.0 / 16.0)
-                
-                ZStack(alignment: .center) {
-                    // 1. Centerline
-                    Rectangle()
-                        .fill(Tokens.Colors.brandRed.opacity(0.9))
-                        .frame(width: 2)
-                        .frame(height: thumbH)
-                        .allowsHitTesting(false)
-                    
-                    // 2. ClipCarousel (beneath)
-                    ClipCarousel(
-                        tape: tape,
-                        thumbSize: CGSize(width: thumbW, height: thumbH),
-                        interItem: 0, // Zero spacing - thumbnails sit directly side by side
-                        onThumbnailDelete: onThumbnailDelete,
-                        insertionIndex: $insertionIndex
-                    )
-                    .frame(height: thumbH)
-                    
-                    // 3. FAB (above) - vertically centered between thumbnails
-                    FAB { _ in }
-                        .frame(width: 64, height: 64)
-                }
-                .frame(height: thumbH)  // Container height hugs content
-                .clipped()
-            }
-            .frame(height: nil)  // Remove fixed height constraint
-            .padding(.vertical, 16)     // Card hugs content: title + 16 + thumbnails + 16
+            // Full-width carousel that breaks out of card constraints
+            FullWidthCarousel(
+                tape: tape,
+                onThumbnailDelete: onThumbnailDelete,
+                insertionIndex: $insertionIndex
+            )
             .padding(.horizontal, -Tokens.Space.xl)  // Negative padding to break out of card constraints
         }
-        .background(Color.clear)  // Ensure no background constraints
+        .padding(.horizontal, Tokens.Space.xl)  // Add horizontal padding to the entire card
     }
 }
 
