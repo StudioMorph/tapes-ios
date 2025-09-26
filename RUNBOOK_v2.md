@@ -18,7 +18,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 
 - **Typography**
   - Heading / Headline: 20–24pt, Semibold/Bold (SF Pro / Roboto)
-  - Title: 18pt Semibold
+  - Title: 17/24, Semibold
   - Body: 16pt Regular
   - Caption: 12pt Regular
 

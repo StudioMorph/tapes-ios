@@ -27,7 +27,7 @@ public struct Tokens {
     }
     
     public enum Typography {
-        public static let title = Font.system(size: 22, weight: .semibold)
+        public static let title = Font.system(size: 17, weight: .semibold)
     }
 }
 
