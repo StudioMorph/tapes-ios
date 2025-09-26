@@ -55,12 +55,13 @@ struct TapeCardView: View {
                     }
                 }
             }
-            .padding(Tokens.Space.xl)
+            .padding(.horizontal, Tokens.Space.xl)
+            .padding(.top, 16)
             
-            // Carousel section - full width
+            // Carousel section - 16pt margin from screen edges
             GeometryReader { geometry in
                 let screenW = UIScreen.main.bounds.width
-                let thumbW = floor((screenW - 64) / 2)
+                let thumbW = floor((screenW - 64 - 32) / 2) // 32pt for 16pt margins on both sides
                 let thumbH = floor(thumbW * 9.0 / 16.0)
                 
                 ZStack(alignment: .center) {
@@ -87,9 +88,10 @@ struct TapeCardView: View {
                 }
                 .frame(height: thumbH)
                 .clipped()
+                .padding(.horizontal, 16) // 16pt margin from screen edges
             }
             .frame(height: nil)
-            .padding(.vertical, 16)
+            .padding(.bottom, 16)
         }
         .background(
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
