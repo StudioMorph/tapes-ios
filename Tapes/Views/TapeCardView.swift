@@ -316,6 +316,7 @@ struct TapeCardView: View {
         onClipInsertedAtPlaceholder: { _, _ in },
         onMediaInserted: { _, _ in }
     )
+    .environmentObject(TapesStore())  // lightweight preview store
     .preferredColorScheme(ColorScheme.dark)
     .padding()
     .background(Tokens.Colors.bg)
@@ -332,6 +333,7 @@ struct TapeCardView: View {
         onClipInsertedAtPlaceholder: { _, _ in },
         onMediaInserted: { _, _ in }
     )
+    .environmentObject(TapesStore())  // lightweight preview store
     .preferredColorScheme(ColorScheme.light)
     .padding()
     .background(Tokens.Colors.bg)

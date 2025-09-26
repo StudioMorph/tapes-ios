@@ -16,17 +16,10 @@ struct SystemMediaPicker: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration(photoLibrary: .shared())
-        var filters: [PHPickerFilter] = []
-        if allowImages { filters.append(.images) }
-        if allowVideos { filters.append(.videos) }
-        config.filter = .any(of: filters)
-        config.selectionLimit = 0 // multi-select
-        config.preferredAssetRepresentationMode = .current
-        
-        // Set selection order preservation (iOS 17+)
-        if #available(iOS 17.0, *) {
-            config.selection = .ordered
-        }
+        config.selection = .ordered
+        config.selectionLimit = 0                 // multi-select
+        config.filter = .any(of: [.videos, .images])
+        config.preferredAssetRepresentationMode = .current   // avoid iCloud originals in Simulator
 
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator     // ✅ hook delegate

@@ -131,10 +131,12 @@ struct TapesListView: View {
 
 #Preview("Dark Mode") {
     TapesListView()
+        .environmentObject(TapesStore())  // lightweight preview store
         .preferredColorScheme(.dark)
 }
 
 #Preview("Light Mode") {
     TapesListView()
+        .environmentObject(TapesStore())  // lightweight preview store
         .preferredColorScheme(.light)
 }
