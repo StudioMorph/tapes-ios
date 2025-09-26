@@ -35,6 +35,10 @@ public struct FabSwipableIcon: View {
             Image(systemName: mode.icon)
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(iconColor)
+                .frame(width: size, height: size)   // match FAB circle diameter
+                .clipShape(Circle())                 // clip to circle boundary
+                .contentShape(Circle())              // hit testing within circle
+                .compositingGroup()                  // apply mask after offset
                 .offset(x: iconOffsetX)              // <-- only the icon moves
                 .animation(.spring(response: 0.28, dampingFraction: 0.88), value: iconOffsetX)
                 .contentTransition(.symbolEffect(.replace)) // subtle icon swap
