@@ -1,10 +1,14 @@
 import SwiftUI
+import AVFoundation
+import UIKit
+import PhotosUI
 
 enum ImportSource {
     case leftPlaceholder(index: Int)
     case rightPlaceholder(index: Int)
     case centerFAB
 }
+
 
 struct TapeCardView: View {
     let tape: Tape
@@ -19,7 +23,7 @@ struct TapeCardView: View {
     @StateObject private var castManager = CastManager.shared
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
-    @State private var showingPhotoPicker = false
+    @State private var showingMediaPicker = false
     @State private var importSource: ImportSource? = nil
     
     var body: some View {
@@ -96,7 +100,7 @@ struct TapeCardView: View {
                         case .clip:
                             importSource = .centerFAB // Fallback
                         }
-                        showingPhotoPicker = true
+                        showingMediaPicker = true
                     }
                 )
                 .zIndex(0) // always behind the line and FAB
@@ -114,7 +118,7 @@ struct TapeCardView: View {
                     switch fabMode {
                     case .gallery:
                         importSource = .centerFAB
-                        showingPhotoPicker = true
+                        showingMediaPicker = true
                     case .camera:
                         // Handle camera action
                         break
@@ -133,27 +137,110 @@ struct TapeCardView: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.card)
         )
-        .sheet(isPresented: $showingPhotoPicker) {
-            PhotoImportCoordinator(
-                isPresented: $showingPhotoPicker,
-                onMediaSelected: { pickedMedia, strategy in
-                    guard let source = importSource else { return }
-                    
-                    let finalStrategy: InsertionStrategy
-                    switch source {
-                    case .leftPlaceholder(let index):
-                        finalStrategy = .replaceThenAppend(startIndex: index)
-                    case .rightPlaceholder(let index):
-                        finalStrategy = .replaceThenAppend(startIndex: index)
-                    case .centerFAB:
-                        finalStrategy = .insertAtCenter
+        .sheet(isPresented: $showingMediaPicker) {
+            MediaPickerSheet(
+                isPresented: $showingMediaPicker,
+                onComplete: { results in
+                    // Process PHPickerResult array in order
+                    Task {
+                        let pickedMedia = await processPickerResults(results)
+                        
+                        await MainActor.run {
+                            guard let source = importSource else { return }
+                            
+                            let finalStrategy: InsertionStrategy
+                            switch source {
+                            case .leftPlaceholder(let index):
+                                finalStrategy = .replaceThenAppend(startIndex: index)
+                            case .rightPlaceholder(let index):
+                                finalStrategy = .replaceThenAppend(startIndex: index)
+                            case .centerFAB:
+                                finalStrategy = .insertAtCenter
+                            }
+                            
+                            onMediaInserted(pickedMedia, finalStrategy)
+                            importSource = nil
+                        }
                     }
-                    
-                    onMediaInserted(pickedMedia, finalStrategy)
-                    importSource = nil
+                },
+                onClear: {
+                    // Clear any temporary selection state if needed
                 }
             )
         }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func processPickerResults(_ results: [PHPickerResult]) async -> [PickedMedia] {
+        var pickedMedia: [PickedMedia] = []
+        
+        for result in results {
+            do {
+                // Try to load as video first
+                let movie = try await withCheckedThrowingContinuation { continuation in
+                    result.itemProvider.loadTransferable(type: Movie.self) { result in
+                        continuation.resume(with: result)
+                    }
+                }
+                
+                let thumbnail = await generateThumbnail(from: movie.url)
+                let duration = await getVideoDuration(url: movie.url)
+                
+                pickedMedia.append(PickedMedia(
+                    type: .video,
+                    localURL: movie.url,
+                    thumbnail: thumbnail,
+                    duration: duration
+                ))
+            } catch {
+                // Try to load as image
+                do {
+                    let imageData = try await withCheckedThrowingContinuation { continuation in
+                        result.itemProvider.loadTransferable(type: Data.self) { result in
+                            continuation.resume(with: result)
+                        }
+                    }
+                    
+                    if let uiImage = UIImage(data: imageData) {
+                        let thumbnail = uiImage
+                        let duration = Tokens.Timing.photoDefaultDuration
+                        
+                        pickedMedia.append(PickedMedia(
+                            type: .image,
+                            imageData: imageData,
+                            thumbnail: thumbnail,
+                            duration: duration
+                        ))
+                    }
+                } catch {
+                    print("Error loading media item: \(error)")
+                }
+            }
+        }
+        
+        return pickedMedia
+    }
+    
+    private func generateThumbnail(from url: URL) async -> UIImage? {
+        let asset = AVAsset(url: url)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.maximumSize = CGSize(width: 320, height: 320)
+        
+        do {
+            let cgImage = try await imageGenerator.image(at: .zero).image
+            return UIImage(cgImage: cgImage)
+        } catch {
+            print("Error generating thumbnail: \(error)")
+            return nil
+        }
+    }
+    
+    private func getVideoDuration(url: URL) async -> TimeInterval {
+        let asset = AVAsset(url: url)
+        let duration = try? await asset.load(.duration)
+        return CMTimeGetSeconds(duration ?? .zero)
     }
 }
 
