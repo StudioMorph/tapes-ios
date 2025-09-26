@@ -1,6 +1,15 @@
 import Foundation
 import Photos
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
+
+// MARK: - PickedMediaItem
+
+public enum PickedMediaItem {
+    case video(URL)
+    case photo(UIImage)
+}
 
 // MARK: - TapesStore
 
@@ -416,5 +425,44 @@ extension TapesStore {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
         #endif
+    }
+    
+    /// Inserts picked media at the center of a tape (single source of truth)
+    public func insertAtCenter(tapeID: Tape.ID, picked: [PickedMediaItem]) {
+        guard let tIndex = tapes.firstIndex(where: { $0.id == tapeID }) else {
+            print("❌ TapeStore.insertAtCenter: tape not found \(tapeID)")
+            return
+        }
+
+        // Convert PickedMediaItem -> Clip using our existing factories
+        var newClips: [Clip] = []
+        for m in picked {
+            switch m {
+            case .video(let url):
+                // For now, create clip with default values - async processing can be added later
+                let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+                newClips.append(clip)
+            case .photo(let image):
+                // Convert image to data and use default duration
+                if let imageData = image.jpegData(compressionQuality: 0.8) {
+                    let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                    newClips.append(clip)
+                } else {
+                    print("⚠️ Could not build Clip from photo (UIImage)")
+                }
+            }
+        }
+        
+        guard !newClips.isEmpty else {
+            print("⚠️ insertAtCenter: nothing to insert")
+            return
+        }
+
+        // Decide insertion index (center if we track it; else append)
+        let currentCount = tapes[tIndex].clips.count
+        let insertionIndex = currentCount // For now, append at the end
+        tapes[tIndex].clips.insert(contentsOf: newClips, at: min(insertionIndex, tapes[tIndex].clips.count))
+
+        print("✅ Inserted \(newClips.count) clip(s) at index \(insertionIndex) in tape \"\(tapes[tIndex].title)\"")
     }
 }

@@ -10,12 +10,6 @@ enum ImportSource {
     case centerFAB
 }
 
-// MARK: - PickedMediaItem
-
-enum PickedMediaItem {
-    case video(URL)
-    case photo(UIImage)
-}
 
 // MARK: - PHPickerResult Extension
 
@@ -97,6 +91,7 @@ struct TapeCardView: View {
     let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
     let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void
     
+    @EnvironmentObject var tapeStore: TapesStore
     @StateObject private var castManager = CastManager.shared
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
@@ -225,66 +220,12 @@ struct TapeCardView: View {
                 Task { @MainActor in
                     let picked = await results.loadPickedMediaOrdered()
                     print("📦 Converted to PickedMedia count = \(picked.count)")
-
                     guard !picked.isEmpty else {
                         print("⚠️ No picked media resolved; aborting insert.")
                         return
                     }
 
-                    var newClips: [Clip] = []
-                    for m in picked {
-                        switch m {
-                        case .video(let url):
-                            // Generate thumbnail and duration for video
-                            let thumbnail = await generateThumbnail(from: url)
-                            let duration = await getVideoDuration(url: url)
-                            let clip = Clip.fromVideo(url: url, duration: duration, thumbnail: thumbnail)
-                            newClips.append(clip)
-                        case .photo(let image):
-                            // Convert image to data and use default duration
-                            if let imageData = image.jpegData(compressionQuality: 0.8) {
-                                let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
-                                newClips.append(clip)
-                            }
-                        }
-                    }
-
-                    // Convert to PickedMedia format for existing API
-                    let pickedMedia = newClips.map { clip in
-                        switch clip.clipType {
-                        case .video:
-                            return PickedMedia(
-                                type: .video,
-                                localURL: clip.localURL,
-                                thumbnail: clip.thumbnailImage,
-                                duration: clip.duration
-                            )
-                        case .image:
-                            return PickedMedia(
-                                type: .image,
-                                imageData: clip.imageData,
-                                thumbnail: clip.thumbnailImage,
-                                duration: clip.duration
-                            )
-                        }
-                    }
-
-                    // Insert at center — reuse the same method you use elsewhere
-                    print("📍 Inserting \(newClips.count) clip(s) at center of tape \(tape.id)")
-                    guard let source = importSource else { return }
-                    
-                    let finalStrategy: InsertionStrategy
-                    switch source {
-                    case .leftPlaceholder(let index):
-                        finalStrategy = .replaceThenAppend(startIndex: index)
-                    case .rightPlaceholder(let index):
-                        finalStrategy = .replaceThenAppend(startIndex: index)
-                    case .centerFAB:
-                        finalStrategy = .insertAtCenter
-                    }
-                    
-                    onMediaInserted(pickedMedia, finalStrategy)
-                    importSource = nil
+                    tapeStore.insertAtCenter(tapeID: tape.id, picked: picked)
                 }
             }
         }
