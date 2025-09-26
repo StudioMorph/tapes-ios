@@ -12,7 +12,7 @@ struct TapeCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header section with padding
+            // Header section with card padding
             VStack(alignment: .leading, spacing: Tokens.Space.l) {
                 HStack {
                     // Title with edit icon
@@ -58,10 +58,12 @@ struct TapeCardView: View {
             .padding(.horizontal, Tokens.Space.xl)
             .padding(.top, 16)
             
-            // Carousel section - 16pt margin from screen edges
+            // Carousel section - full width within card
             GeometryReader { geometry in
                 let screenW = UIScreen.main.bounds.width
-                let thumbW = floor((screenW - 64 - 32) / 2) // 32pt for 16pt margins on both sides
+                let cardPadding = Tokens.Space.xl * 2 // Total horizontal padding of card
+                let availableWidth = screenW - cardPadding
+                let thumbW = floor((availableWidth - 64) / 2) // 64pt for FAB space
                 let thumbH = floor(thumbW * 9.0 / 16.0)
                 
                 ZStack(alignment: .center) {
@@ -88,7 +90,6 @@ struct TapeCardView: View {
                 }
                 .frame(height: thumbH)
                 .clipped()
-                .padding(.horizontal, 16) // 16pt margin from screen edges
             }
             .frame(height: nil)
             .padding(.bottom, 16)
