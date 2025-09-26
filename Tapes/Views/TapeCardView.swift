@@ -9,6 +9,7 @@ struct TapeCardView: View {
     
     @StateObject private var castManager = CastManager.shared
     @State private var insertionIndex: Int = 0
+    @State private var fabMode: FABMode = .camera
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -85,9 +86,11 @@ struct TapeCardView: View {
                     .zIndex(1) // above thumbnails, below FAB
                 
                 // 3) Floating action button (camera)
-                FAB { _ in }
-                    .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
-                    .zIndex(2) // on top of everything
+                FabSwipableIcon(mode: $fabMode) {
+                    // Handle FAB tap action
+                }
+                .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
+                .zIndex(2) // on top of everything
             }
             .frame(height: thumbH)
             .padding(.vertical, Tokens.Spacing.m)

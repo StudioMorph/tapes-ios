@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum FABMode: CaseIterable {
+public enum FABMode: CaseIterable {
     case camera
     case gallery
     case transition
