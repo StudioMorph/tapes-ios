@@ -42,9 +42,10 @@ struct SystemMediaPicker: UIViewControllerRepresentable {
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            // Called for both Add (with results) and Cancel (results = [])
-            parent.onPicked(results)              // let caller insert in order
-            parent.isPresented = false            // ✅ dismiss the sheet
+            print("📸 PHPicker didFinishPicking — results.count = \(results.count)")
+            parent.isPresented = false
+            // Hand back to SwiftUI
+            parent.onPicked(results)
         }
     }
 }

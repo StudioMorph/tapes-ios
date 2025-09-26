@@ -10,6 +10,81 @@ enum ImportSource {
     case centerFAB
 }
 
+// MARK: - PickedMediaItem
+
+enum PickedMediaItem {
+    case video(URL)
+    case photo(UIImage)
+}
+
+// MARK: - PHPickerResult Extension
+
+extension Array where Element == PHPickerResult {
+    func loadPickedMediaOrdered() async -> [PickedMediaItem] {
+        var ordered: [PickedMediaItem?] = []
+        for _ in 0..<self.count {
+            ordered.append(nil)
+        }
+        await withTaskGroup(of: (Int, PickedMediaItem?)?.self) { group in
+            for (idx, result) in self.enumerated() {
+                group.addTask {
+                    let p = result.itemProvider
+                    // Prefer movie first
+                    if p.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+                        do {
+                            let url = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+                                p.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
+                                    if let error = error {
+                                        continuation.resume(throwing: error)
+                                    } else if let url = url {
+                                        continuation.resume(returning: url)
+                                    } else {
+                                        continuation.resume(throwing: NSError(domain: "NoURL", code: -1))
+                                    }
+                                }
+                            }
+                            let dst = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+                            try? FileManager.default.removeItem(at: dst)
+                            try FileManager.default.copyItem(at: url, to: dst)
+                            print("✅ Loaded movie → \(dst.lastPathComponent)")
+                            return (idx, .video(dst))
+                        } catch {
+                            print("❌ Movie load failed: \(error)")
+                            return (idx, nil)
+                        }
+                    }
+                    if p.canLoadObject(ofClass: UIImage.self) {
+                        do {
+                            let obj = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UIImage, Error>) in
+                                p.loadObject(ofClass: UIImage.self) { image, error in
+                                    if let error = error {
+                                        continuation.resume(throwing: error)
+                                    } else if let image = image as? UIImage {
+                                        continuation.resume(returning: image)
+                                    } else {
+                                        continuation.resume(throwing: NSError(domain: "NoImage", code: -1))
+                                    }
+                                }
+                            }
+                            print("✅ Loaded image")
+                            return (idx, .photo(obj))
+                        } catch {
+                            print("❌ Image load failed: \(error)")
+                        }
+                    }
+                    print("⚠️ Unsupported provider at index \(idx)")
+                    return (idx, nil)
+                }
+            }
+            for await pair in group {
+                guard let (idx, media) = pair else { continue }
+                ordered[idx] = media
+            }
+        }
+        return ordered.compactMap { $0 }
+    }
+}
+
 
 
 struct TapeCardView: View {
@@ -145,27 +220,71 @@ struct TapeCardView: View {
                 allowImages: true,
                 allowVideos: true
             ) { results in
-                guard !results.isEmpty else { return } // Cancel path
-                Task {
-                    // Process PHPickerResult array in order using existing method
-                    let pickedMedia = await processPickerResults(results)
-                    
-                    await MainActor.run {
-                        guard let source = importSource else { return }
-                        
-                        let finalStrategy: InsertionStrategy
-                        switch source {
-                        case .leftPlaceholder(let index):
-                            finalStrategy = .replaceThenAppend(startIndex: index)
-                        case .rightPlaceholder(let index):
-                            finalStrategy = .replaceThenAppend(startIndex: index)
-                        case .centerFAB:
-                            finalStrategy = .insertAtCenter
-                        }
-                        
-                        onMediaInserted(pickedMedia, finalStrategy)
-                        importSource = nil
+                print("🧩 onPick called with \(results.count) result(s)")
+                guard !results.isEmpty else { return }
+                Task { @MainActor in
+                    let picked = await results.loadPickedMediaOrdered()
+                    print("📦 Converted to PickedMedia count = \(picked.count)")
+
+                    guard !picked.isEmpty else {
+                        print("⚠️ No picked media resolved; aborting insert.")
+                        return
                     }
+
+                    var newClips: [Clip] = []
+                    for m in picked {
+                        switch m {
+                        case .video(let url):
+                            // Generate thumbnail and duration for video
+                            let thumbnail = await generateThumbnail(from: url)
+                            let duration = await getVideoDuration(url: url)
+                            let clip = Clip.fromVideo(url: url, duration: duration, thumbnail: thumbnail)
+                            newClips.append(clip)
+                        case .photo(let image):
+                            // Convert image to data and use default duration
+                            if let imageData = image.jpegData(compressionQuality: 0.8) {
+                                let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                                newClips.append(clip)
+                            }
+                        }
+                    }
+
+                    // Convert to PickedMedia format for existing API
+                    let pickedMedia = newClips.map { clip in
+                        switch clip.clipType {
+                        case .video:
+                            return PickedMedia(
+                                type: .video,
+                                localURL: clip.localURL,
+                                thumbnail: clip.thumbnailImage,
+                                duration: clip.duration
+                            )
+                        case .image:
+                            return PickedMedia(
+                                type: .image,
+                                imageData: clip.imageData,
+                                thumbnail: clip.thumbnailImage,
+                                duration: clip.duration
+                            )
+                        }
+                    }
+
+                    // Insert at center — reuse the same method you use elsewhere
+                    print("📍 Inserting \(newClips.count) clip(s) at center of tape \(tape.id)")
+                    guard let source = importSource else { return }
+                    
+                    let finalStrategy: InsertionStrategy
+                    switch source {
+                    case .leftPlaceholder(let index):
+                        finalStrategy = .replaceThenAppend(startIndex: index)
+                    case .rightPlaceholder(let index):
+                        finalStrategy = .replaceThenAppend(startIndex: index)
+                    case .centerFAB:
+                        finalStrategy = .insertAtCenter
+                    }
+                    
+                    onMediaInserted(pickedMedia, finalStrategy)
+                    importSource = nil
                 }
             }
         }
@@ -256,7 +375,7 @@ struct TapeCardView: View {
         onClipInsertedAtPlaceholder: { _, _ in },
         onMediaInserted: { _, _ in }
     )
-    .preferredColorScheme(.dark)
+    .preferredColorScheme(ColorScheme.dark)
     .padding()
     .background(Tokens.Colors.bg)
 }
@@ -272,7 +391,7 @@ struct TapeCardView: View {
         onClipInsertedAtPlaceholder: { _, _ in },
         onMediaInserted: { _, _ in }
     )
-    .preferredColorScheme(.light)
+    .preferredColorScheme(ColorScheme.light)
     .padding()
     .background(Tokens.Colors.bg)
 }
