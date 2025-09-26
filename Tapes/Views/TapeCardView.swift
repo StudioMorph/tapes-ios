@@ -99,15 +99,13 @@ struct TapeCardView: View {
             }
             .padding(Tokens.Space.xl)
             
-            // Full-width carousel that breaks out of card constraints
+            // Full-width carousel that extends to screen edges
             FullWidthCarousel(
                 tape: tape,
                 onThumbnailDelete: onThumbnailDelete,
                 insertionIndex: $insertionIndex
             )
-            .padding(.horizontal, -Tokens.Space.xl)  // Negative padding to break out of card constraints
         }
-        .padding(.horizontal, Tokens.Space.xl)  // Add horizontal padding to the entire card
         .background(
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.surface)
