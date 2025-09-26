@@ -86,7 +86,6 @@ struct TapeCardView: View {
                 .clipped()
             }
             .frame(height: nil)  // Remove fixed height constraint
-            .padding(.horizontal, 16)  // Card's inner padding
             .padding(.vertical, 16)     // Card hugs content: title + 16 + thumbnails + 16
         }
         .padding(Tokens.Space.xl)
