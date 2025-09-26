@@ -31,18 +31,24 @@ public struct FabSwipableIcon: View {
                 .frame(width: size, height: size)
                 .shadow(color: Color.black.opacity(isInteracting ? 0.35 : 0.25), radius: isInteracting ? 10 : 8, y: 4)
 
-            // ICON (moves with drag, then snaps back)
-            Image(systemName: mode.icon)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(iconColor)
-                .frame(width: size, height: size)     // match FAB circle exactly
-                .clipShape(Circle().size(width: size, height: size))  // exact circle mask
-                .contentShape(Circle().size(width: size, height: size)) // exact hit testing
-                .compositingGroup()                   // apply mask after offset
-                .offset(x: iconOffsetX)               // <-- only the icon moves
-                .animation(.spring(response: 0.28, dampingFraction: 0.88), value: iconOffsetX)
-                .contentTransition(.symbolEffect(.replace)) // subtle icon swap
+            // MOVING ICON LAYER — this is what must be masked
+            ZStack {
+                Image(systemName: mode.icon)
+                    .font(.system(size: size * 0.42, weight: .semibold)) // proportional to FAB size
+                    .foregroundColor(iconColor)
+                    .offset(x: iconOffsetX)               // <-- only the icon moves
+                    .animation(.spring(response: 0.28, dampingFraction: 0.88), value: iconOffsetX)
+                    .contentTransition(.symbolEffect(.replace)) // subtle icon swap
+            }
+            .frame(width: size, height: size, alignment: .center) // EXACT frame
+            .compositingGroup()
+            .mask(
+                Circle()
+                    .frame(width: size, height: size, alignment: .center)
+            )
         }
+        .frame(width: size, height: size)
+        .contentShape(Circle()) // keep hit target
         .overlay(
             // Invisible big tap target
             Circle().fill(Color.clear)
