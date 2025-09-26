@@ -61,7 +61,7 @@ struct TapeCardView: View {
                     .fill(Tokens.Colors.surface)
             )
             
-            // Dynamic carousel with FAB and centerline - NO card padding, full width
+            // Dynamic carousel with FAB and centerline - FULL WIDTH, breaks out of card
             GeometryReader { geometry in
                 let screenW = UIScreen.main.bounds.width
                 let thumbW = floor((screenW - 64) / 2)
@@ -94,7 +94,9 @@ struct TapeCardView: View {
             }
             .frame(height: nil)  // Remove fixed height constraint
             .padding(.vertical, 16)     // Card hugs content: title + 16 + thumbnails + 16
+            .padding(.horizontal, -Tokens.Space.xl)  // Negative padding to break out of card constraints
         }
+        .background(Color.clear)  // Ensure no background constraints
     }
 }
 
