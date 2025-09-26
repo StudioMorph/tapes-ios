@@ -53,23 +53,23 @@ struct TapesListView: View {
     private var tapesList: some View {
         ScrollView {
             LazyVStack(spacing: Tokens.Spacing.m) {  // 16pt vertical spacing between cards
-                ForEach(tapesStore.tapes) { tape in
+                ForEach($tapesStore.tapes) { $tape in
                     TapeCardView(
-                        tape: tape,
-                        onSettings: { tapesStore.selectTape(tape) },
+                        tape: $tape,
+                        onSettings: { tapesStore.selectTape($tape.wrappedValue) },
                         onPlay: { showingPlayOptions = true },
                         onAirPlay: { },
                         onThumbnailDelete: { clip in
-                            tapesStore.deleteClip(from: tape.id, clip: clip)
+                            tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
                         },
                         onClipInserted: { clip, index in
-                            tapesStore.insertClip(clip, in: tape.id, atCenterOfCarouselIndex: index)
+                            tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
                         },
                         onClipInsertedAtPlaceholder: { clip, placeholder in
-                            tapesStore.insertClipAtPlaceholder(clip, in: tape.id, placeholder: placeholder)
+                            tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
                         },
                         onMediaInserted: { pickedMedia, strategy in
-                            tapesStore.insertMedia(pickedMedia, at: strategy, in: tape.id)
+                            tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
                         }
                     )
                     .padding(.horizontal, Tokens.Spacing.m)  // 16pt outer padding

@@ -26,6 +26,7 @@ extension Array where Element == PHPickerResult {
                     // Prefer movie first
                     if p.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
                         do {
+                            // 1) Try file copy first
                             let url = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
                                 p.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
                                     if let error = error {
@@ -43,8 +44,36 @@ extension Array where Element == PHPickerResult {
                             print("✅ Loaded movie → \(dst.lastPathComponent)")
                             return (idx, .video(dst))
                         } catch {
-                            print("❌ Movie load failed: \(error)")
-                            return (idx, nil)
+                            print("⚠️ Movie load failed (file copy), trying in-place: \(error)")
+                            // 2) Fallback: in-place
+                            do {
+                                let (url, inPlace) = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(URL, Bool), Error>) in
+                                    p.loadInPlaceFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, inPlace, error in
+                                        if let error = error {
+                                            continuation.resume(throwing: error)
+                                        } else if let url = url {
+                                            continuation.resume(returning: (url, inPlace))
+                                        } else {
+                                            continuation.resume(throwing: NSError(domain: "NoURL", code: -1))
+                                        }
+                                    }
+                                }
+                                if inPlace {
+                                    // Use the original URL
+                                    print("✅ Loaded movie (in-place) → \(url.lastPathComponent)")
+                                    return (idx, .video(url))
+                                } else {
+                                    // Copy to temp
+                                    let dst = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+                                    try? FileManager.default.removeItem(at: dst)
+                                    try FileManager.default.copyItem(at: url, to: dst)
+                                    print("✅ Loaded movie (in-place copy) → \(dst.lastPathComponent)")
+                                    return (idx, .video(dst))
+                                }
+                            } catch {
+                                print("❌ Movie load failed (in-place): \(error.localizedDescription)")
+                                return (idx, nil)
+                            }
                         }
                     }
                     if p.canLoadObject(ofClass: UIImage.self) {
@@ -82,7 +111,7 @@ extension Array where Element == PHPickerResult {
 
 
 struct TapeCardView: View {
-    let tape: Tape
+    @Binding var tape: Tape
     let onSettings: () -> Void
     let onPlay: () -> Void
     let onAirPlay: () -> Void
@@ -225,7 +254,7 @@ struct TapeCardView: View {
                         return
                     }
 
-                    tapeStore.insertAtCenter(tapeID: tape.id, picked: picked)
+                    tapeStore.insertAtCenter(into: $tape, picked: picked)
                 }
             }
         }
@@ -307,7 +336,7 @@ struct TapeCardView: View {
 
 #Preview("Dark Mode") {
     TapeCardView(
-        tape: Tape.sampleTapes[0],
+        tape: .constant(Tape.sampleTapes[0]),
         onSettings: {},
         onPlay: {},
         onAirPlay: {},
@@ -324,7 +353,7 @@ struct TapeCardView: View {
 
 #Preview("Light Mode") {
     TapeCardView(
-        tape: Tape.sampleTapes[0],
+        tape: .constant(Tape.sampleTapes[0]),
         onSettings: {},
         onPlay: {},
         onAirPlay: {},

@@ -465,4 +465,29 @@ extension TapesStore {
 
         print("✅ Inserted \(newClips.count) clip(s) at index \(insertionIndex) in tape \"\(tapes[tIndex].title)\"")
     }
+    
+    /// Insert at the visual "center" of the carousel for a specific tape binding.
+    func insertAtCenter(into tape: Binding<Tape>, picked: [PickedMediaItem]) {
+        guard !picked.isEmpty else { return }
+        
+        // compute insert index from your existing "center" rule; for now append:
+        var newClips: [Clip] = []
+        for item in picked {
+            switch item {
+            case .video(let url):
+                let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+                newClips.append(clip)
+            case .photo(let image):
+                if let imageData = image.jpegData(compressionQuality: 0.8) {
+                    let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                    newClips.append(clip)
+                }
+            }
+        }
+        
+        // insert at calculated index; simple append example:
+        tape.wrappedValue.clips.append(contentsOf: newClips)
+        objectWillChange.send()
+        print("✅ Inserted \(newClips.count) clips into tape \(tape.wrappedValue.id)")
+    }
 }
