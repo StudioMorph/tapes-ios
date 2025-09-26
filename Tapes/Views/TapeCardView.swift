@@ -14,26 +14,27 @@ struct TapeCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Title row
             HStack(alignment: .firstTextBaseline, spacing: 0) {
-                // Title (flex)
-                Text(tape.title)
-                    .font(Tokens.Typography.title)
-                    .foregroundColor(Tokens.Colors.onSurface)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                // Left group: Title (hug) + 4 + pencil
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(tape.title)
+                        .font(Tokens.Typography.title)
+                        .foregroundColor(Tokens.Colors.onSurface)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                    
+                    Image(systemName: "pencil")
+                        .font(Tokens.Typography.title)
+                        .foregroundColor(Tokens.Colors.onSurface)
+                        .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
                 
-                // 4pt to pencil
-                Spacer().frame(width: 4)
+                // 32pt minimum gap
+                Spacer(minLength: 32)
                 
-                Image(systemName: "pencil")
-                    .font(Tokens.Typography.title)
-                    .foregroundColor(Tokens.Colors.onSurface)
-                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
-                
-                // 32pt to gear
-                Spacer().frame(width: 32)
-                
+                // Right group: gear 16 cast? 16 play
                 HStack(spacing: 16) {
                     // Settings button
                     Button(action: onSettings) {
