@@ -13,28 +13,32 @@ struct TapeCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Title row
-            HStack {
-                // Title with edit icon
-                HStack(alignment: .firstTextBaseline, spacing: Tokens.Spacing.s) {
-                    Text(tape.title)
-                        .font(Tokens.Typography.title)
-                        .foregroundColor(Tokens.Colors.onSurface)
-                        .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
-                    
-                    Image(systemName: "pencil")
-                        .font(Tokens.Typography.title)
-                        .foregroundColor(Tokens.Colors.onSurface)
-                        .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
-                }
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                // Title (flex)
+                Text(tape.title)
+                    .font(Tokens.Typography.title)
+                    .foregroundColor(Tokens.Colors.onSurface)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                 
-                Spacer()
+                // 4pt to pencil
+                Spacer().frame(width: 4)
                 
-                // Action buttons with 16pt spacing
-                HStack(spacing: Tokens.Spacing.m) {
+                Image(systemName: "pencil")
+                    .font(Tokens.Typography.title)
+                    .foregroundColor(Tokens.Colors.onSurface)
+                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                
+                // 32pt to gear
+                Spacer().frame(width: 32)
+                
+                HStack(spacing: 16) {
                     // Settings button
                     Button(action: onSettings) {
                         Image(systemName: "gearshape")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(Tokens.Colors.onSurface)
                     }
                     
@@ -42,7 +46,7 @@ struct TapeCardView: View {
                     if castManager.hasAvailableDevices {
                         Button(action: onAirPlay) {
                             Image(systemName: "airplayvideo")
-                                .font(.system(size: 18, weight: .medium))
+                                .font(.system(size: 17, weight: .semibold))
                                 .foregroundColor(Tokens.Colors.onSurface)
                         }
                     }
@@ -50,7 +54,7 @@ struct TapeCardView: View {
                     // Play button
                     Button(action: onPlay) {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(Tokens.Colors.onSurface)
                     }
                 }
