@@ -23,6 +23,7 @@ public struct Tokens {
         public static let elevated = Color(hex: "#1F2937")   // thumbnail tile
         public static let red = Color(hex: "#E50914")
         public static let onSurface = Color.white
+        public static let muted = Color(hex: "#9CA3AF")      // muted text color
     }
     
     public enum Typography {

@@ -112,16 +112,16 @@ public struct ExportProgressOverlay: View {
                     .ignoresSafeArea()
                 
                 // Progress Card
-                VStack(spacing: DesignTokens.Spacing.s20) {
+                VStack(spacing: Tokens.Spacing.l) {
                     // Progress Indicator
                     ZStack {
                         Circle()
-                            .stroke(DesignTokens.Colors.muted(30), lineWidth: 4)
+                            .stroke(Tokens.Colors.muted.opacity(0.3), lineWidth: 4)
                             .frame(width: 60, height: 60)
                         
                         Circle()
                             .trim(from: 0, to: coordinator.exportProgress)
-                            .stroke(DesignTokens.Colors.primaryRed, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .stroke(Tokens.Colors.red, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                             .frame(width: 60, height: 60)
                             .rotationEffect(.degrees(-90))
                             .animation(.easeInOut(duration: 0.3), value: coordinator.exportProgress)
@@ -129,40 +129,40 @@ public struct ExportProgressOverlay: View {
                         if coordinator.exportProgress < 1.0 {
                             Image(systemName: "arrow.up.circle.fill")
                                 .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(DesignTokens.Colors.primaryRed)
+                                .foregroundColor(Tokens.Colors.red)
                         } else {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(DesignTokens.Colors.primaryRed)
+                                .foregroundColor(Tokens.Colors.red)
                         }
                     }
                     
                     // Progress Text
-                    VStack(spacing: DesignTokens.Spacing.s8) {
+                    VStack(spacing: Tokens.Spacing.s) {
                         Text("Exporting Video")
-                            .font(DesignTokens.Typography.title)
-                            .foregroundColor(DesignTokens.Colors.onSurface(.light))
+                            .font(Tokens.Typography.title)
+                            .foregroundColor(Tokens.Colors.onSurface)
                             .fontWeight(.medium)
                         
                         Text("Creating 1080p MP4 with transitions...")
-                            .font(DesignTokens.Typography.body)
-                            .foregroundColor(DesignTokens.Colors.muted(60))
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(Tokens.Colors.muted)
                             .multilineTextAlignment(.center)
                         
                         if coordinator.exportProgress > 0 {
                             Text("\(Int(coordinator.exportProgress * 100))%")
-                                .font(DesignTokens.Typography.caption)
-                                .foregroundColor(DesignTokens.Colors.muted(60))
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundColor(Tokens.Colors.muted)
                         }
                     }
                 }
-                .padding(DesignTokens.Spacing.s24)
+                .padding(Tokens.Spacing.l)
                 .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.Radius.card)
-                        .fill(DesignTokens.Colors.surface(.light))
+                    RoundedRectangle(cornerRadius: Tokens.Radius.card)
+                        .fill(Tokens.Colors.card)
                         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 4)
                 )
-                .padding(.horizontal, DesignTokens.Spacing.s32)
+                .padding(.horizontal, Tokens.Spacing.l)
             }
         }
     }
@@ -183,32 +183,32 @@ public struct CompletionToast: View {
             VStack {
                 Spacer()
                 
-                HStack(spacing: DesignTokens.Spacing.s12) {
+                HStack(spacing: Tokens.Spacing.m) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(.white)
                     
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.s4) {
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
                         Text("Export Complete")
-                            .font(DesignTokens.Typography.body)
+                            .font(.system(size: 16, weight: .regular))
                             .foregroundColor(.white)
                             .fontWeight(.medium)
                         
                         Text("Video saved to Photos in 'Tapes' album")
-                            .font(DesignTokens.Typography.caption)
+                            .font(.system(size: 12, weight: .regular))
                             .foregroundColor(.white.opacity(0.9))
                     }
                     
                     Spacer()
                 }
-                .padding(.horizontal, DesignTokens.Spacing.s16)
-                .padding(.vertical, DesignTokens.Spacing.s12)
+                .padding(.horizontal, Tokens.Spacing.m)
+                .padding(.vertical, Tokens.Spacing.m)
                 .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.Radius.thumbnail)
-                        .fill(DesignTokens.Colors.primaryRed)
+                    RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
+                        .fill(Tokens.Colors.red)
                 )
-                .padding(.horizontal, DesignTokens.Spacing.s20)
-                .padding(.bottom, DesignTokens.Spacing.s32)
+                .padding(.horizontal, Tokens.Spacing.l)
+                .padding(.bottom, Tokens.Spacing.l)
                 .opacity(isVisible ? 1.0 : 0.0)
                 .scaleEffect(isVisible ? 1.0 : 0.8)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isVisible)

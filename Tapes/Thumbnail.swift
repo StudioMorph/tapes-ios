@@ -16,87 +16,103 @@ struct Thumbnail: View {
     @State private var showDeleteConfirmation = false
     
     var body: some View {
-        // Thumbnail image - exact sizing, no extra spacing or padding
+        thumbnailContent
+            .overlay(indexLabel)
+            .overlay(deleteOverlay)
+            .offset(y: dragOffset)
+            .gesture(thumbnailGesture)
+            .alert("Delete Clip", isPresented: $showDeleteConfirmation) {
+                deleteAlertButtons
+            } message: {
+                Text("Are you sure you want to delete this clip?")
+            }
+    }
+    
+    private var thumbnailContent: some View {
         RoundedRectangle(cornerRadius: 8)
             .fill(Tokens.Colors.elevated)
-            .overlay(
-                Group {
-                    if thumbnail.isPlaceholder {
-                        Image(systemName: "plus")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundColor(Tokens.Colors.text)
-                    } else {
-                        // Placeholder for actual video thumbnail
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(Tokens.Colors.text)
-                    }
-                }
-            )
-            .overlay(
-                // Index label
+            .overlay(thumbnailIcon)
+    }
+    
+    private var thumbnailIcon: some View {
+        Group {
+            if thumbnail.isPlaceholder {
+                Image(systemName: "plus")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(Tokens.Colors.onSurface)
+            } else {
+                Image(systemName: "video.fill")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(Tokens.Colors.onSurface)
+            }
+        }
+    }
+    
+    private var indexLabel: some View {
+        VStack {
+            HStack {
+                Spacer()
+                Text("\(thumbnail.index)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundColor(Tokens.Colors.onSurface)
+                    .padding(Tokens.Spacing.s)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(Tokens.Spacing.s)
+            }
+            Spacer()
+        }
+        .padding(Tokens.Spacing.s)
+    }
+    
+    private var deleteOverlay: some View {
+        Group {
+            if isLongPressing {
                 VStack {
-                    HStack {
-                        Spacer()
-                        Text("\(thumbnail.index)")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundColor(Tokens.Colors.onAccent)
-                            .padding(Tokens.Space.xs)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(Tokens.Space.xs)
-                    }
-                    Spacer()
+                    Image(systemName: "trash")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Tokens.Colors.onSurface)
+                        .padding(Tokens.Spacing.s)
+                        .background(Tokens.Colors.red)
+                        .clipShape(Circle())
                 }
-                .padding(Tokens.Space.xs)
-            )
-            .overlay(
-                // Delete confirmation overlay
-                Group {
+                .background(Color.black.opacity(0.7))
+                .cornerRadius(8)
+            }
+        }
+    }
+    
+    private var thumbnailGesture: some Gesture {
+        SimultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onChanged { _ in
+                    isLongPressing = true
+                }
+                .onEnded { _ in
+                    isLongPressing = false
+                },
+            DragGesture()
+                .onChanged { value in
                     if isLongPressing {
-                        VStack {
-                            Image(systemName: "trash")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(Tokens.Colors.onAccent)
-                                .padding(Tokens.Space.s)
-                                .background(Tokens.Colors.brandRed)
-                                .clipShape(Circle())
+                        dragOffset = value.translation.height
+                        if value.translation.height < -50 {
+                            showDeleteConfirmation = true
                         }
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(8)
                     }
                 }
-            )
-            .offset(y: dragOffset)
-            .gesture(
-                SimultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.5)
-                        .onChanged { _ in
-                            isLongPressing = true
+                .onEnded { _ in
+                    if !showDeleteConfirmation {
+                        withAnimation(.spring()) {
+                            dragOffset = 0
                         }
-                        .onEnded { _ in
-                            isLongPressing = false
-                        },
-                    DragGesture()
-                        .onChanged { value in
-                            if isLongPressing {
-                                dragOffset = value.translation.height
-                                if value.translation.height < -50 {
-                                    showDeleteConfirmation = true
-                                }
-                            }
-                        }
-                        .onEnded { _ in
-                            if !showDeleteConfirmation {
-                                withAnimation(.spring()) {
-                                    dragOffset = 0
-                                }
-                            }
-                            isLongPressing = false
-                        }
-                )
-            )
-        .alert("Delete Clip", isPresented: $showDeleteConfirmation) {
+                    }
+                    isLongPressing = false
+                }
+        )
+    }
+    
+    private var deleteAlertButtons: some View {
+        Group {
             Button("Delete", role: .destructive) {
                 onDelete()
             }
@@ -105,8 +121,6 @@ struct Thumbnail: View {
                     dragOffset = 0
                 }
             }
-        } message: {
-            Text("Are you sure you want to delete this clip?")
         }
     }
 }

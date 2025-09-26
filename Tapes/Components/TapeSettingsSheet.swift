@@ -21,7 +21,7 @@ struct TapeSettingsSheet: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: Tokens.Space.xl) {
+            VStack(spacing: Tokens.Spacing.l) {
                 transitionSection
                 if transition != .none {
                     transitionDurationSection
@@ -30,7 +30,7 @@ struct TapeSettingsSheet: View {
                 scaleModeSection
                 Spacer()
             }
-            .padding(Tokens.Space.xl)
+            .padding(Tokens.Spacing.l)
             .background(Tokens.Colors.bg)
             .navigationTitle("Tape Settings")
             .navigationBarTitleDisplayMode(.large)
@@ -39,14 +39,14 @@ struct TapeSettingsSheet: View {
                     Button("Cancel") {
                         onDismiss()
                     }
-                    .foregroundColor(Tokens.Colors.text)
+                    .foregroundColor(Tokens.Colors.onSurface)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
                         saveChanges()
                     }
-                    .foregroundColor(hasChanges ? Tokens.Colors.brandRed : Tokens.Colors.muted)
+                    .foregroundColor(hasChanges ? Tokens.Colors.red : Tokens.Colors.muted)
                     .disabled(!hasChanges)
                 }
             }
@@ -54,12 +54,12 @@ struct TapeSettingsSheet: View {
     }
     
     private var transitionSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             Text("Transition")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Tokens.Colors.text)
+                .foregroundColor(Tokens.Colors.onSurface)
             
-            VStack(spacing: Tokens.Space.m) {
+            VStack(spacing: Tokens.Spacing.m) {
                 transitionOption(title: "None (Hard Cut)", description: "Default for speed and clarity", value: .none)
                 transitionOption(title: "Crossfade", description: "The industry-standard, smooth and safe choice", value: .crossfade)
                 transitionOption(title: "Slide (left→right)", description: "Horizontal slide between clips", value: .slideLR)
@@ -69,19 +69,19 @@ struct TapeSettingsSheet: View {
     }
     
     private var transitionDurationSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             Text("Transition Duration")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Tokens.Colors.text)
+                .foregroundColor(Tokens.Colors.onSurface)
             
-            VStack(spacing: Tokens.Space.s) {
+            VStack(spacing: Tokens.Spacing.s) {
                 HStack {
                     Text("0.1s")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Tokens.Colors.muted)
                     
                     Slider(value: $transitionDuration, in: 0.1...2.0, step: 0.1)
-                        .accentColor(Tokens.Colors.brandRed)
+                        .accentColor(Tokens.Colors.red)
                     
                     Text("2.0s")
                         .font(.system(size: 14, weight: .medium))
@@ -90,21 +90,21 @@ struct TapeSettingsSheet: View {
                 
                 Text("\(String(format: "%.1f", transitionDuration))s")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Tokens.Colors.text)
+                    .foregroundColor(Tokens.Colors.onSurface)
             }
-            .padding(Tokens.Space.l)
+            .padding(Tokens.Spacing.l)
             .background(Tokens.Colors.elevated)
             .cornerRadius(Tokens.Radius.card)
         }
     }
     
     private var orientationSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             Text("Orientation")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Tokens.Colors.text)
+                .foregroundColor(Tokens.Colors.onSurface)
             
-            VStack(spacing: Tokens.Space.m) {
+            VStack(spacing: Tokens.Spacing.m) {
                 orientationOption(title: "Portrait", description: "9:16 aspect ratio", value: .portrait)
                 orientationOption(title: "Landscape", description: "16:9 aspect ratio", value: .landscape)
             }
@@ -112,12 +112,12 @@ struct TapeSettingsSheet: View {
     }
     
     private var scaleModeSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             Text("Scale Mode")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Tokens.Colors.text)
+                .foregroundColor(Tokens.Colors.onSurface)
             
-            VStack(spacing: Tokens.Space.m) {
+            VStack(spacing: Tokens.Spacing.m) {
                 scaleModeOption(title: "Fill", description: "Crop to fill frame", value: .fill)
                 scaleModeOption(title: "Fit", description: "Scale to fit frame", value: .fit)
             }
@@ -130,10 +130,10 @@ struct TapeSettingsSheet: View {
             hasChanges = true
         }) {
             HStack {
-                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
                     Text(title)
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.text)
+                        .foregroundColor(Tokens.Colors.onSurface)
                     
                     Text(description)
                         .font(.system(size: 12, weight: .regular))
@@ -144,11 +144,11 @@ struct TapeSettingsSheet: View {
                 
                 if transition == value {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(Tokens.Colors.brandRed)
+                        .foregroundColor(Tokens.Colors.red)
                         .font(.system(size: 20))
                 }
             }
-            .padding(Tokens.Space.l)
+            .padding(Tokens.Spacing.l)
             .background(Tokens.Colors.elevated)
             .cornerRadius(Tokens.Radius.card)
         }
@@ -161,10 +161,10 @@ struct TapeSettingsSheet: View {
             hasChanges = true
         }) {
             HStack {
-                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
                     Text(title)
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.text)
+                        .foregroundColor(Tokens.Colors.onSurface)
                     
                     Text(description)
                         .font(.system(size: 12, weight: .regular))
@@ -175,11 +175,11 @@ struct TapeSettingsSheet: View {
                 
                 if orientation == value {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(Tokens.Colors.brandRed)
+                        .foregroundColor(Tokens.Colors.red)
                         .font(.system(size: 20))
                 }
             }
-            .padding(Tokens.Space.l)
+            .padding(Tokens.Spacing.l)
             .background(Tokens.Colors.elevated)
             .cornerRadius(Tokens.Radius.card)
         }
@@ -192,10 +192,10 @@ struct TapeSettingsSheet: View {
             hasChanges = true
         }) {
             HStack {
-                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
                     Text(title)
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.text)
+                        .foregroundColor(Tokens.Colors.onSurface)
                     
                     Text(description)
                         .font(.system(size: 12, weight: .regular))
@@ -206,11 +206,11 @@ struct TapeSettingsSheet: View {
                 
                 if scaleMode == value {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(Tokens.Colors.brandRed)
+                        .foregroundColor(Tokens.Colors.red)
                         .font(.system(size: 20))
                 }
             }
-            .padding(Tokens.Space.l)
+            .padding(Tokens.Spacing.l)
             .background(Tokens.Colors.elevated)
             .cornerRadius(Tokens.Radius.card)
         }

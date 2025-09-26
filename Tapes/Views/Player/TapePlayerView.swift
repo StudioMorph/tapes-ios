@@ -54,15 +54,15 @@ public struct TapePlayerView: View {
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Tokens.Colors.text)
+                    .foregroundColor(Tokens.Colors.onSurface)
             }
             
             Spacer()
             
-            VStack(spacing: Tokens.Space.xs) {
+            VStack(spacing: Tokens.Spacing.s) {
                 Text(tape.title)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Tokens.Colors.text)
+                    .foregroundColor(Tokens.Colors.onSurface)
                     .lineLimit(1)
                 
                 Text("\(tape.clipCount) clips • \(formatDuration(composer.totalDuration))")
@@ -80,9 +80,9 @@ public struct TapePlayerView: View {
             }
             .opacity(0.5) // Placeholder styling
         }
-        .padding(.horizontal, Tokens.Space.xl)
-        .padding(.top, Tokens.Space.l)
-        .padding(.bottom, Tokens.Space.xl)
+        .padding(.horizontal, Tokens.Spacing.l)
+        .padding(.top, Tokens.Spacing.l)
+        .padding(.bottom, Tokens.Spacing.l)
     }
     
     // MARK: - Main Player Area
@@ -115,7 +115,7 @@ public struct TapePlayerView: View {
                 .aspectRatio(tape.orientation == .portrait ? 9/16 : 16/9, contentMode: .fit)
             
             // Video Content Placeholder
-            VStack(spacing: Tokens.Space.l) {
+            VStack(spacing: Tokens.Spacing.l) {
                 Image(systemName: "play.rectangle.fill")
                     .font(.system(size: 48, weight: .light))
                     .foregroundColor(Tokens.Colors.muted)
@@ -131,23 +131,23 @@ public struct TapePlayerView: View {
                 }
             }
         }
-        .padding(.horizontal, Tokens.Space.xl)
+        .padding(.horizontal, Tokens.Spacing.l)
     }
     
     private var clipIndicator: some View {
-        VStack(spacing: Tokens.Space.s) {
+        VStack(spacing: Tokens.Spacing.s) {
             ForEach(0..<tape.clipCount, id: \.self) { index in
                 Circle()
                     .fill(index == composer.currentClipIndex ? 
-                          Tokens.Colors.brandRed : 
+                          Tokens.Colors.red : 
                           Tokens.Colors.muted)
                     .frame(width: 8, height: 8)
                     .scaleEffect(index == composer.currentClipIndex ? 1.2 : 1.0)
                     .animation(.easeInOut(duration: 0.2), value: composer.currentClipIndex)
             }
         }
-        .padding(.vertical, Tokens.Space.m)
-        .padding(.horizontal, Tokens.Space.s)
+        .padding(.vertical, Tokens.Spacing.m)
+        .padding(.horizontal, Tokens.Spacing.s)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(.black.opacity(0.6))
@@ -155,7 +155,7 @@ public struct TapePlayerView: View {
     }
     
     private func transitionIndicator(_ transition: TransitionInfo) -> some View {
-        VStack(spacing: Tokens.Space.xs) {
+        VStack(spacing: Tokens.Spacing.s) {
             Text(transition.type.displayName)
                 .font(.system(size: 12, weight: .regular))
                 .foregroundColor(.white)
@@ -165,30 +165,30 @@ public struct TapePlayerView: View {
                 .font(.system(size: 12, weight: .regular))
                 .foregroundColor(.white.opacity(0.8))
         }
-        .padding(.horizontal, Tokens.Space.m)
-        .padding(.vertical, Tokens.Space.s)
+        .padding(.horizontal, Tokens.Spacing.m)
+        .padding(.vertical, Tokens.Spacing.s)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Tokens.Colors.brandRed)
+                .fill(Tokens.Colors.red)
         )
     }
     
     // MARK: - Controls View
     
     private var controlsView: some View {
-        VStack(spacing: Tokens.Space.xl) {
+        VStack(spacing: Tokens.Spacing.l) {
             // Progress Bar
             progressBar
             
             // Control Buttons
             controlButtons
         }
-        .padding(.horizontal, Tokens.Space.xl)
-        .padding(.bottom, Tokens.Space.xxl)
+        .padding(.horizontal, Tokens.Spacing.l)
+        .padding(.bottom, Tokens.Spacing.l)
     }
     
     private var progressBar: some View {
-        VStack(spacing: Tokens.Space.s) {
+        VStack(spacing: Tokens.Spacing.s) {
             // Progress Slider
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
@@ -199,7 +199,7 @@ public struct TapePlayerView: View {
                     
                     // Progress
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Tokens.Colors.brandRed)
+                        .fill(Tokens.Colors.red)
                         .frame(width: geometry.size.width * composer.progress, height: 4)
                         .animation(.easeInOut(duration: 0.1), value: composer.progress)
                 }
@@ -222,19 +222,19 @@ public struct TapePlayerView: View {
     }
     
     private var controlButtons: some View {
-        HStack(spacing: Tokens.Space.xxl) {
+        HStack(spacing: Tokens.Spacing.l) {
             // Restart Button
             Button(action: composer.restart) {
                 Image(systemName: "backward.end.fill")
                     .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Tokens.Colors.text)
+                    .foregroundColor(Tokens.Colors.onSurface)
             }
             
             // Play/Pause Button
             Button(action: composer.togglePlayPause) {
                 Image(systemName: composer.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 32, weight: .medium))
-                    .foregroundColor(Tokens.Colors.brandRed)
+                    .foregroundColor(Tokens.Colors.red)
             }
             
             // Placeholder for future controls

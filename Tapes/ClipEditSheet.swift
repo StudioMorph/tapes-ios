@@ -6,12 +6,12 @@ struct ClipEditSheet: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: Tokens.Space.xl) {
+            VStack(spacing: Tokens.Spacing.l) {
                 trimSection
                 fitInCanvasSection
                 Spacer()
             }
-            .padding(Tokens.Space.xl)
+            .padding(Tokens.Spacing.l)
             .background(Tokens.Colors.bg)
             .navigationTitle("Edit Clip")
             .navigationBarTitleDisplayMode(.inline)
@@ -20,14 +20,14 @@ struct ClipEditSheet: View {
                     Button("Done") {
                         isPresented = false
                     }
-                    .foregroundColor(Tokens.Colors.text)
+                    .foregroundColor(Tokens.Colors.onSurface)
                 }
             }
         }
     }
     
     private var trimSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.s) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
             Button(action: {
                 onAction(.trim)
                 isPresented = false
@@ -35,27 +35,27 @@ struct ClipEditSheet: View {
                 HStack {
                     Text("Trim the clip's length")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.onAccent)
+                        .foregroundColor(Tokens.Colors.onSurface)
                     Spacer()
                 }
-                .padding(Tokens.Space.l)
-                .background(Tokens.Colors.brandRed)
+                .padding(Tokens.Spacing.l)
+                .background(Tokens.Colors.red)
                 .cornerRadius(Tokens.Radius.card)
             }
             
             Text("Trim the start or the end of the clip")
                 .font(.system(size: 12, weight: .regular))
-                .foregroundColor(Tokens.Colors.muted)
+                .foregroundColor(Tokens.Colors.onSurface.opacity(0.6))
         }
     }
     
     private var fitInCanvasSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             Text("Fit in canvas")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Tokens.Colors.text)
+                .foregroundColor(Tokens.Colors.onSurface)
             
-            VStack(spacing: Tokens.Space.s) {
+            VStack(spacing: Tokens.Spacing.s) {
                 fillOption
                 fitOption
             }
@@ -70,25 +70,25 @@ struct ClipEditSheet: View {
             HStack {
                 Image(systemName: "rectangle.fill")
                     .font(.title2)
-                    .foregroundColor(Tokens.Colors.text)
+                    .foregroundColor(Tokens.Colors.onSurface)
                 
-                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
                     Text("Fill")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.text)
+                        .foregroundColor(Tokens.Colors.onSurface)
                     
                     Text("Scale the clip to fill the canvas")
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Tokens.Colors.muted)
+                        .foregroundColor(Tokens.Colors.onSurface.opacity(0.6))
                 }
                 
                 Spacer()
                 
                 Image(systemName: "checkmark")
                     .font(.title2)
-                    .foregroundColor(Tokens.Colors.brandRed)
+                    .foregroundColor(Tokens.Colors.red)
             }
-            .padding(Tokens.Space.l)
+            .padding(Tokens.Spacing.l)
             .background(Tokens.Colors.elevated)
             .cornerRadius(Tokens.Radius.card)
         }
@@ -102,21 +102,21 @@ struct ClipEditSheet: View {
             HStack {
                 Image(systemName: "rectangle")
                     .font(.title2)
-                    .foregroundColor(Tokens.Colors.text)
+                    .foregroundColor(Tokens.Colors.onSurface)
                 
-                VStack(alignment: .leading, spacing: Tokens.Space.xs) {
+                VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
                     Text("Fit")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.text)
+                        .foregroundColor(Tokens.Colors.onSurface)
                     
                     Text("Fits the whole clip in the canvas")
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Tokens.Colors.muted)
+                        .foregroundColor(Tokens.Colors.onSurface.opacity(0.6))
                 }
                 
                 Spacer()
             }
-            .padding(Tokens.Space.l)
+            .padding(Tokens.Spacing.l)
             .background(Tokens.Colors.elevated)
             .cornerRadius(Tokens.Radius.card)
         }
