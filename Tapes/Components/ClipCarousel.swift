@@ -21,6 +21,9 @@ struct ClipCarousel: View {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 0) {                        // ZERO GAP
+                        // Leading 16pt padding INSIDE the card
+                        Color.clear.frame(width: 16)
+                        
                         ForEach(items.indices, id: \.self) { i in
                             ThumbnailView(item: items[i])
                                 .frame(width: thumbSize.width, height: thumbSize.height)
@@ -34,6 +37,9 @@ struct ClipCarousel: View {
                                 })
                                 .id("item-\(i)")
                         }
+                        
+                        // Trailing 16pt padding INSIDE the card
+                        Color.clear.frame(width: 16)
                     }
                     .coordinateSpace(name: "carousel")
                 }
