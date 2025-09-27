@@ -115,17 +115,22 @@ public struct TapePlayerView: View {
                 .fill(Tokens.Colors.elevated)
                 .aspectRatio(tape.orientation == .portrait ? 9/16 : 16/9, contentMode: .fit)
             
-            // Video Content Placeholder
-            VStack(spacing: Tokens.Spacing.l) {
-                Image(systemName: "play.rectangle.fill")
-                    .font(.system(size: 48, weight: .light))
-                    .foregroundColor(Tokens.Colors.muted)
-                
-                Text("Video Preview")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Tokens.Colors.muted)
-                
-                if composer.currentClip != nil {
+            // Video Content
+            if let currentClip = composer.currentClip {
+                print("🎬 TapePlayerView: Rendering video for clip \(currentClip.id), URL: \(currentClip.localURL?.absoluteString ?? "nil")")
+                VideoPlayerView(clip: currentClip)
+            } else {
+                print("🎬 TapePlayerView: No current clip available")
+                // Video Content Placeholder
+                VStack(spacing: Tokens.Spacing.l) {
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.system(size: 48, weight: .light))
+                        .foregroundColor(Tokens.Colors.muted)
+                    
+                    Text("Video Preview")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.muted)
+                    
                     Text("Clip \(composer.currentClipIndex + 1) of \(tape.clipCount)")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(Tokens.Colors.muted)
