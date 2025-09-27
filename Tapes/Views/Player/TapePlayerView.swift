@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 import AVKit
 
-// MARK: - Clean Tape Player View
+// MARK: - Unified Tape Player View
 
 struct TapePlayerView: View {
     @State private var player: AVPlayer?
@@ -10,6 +10,9 @@ struct TapePlayerView: View {
     @State private var isPlaying: Bool = false
     @State private var showingControls: Bool = true
     @State private var controlsTimer: Timer?
+    @State private var totalDuration: Double = 0
+    @State private var currentTime: Double = 0
+    @State private var isFinished: Bool = false
     
     let tape: Tape
     let onDismiss: () -> Void
@@ -72,7 +75,7 @@ struct TapePlayerView: View {
     private var videoPlayerView: some View {
         GeometryReader { geometry in
             if let player = player {
-                VideoPlayer(player: player)
+                CustomVideoPlayerView(player: player)
                     .onAppear {
                         print("🎬 Playing clip \(currentClipIndex + 1) of \(tape.clips.count)")
                     }
@@ -95,36 +98,93 @@ struct TapePlayerView: View {
     
     private var controlsView: some View {
         VStack(spacing: 20) {
-            // Progress indicator
-            progressView
-            
-            // Control buttons
-            HStack(spacing: 40) {
-                // Previous button
-                Button(action: previousClip) {
-                    Image(systemName: "backward.fill")
-                        .font(.title)
-                        .foregroundColor(.white)
-                }
-                .disabled(currentClipIndex == 0)
+            if isFinished {
+                // Finished state - show play again button
+                finishedView
+            } else {
+                // Global progress bar
+                globalProgressView
                 
-                // Play/Pause button
-                Button(action: togglePlayPause) {
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.largeTitle)
-                        .foregroundColor(.white)
-                }
-                
-                // Next button
-                Button(action: nextClip) {
-                    Image(systemName: "forward.fill")
-                        .font(.title)
-                        .foregroundColor(.white)
-                }
-                .disabled(currentClipIndex >= tape.clips.count - 1)
+                // Global control buttons
+                globalControlButtons
             }
         }
         .padding()
+    }
+    
+    // MARK: - Finished View
+    
+    private var finishedView: some View {
+        VStack(spacing: 20) {
+            Text("Playback Complete")
+                .font(.title2)
+                .foregroundColor(.white)
+            
+            Button(action: playAgain) {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Play Again")
+                }
+                .font(.title2)
+                .foregroundColor(.black)
+                .padding()
+                .background(Color.white)
+                .cornerRadius(10)
+            }
+        }
+    }
+    
+    // MARK: - Global Progress View
+    
+    private var globalProgressView: some View {
+        VStack(spacing: 8) {
+            // Progress bar
+            ProgressView(value: currentTime, total: totalDuration)
+                .progressViewStyle(LinearProgressViewStyle(tint: .white))
+                .scaleEffect(y: 2)
+            
+            // Time labels
+            HStack {
+                Text(formatTime(currentTime))
+                    .foregroundColor(.white)
+                    .font(.caption)
+                
+                Spacer()
+                
+                Text(formatTime(totalDuration))
+                    .foregroundColor(.white)
+                    .font(.caption)
+            }
+        }
+    }
+    
+    // MARK: - Global Control Buttons
+    
+    private var globalControlButtons: some View {
+        HStack(spacing: 40) {
+            // Previous button
+            Button(action: previousClip) {
+                Image(systemName: "backward.fill")
+                    .font(.title)
+                    .foregroundColor(.white)
+            }
+            .disabled(currentClipIndex == 0)
+            
+            // Play/Pause button
+            Button(action: togglePlayPause) {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.largeTitle)
+                    .foregroundColor(.white)
+            }
+            
+            // Next button
+            Button(action: nextClip) {
+                Image(systemName: "forward.fill")
+                    .font(.title)
+                    .foregroundColor(.white)
+            }
+            .disabled(currentClipIndex >= tape.clips.count - 1)
+        }
     }
     
     // MARK: - Progress View
@@ -137,7 +197,7 @@ struct TapePlayerView: View {
             Spacer()
             
             if let clip = currentClip {
-                Text(formatDuration(clip.duration))
+                Text(formatTime(clip.duration))
                     .foregroundColor(.white)
             }
         }
@@ -155,7 +215,15 @@ struct TapePlayerView: View {
     
     private func setupPlayer() {
         guard !tape.clips.isEmpty else { return }
+        calculateTotalDuration()
         loadCurrentClip()
+    }
+    
+    private func calculateTotalDuration() {
+        totalDuration = tape.clips.reduce(0) { total, clip in
+            total + clip.duration
+        }
+        print("🎬 Total duration: \(formatTime(totalDuration))")
     }
     
     private func loadCurrentClip() {
@@ -191,11 +259,19 @@ struct TapePlayerView: View {
         if currentClipIndex < tape.clips.count - 1 {
             nextClip()
         } else {
-            // Reached the end - stop playing
+            // Reached the end - show finished state
             player?.pause()
             isPlaying = false
+            isFinished = true
             print("🎬 Reached end of tape")
         }
+    }
+    
+    private func playAgain() {
+        currentClipIndex = 0
+        currentTime = 0
+        isFinished = false
+        loadCurrentClip()
     }
     
     // MARK: - Controls
@@ -245,10 +321,45 @@ struct TapePlayerView: View {
     
     // MARK: - Helper Functions
     
-    private func formatDuration(_ duration: Double) -> String {
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
+    private func formatTime(_ time: Double) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+// MARK: - Custom Video Player View (No Built-in Controls)
+
+struct CustomVideoPlayerView: UIViewRepresentable {
+    let player: AVPlayer
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .black
+        
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.videoGravity = .resizeAspect
+        playerLayer.frame = view.bounds
+        view.layer.addSublayer(playerLayer)
+        
+        // Store the layer for later updates
+        context.coordinator.playerLayer = playerLayer
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if let playerLayer = context.coordinator.playerLayer {
+            playerLayer.frame = uiView.bounds
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator {
+        var playerLayer: AVPlayerLayer?
     }
 }
 
