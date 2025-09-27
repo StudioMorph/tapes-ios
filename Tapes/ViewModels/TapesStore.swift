@@ -28,6 +28,9 @@ public class TapesStore: ObservableObject {
                 clips: []
             )
             tapes.append(newReel)
+            print("🏗️ TapesStore init: Created empty tape with id \(newReel.id)")
+        } else {
+            print("🏗️ TapesStore init: Found \(tapes.count) existing tapes")
         }
     }
     

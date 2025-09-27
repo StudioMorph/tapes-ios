@@ -8,6 +8,7 @@ struct TapesListView: View {
     @State private var showingQAChecklist = false
     
     var body: some View {
+        let _ = print("📱 TapesListView: tapesStore has \(tapesStore.tapes.count) tapes")
         NavigationView {
             VStack {
                 headerView

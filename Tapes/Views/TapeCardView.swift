@@ -32,6 +32,7 @@ struct TapeCardView: View {
     @State private var importSource: ImportSource? = nil
     
     var body: some View {
+        let _ = print("🎯 TapeCardView: tape id=\(tape.id), clips=\(tape.clips.count)")
         VStack(alignment: .leading, spacing: 0) {
             // Title row
             HStack(alignment: .firstTextBaseline, spacing: 0) {
