@@ -21,10 +21,9 @@ public enum TapeExporter {
             let fps: Int32 = 30
             let frame = CMTime(value: 1, timescale: fps)
 
-            let transitionPicker = TransitionPicker(tapeId: tape.id)
-            let transitionSequence = transitionPicker.generateTransitionSequence(for: tape)
-            let seq: [TransitionStyle] = transitionSequence.map { $0.type.toTransitionStyle }
-            let dur = transitionSequence.first?.duration ?? tape.transitionDuration
+            // Simple transition - no complex picker needed
+            let seq: [TransitionStyle] = Array(repeating: .crossfade, count: max(0, tape.clips.count - 1))
+            let dur = tape.transitionDuration
             let overlap = CMTime(seconds: min(max(dur, 0.0), 1.0), preferredTimescale: fps*10)
 
             func transformFor(track: AVAssetTrack) -> CGAffineTransform {

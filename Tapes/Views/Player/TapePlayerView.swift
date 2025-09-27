@@ -1,34 +1,31 @@
 import SwiftUI
+import AVFoundation
+import AVKit
 
-// MARK: - Tape Player View
+// MARK: - Clean Tape Player View
 
-public struct TapePlayerView: View {
-    @StateObject private var composer: PlayerComposer
+struct TapePlayerView: View {
+    @State private var player: AVPlayer?
+    @State private var currentClipIndex: Int = 0
+    @State private var isPlaying: Bool = false
     @State private var showingControls: Bool = true
     @State private var controlsTimer: Timer?
     
     let tape: Tape
     let onDismiss: () -> Void
     
-    public init(tape: Tape, onDismiss: @escaping () -> Void) {
-        self.tape = tape
-        self.onDismiss = onDismiss
-        print("🎬 TapePlayerView: Initializing with tape id=\(tape.id), clips=\(tape.clips.count)")
-        self._composer = StateObject(wrappedValue: PlayerComposer(tape: tape))
-    }
-    
-    public var body: some View {
+    var body: some View {
         ZStack {
             // Background
-            Tokens.Colors.bg
+            Color.black
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Header
                 headerView
                 
-                // Main Player Area
-                mainPlayerArea
+                // Video Player
+                videoPlayerView
                 
                 // Controls
                 if showingControls {
@@ -37,10 +34,11 @@ public struct TapePlayerView: View {
             }
         }
         .onAppear {
+            setupPlayer()
             setupControlsTimer()
         }
         .onDisappear {
-            composer.pause()
+            player?.pause()
             controlsTimer?.invalidate()
         }
         .onTapGesture {
@@ -54,214 +52,153 @@ public struct TapePlayerView: View {
         HStack {
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Tokens.Colors.onSurface)
+                    .font(.title2)
+                    .foregroundColor(.white)
             }
             
             Spacer()
             
-            VStack(spacing: Tokens.Spacing.s) {
-                Text(tape.title)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Tokens.Colors.onSurface)
-                    .lineLimit(1)
-                
-                Text("\(tape.clipCount) clips • \(formatDuration(composer.totalDuration))")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Tokens.Colors.muted)
-            }
-            
-            Spacer()
-            
-            // Placeholder for future settings
-            Button(action: {}) {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Tokens.Colors.muted)
-            }
-            .opacity(0.5) // Placeholder styling
+            Text("\(currentClipIndex + 1) of \(tape.clips.count)")
+                .font(.headline)
+                .foregroundColor(.white)
         }
-        .padding(.horizontal, Tokens.Spacing.l)
-        .padding(.top, Tokens.Spacing.l)
-        .padding(.bottom, Tokens.Spacing.l)
+        .padding()
     }
     
-    // MARK: - Main Player Area
+    // MARK: - Video Player View
     
-    private var mainPlayerArea: some View {
+    private var videoPlayerView: some View {
         GeometryReader { geometry in
-            ZStack {
-                // Video Preview Area
-                videoPreviewArea
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-                // Clip Indicator
-                clipIndicator
-                    .position(x: geometry.size.width - 60, y: 60)
-                
-                // Transition Indicator
-                if let transition = composer.getCurrentTransition() {
-                    transitionIndicator(transition)
-                        .position(x: geometry.size.width / 2, y: geometry.size.height - 100)
-                }
-            }
-        }
-    }
-    
-    private var videoPreviewArea: some View {
-        ZStack {
-            // Background
-            RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                .fill(Tokens.Colors.elevated)
-                .aspectRatio(tape.orientation == .portrait ? 9/16 : 16/9, contentMode: .fit)
-            
-            // Video Content
-            if let currentClip = composer.currentClip {
-                VideoPlayerView(clip: currentClip, shouldPlay: $composer.isPlaying)
-                    .id("video-\(currentClip.id)") // Force recreation when clip changes
+            if let player = player {
+                VideoPlayer(player: player)
                     .onAppear {
-                        print("🎬 TapePlayerView: Rendering video for clip \(currentClip.id), URL: \(currentClip.localURL?.absoluteString ?? "nil")")
+                        print("🎬 Playing clip \(currentClipIndex + 1) of \(tape.clips.count)")
                     }
             } else {
-                // Video Content Placeholder
-                VStack(spacing: Tokens.Spacing.l) {
-                    Image(systemName: "play.rectangle.fill")
-                        .font(.system(size: 48, weight: .light))
-                        .foregroundColor(Tokens.Colors.muted)
+                // Loading state
+                VStack {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .tint(.white)
                     
-                    Text("Video Preview")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.muted)
-                    
-                    Text("Clip \(composer.currentClipIndex + 1) of \(tape.clipCount)")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Tokens.Colors.muted)
-                }
-                .onAppear {
-                    print("🎬 TapePlayerView: No current clip available")
+                    Text("Loading...")
+                        .foregroundColor(.white)
+                        .padding(.top)
                 }
             }
         }
-        .padding(.horizontal, Tokens.Spacing.l)
-    }
-    
-    private var clipIndicator: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            ForEach(0..<tape.clipCount, id: \.self) { index in
-                Circle()
-                    .fill(index == composer.currentClipIndex ? 
-                          Tokens.Colors.red : 
-                          Tokens.Colors.muted)
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(index == composer.currentClipIndex ? 1.2 : 1.0)
-                    .animation(.easeInOut(duration: 0.2), value: composer.currentClipIndex)
-            }
-        }
-        .padding(.vertical, Tokens.Spacing.m)
-        .padding(.horizontal, Tokens.Spacing.s)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(.black.opacity(0.6))
-        )
-    }
-    
-    private func transitionIndicator(_ transition: TransitionInfo) -> some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            Text(transition.type.displayName)
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(.white)
-                .fontWeight(.medium)
-            
-            Text("\(String(format: "%.1f", transition.duration))s")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(.white.opacity(0.8))
-        }
-        .padding(.horizontal, Tokens.Spacing.m)
-        .padding(.vertical, Tokens.Spacing.s)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Tokens.Colors.red)
-        )
     }
     
     // MARK: - Controls View
     
     private var controlsView: some View {
-        VStack(spacing: Tokens.Spacing.l) {
-            // Progress Bar
-            progressBar
+        VStack(spacing: 20) {
+            // Progress indicator
+            progressView
             
-            // Control Buttons
-            controlButtons
-        }
-        .padding(.horizontal, Tokens.Spacing.l)
-        .padding(.bottom, Tokens.Spacing.l)
-    }
-    
-    private var progressBar: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            // Progress Slider
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    // Background
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Tokens.Colors.elevated)
-                        .frame(height: 4)
-                    
-                    // Progress
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Tokens.Colors.red)
-                        .frame(width: geometry.size.width * composer.progress, height: 4)
-                        .animation(.easeInOut(duration: 0.1), value: composer.progress)
+            // Control buttons
+            HStack(spacing: 40) {
+                // Previous button
+                Button(action: previousClip) {
+                    Image(systemName: "backward.fill")
+                        .font(.title)
+                        .foregroundColor(.white)
                 }
+                .disabled(currentClipIndex == 0)
+                
+                // Play/Pause button
+                Button(action: togglePlayPause) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(.white)
+                }
+                
+                // Next button
+                Button(action: nextClip) {
+                    Image(systemName: "forward.fill")
+                        .font(.title)
+                        .foregroundColor(.white)
+                }
+                .disabled(currentClipIndex >= tape.clips.count - 1)
             }
-            .frame(height: 4)
+        }
+        .padding()
+    }
+    
+    // MARK: - Progress View
+    
+    private var progressView: some View {
+        HStack {
+            Text("\(currentClipIndex + 1) of \(tape.clips.count)")
+                .foregroundColor(.white)
             
-            // Time Labels
-            HStack {
-                Text(formatTime(composer.currentTime))
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Tokens.Colors.muted)
-                
-                Spacer()
-                
-                Text(formatTime(composer.totalDuration))
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Tokens.Colors.muted)
+            Spacer()
+            
+            if let clip = currentClip {
+                Text(formatDuration(clip.duration))
+                    .foregroundColor(.white)
             }
+        }
+        .font(.caption)
+    }
+    
+    // MARK: - Current Clip
+    
+    private var currentClip: Clip? {
+        guard currentClipIndex < tape.clips.count else { return nil }
+        return tape.clips[currentClipIndex]
+    }
+    
+    // MARK: - Setup
+    
+    private func setupPlayer() {
+        guard !tape.clips.isEmpty else { return }
+        loadCurrentClip()
+    }
+    
+    private func loadCurrentClip() {
+        guard let clip = currentClip,
+              let url = clip.localURL else {
+            print("❌ No clip or URL available")
+            return
+        }
+        
+        print("🎬 Loading clip \(currentClipIndex + 1): \(clip.id)")
+        
+        let playerItem = AVPlayerItem(url: url)
+        player = AVPlayer(playerItem: playerItem)
+        
+        // Auto-play when loaded
+        player?.play()
+        isPlaying = true
+    }
+    
+    // MARK: - Controls
+    
+    private func togglePlayPause() {
+        if isPlaying {
+            player?.pause()
+            isPlaying = false
+        } else {
+            player?.play()
+            isPlaying = true
         }
     }
     
-    private var controlButtons: some View {
-        HStack(spacing: Tokens.Spacing.l) {
-            // Restart Button
-            Button(action: composer.restart) {
-                Image(systemName: "backward.end.fill")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Tokens.Colors.onSurface)
-            }
-            
-            // Play/Pause Button
-            Button(action: composer.togglePlayPause) {
-                Image(systemName: composer.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 32, weight: .medium))
-                    .foregroundColor(Tokens.Colors.red)
-            }
-            
-            // Placeholder for future controls
-            Button(action: {}) {
-                Image(systemName: "forward.end.fill")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(Tokens.Colors.muted)
-            }
-            .opacity(0.5) // Placeholder styling
-        }
+    private func nextClip() {
+        guard currentClipIndex < tape.clips.count - 1 else { return }
+        currentClipIndex += 1
+        loadCurrentClip()
     }
     
-    // MARK: - Helper Methods
+    private func previousClip() {
+        guard currentClipIndex > 0 else { return }
+        currentClipIndex -= 1
+        loadCurrentClip()
+    }
     
     private func toggleControls() {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation {
             showingControls.toggle()
         }
         
@@ -275,17 +212,13 @@ public struct TapePlayerView: View {
     private func setupControlsTimer() {
         controlsTimer?.invalidate()
         controlsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation {
                 showingControls = false
             }
         }
     }
     
-    private func formatTime(_ time: Double) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
+    // MARK: - Helper Functions
     
     private func formatDuration(_ duration: Double) -> String {
         let minutes = Int(duration) / 60
@@ -294,18 +227,9 @@ public struct TapePlayerView: View {
     }
 }
 
-// MARK: - Preview
-
-#Preview("Dark Mode") {
-    TapePlayerView(tape: Tape.sampleTapes[0]) {
-        print("Dismissed")
-    }
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Light Mode") {
-    TapePlayerView(tape: Tape.sampleTapes[0]) {
-        print("Dismissed")
-    }
-    .preferredColorScheme(.light)
+#Preview {
+    TapePlayerView(
+        tape: Tape.sampleTapes[0],
+        onDismiss: {}
+    )
 }
