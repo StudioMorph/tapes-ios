@@ -15,62 +15,20 @@ public class TapesStore: ObservableObject {
     @Published public var showingSettingsSheet = false
     
     public init() {
-        // Create sample data that matches the screenshots
-        createSampleData()
-    }
-    
-    private func createSampleData() {
-        // Create "New Reel" tape (empty)
-        let newReel = Tape(
-            title: "New Reel",
-            orientation: .portrait,
-            scaleMode: .fit,
-            transition: .none,
-            transitionDuration: 0.5
-        )
-        tapes.append(newReel)
-        
-        // Create "Summer Holidays 2025..." tape with clips
-        var summerHolidays = Tape(
-            title: "Summer Holidays 2025 - P...",
-            orientation: .portrait,
-            scaleMode: .fill,
-            transition: .crossfade,
-            transitionDuration: 0.8
-        )
-        
-        // Add some sample clips
-        let clip1 = Clip(
-            assetLocalId: "sample1",
-            rotateQuarterTurns: 0,
-            overrideScaleMode: nil
-        )
-        let clip2 = Clip(
-            assetLocalId: "sample2", 
-            rotateQuarterTurns: 0,
-            overrideScaleMode: nil
-        )
-        
-        summerHolidays.clips = [clip1, clip2]
-        tapes.append(summerHolidays)
-        
-        // Create another "Summer Holidays 2025..." tape
-        var summerHolidays2 = Tape(
-            title: "Summer Holidays 2025 - P...",
-            orientation: .landscape,
-            scaleMode: .fit,
-            transition: .slideLR,
-            transitionDuration: 0.6
-        )
-        
-        let clip3 = Clip(
-            assetLocalId: "sample3",
-            rotateQuarterTurns: 0,
-            overrideScaleMode: nil
-        )
-        
-        summerHolidays2.clips = [clip3]
-        tapes.append(summerHolidays2)
+        // First launch guard - create single empty tape
+        if !UserDefaults.standard.bool(forKey: "hasLaunched") {
+            let newReel = Tape(
+                title: "New Reel",
+                orientation: .portrait,
+                scaleMode: .fit,
+                transition: .none,
+                transitionDuration: 0.5,
+                clips: []
+            )
+            tapes.append(newReel)
+            UserDefaults.standard.set(true, forKey: "hasLaunched")
+        }
+        // If persistence exists, load here; else leave current in-memory state
     }
     
     // MARK: - Tape CRUD Operations

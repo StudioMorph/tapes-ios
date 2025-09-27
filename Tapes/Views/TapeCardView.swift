@@ -89,7 +89,6 @@ struct TapeCardView: View {
             let thumbW = floor((screenW - Tokens.FAB.size) / 2.0)
             let thumbH = floor(thumbW * 9.0 / 16.0)
             
-            let _ = print("UI tape shown:", tape.id, "clips:", tape.clips.count)
             
             ZStack(alignment: .center) {
                 // 1) Thumbnails / scrollable carousel
@@ -110,9 +109,6 @@ struct TapeCardView: View {
                         showingMediaPicker = true
                     }
                 )
-                .onChange(of: tape.clips.count) { oldValue, newValue in
-                    print("🔄 Tape clips count changed: \(oldValue) -> \(newValue)")
-                }
                 .zIndex(0) // always behind the line and FAB
                 
                 // 2) Red center line (between clips and FAB)
@@ -162,7 +158,6 @@ struct TapeCardView: View {
                     guard !picked.isEmpty else { return }
 
                     await MainActor.run {
-                        print("Store instance (TapeCardView):", ObjectIdentifier(tapeStore))
                         tapeStore.insertAtCenter(into: $tape, picked: picked)
                     }
                 }

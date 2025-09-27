@@ -8,7 +8,6 @@ struct TapesListView: View {
     @State private var showingQAChecklist = false
     
     var body: some View {
-        let _ = print("Store instance (TapesListView):", ObjectIdentifier(tapesStore))
         NavigationView {
             VStack {
                 headerView

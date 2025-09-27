@@ -34,18 +34,6 @@ struct ClipCarousel: View {
             }
         }
         .frame(height: thumbSize.height) // hug
-        .onChange(of: tape.clips.count) { oldValue, newValue in
-            print("Timeline sees clip count = \(newValue)")
-        }
-        .overlay(alignment: .topTrailing) {
-            // Debug overlay
-            Text("clips=\(tape.clips.count)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(4)
-                .background(.ultraThinMaterial)
-                .cornerRadius(6)
-        }
     }
     
 }
