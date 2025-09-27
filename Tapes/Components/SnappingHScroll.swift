@@ -74,7 +74,10 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
                                        withVelocity velocity: CGPoint,
                                        targetContentOffset: UnsafeMutablePointer<CGPoint>) {
 
-            guard parent.itemWidth > 0 else { return }
+            guard parent.itemWidth > 0 else { 
+                print("⚠️ SnappingHScroll: itemWidth is 0 or negative")
+                return 
+            }
 
             // Where the system plans to stop
             let proposedX = targetContentOffset.pointee.x
@@ -91,7 +94,10 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             let estimatedBoundaryX = proposedX + centerX
 
             // Convert to nearest boundary index
-            var n = round((estimatedBoundaryX - parent.leadingInset) / parent.itemWidth)
+            let rawN = (estimatedBoundaryX - parent.leadingInset) / parent.itemWidth
+            print("🔍 SnappingHScroll: rawN = \(rawN), itemWidth = \(parent.itemWidth), leadingInset = \(parent.leadingInset)")
+            
+            var n = round(rawN)
             if n < 0 { n = 0 }
             // We can't know N precisely here; clamp later using content size.
 
@@ -104,6 +110,8 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             // Clamp to valid range
             let maxOffsetX = max(0, (scrollView.contentSize.width - parent.containerWidth))
             snappedOffsetX = min(max(snappedOffsetX, 0), maxOffsetX)
+
+            print("🔍 SnappingHScroll: n = \(n), snappedOffsetX = \(snappedOffsetX), maxOffsetX = \(maxOffsetX)")
 
             // Assign final target
             targetContentOffset.pointee.x = snappedOffsetX

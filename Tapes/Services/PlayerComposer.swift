@@ -63,7 +63,10 @@ public class PlayerComposer: ObservableObject {
     // MARK: - Playback State
     
     public var currentClip: Clip? {
-        guard !tape.clips.isEmpty && currentClipIndex >= 0 && currentClipIndex < tape.clips.count else { return nil }
+        guard !tape.clips.isEmpty && currentClipIndex >= 0 && currentClipIndex < tape.clips.count else { 
+            print("⚠️ PlayerComposer: Invalid currentClipIndex = \(currentClipIndex), clips.count = \(tape.clips.count)")
+            return nil 
+        }
         return tape.clips[currentClipIndex]
     }
     
@@ -123,6 +126,8 @@ public class PlayerComposer: ObservableObject {
             playbackProgress = 0.0
             currentClipIndex += 1
             
+            print("🔍 PlayerComposer: Moved to clip \(currentClipIndex), total clips = \(tape.clips.count)")
+            
             // Check if we've reached the end
             if currentClipIndex >= tape.clips.count {
                 // End of tape
@@ -131,6 +136,7 @@ public class PlayerComposer: ObservableObject {
                 // Safely set currentClipIndex to last valid index
                 currentClipIndex = max(0, tape.clips.count - 1)
                 playbackProgress = 1.0
+                print("🔍 PlayerComposer: Reached end, set currentClipIndex to \(currentClipIndex)")
             } else {
                 // Update current transition
                 currentTransition = getCurrentTransition()

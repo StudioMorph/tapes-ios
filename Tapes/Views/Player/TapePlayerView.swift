@@ -13,6 +13,7 @@ public struct TapePlayerView: View {
     public init(tape: Tape, onDismiss: @escaping () -> Void) {
         self.tape = tape
         self.onDismiss = onDismiss
+        print("🎬 TapePlayerView: Initializing with tape id=\(tape.id), clips=\(tape.clips.count)")
         self._composer = StateObject(wrappedValue: PlayerComposer(tape: tape))
     }
     
