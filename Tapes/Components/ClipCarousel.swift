@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct ClipCarousel: View {
-    let tape: Tape
+    @Binding var tape: Tape
     let thumbSize: CGSize
     @Binding var insertionIndex: Int
     let onPlaceholderTap: (CarouselItem) -> Void
     
-    
+    // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
         if tape.clips.isEmpty {
             return [.startPlus]
@@ -34,6 +34,18 @@ struct ClipCarousel: View {
             }
         }
         .frame(height: thumbSize.height) // hug
+        .onChange(of: tape.clips.count) { oldValue, newValue in
+            print("Timeline sees clip count = \(newValue)")
+        }
+        .overlay(alignment: .topTrailing) {
+            // Debug overlay
+            Text("clips=\(tape.clips.count)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(4)
+                .background(.ultraThinMaterial)
+                .cornerRadius(6)
+        }
     }
     
 }
@@ -59,7 +71,7 @@ public enum CarouselItem: Identifiable {
 #Preview {
     VStack {
         ClipCarousel(
-            tape: Tape.sampleTapes[0],
+            tape: .constant(Tape.sampleTapes[0]),
             thumbSize: CGSize(width: 150, height: 84),
             insertionIndex: .constant(0),
             onPlaceholderTap: { _ in }

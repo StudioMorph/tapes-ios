@@ -89,10 +89,12 @@ struct TapeCardView: View {
             let thumbW = floor((screenW - Tokens.FAB.size) / 2.0)
             let thumbH = floor(thumbW * 9.0 / 16.0)
             
+            let _ = print("UI tape shown:", tape.id, "clips:", tape.clips.count)
+            
             ZStack(alignment: .center) {
                 // 1) Thumbnails / scrollable carousel
                 ClipCarousel(
-                    tape: tape,
+                    tape: $tape,
                     thumbSize: CGSize(width: thumbW, height: thumbH),
                     insertionIndex: $insertionIndex,
                     onPlaceholderTap: { item in

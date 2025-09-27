@@ -3,6 +3,7 @@ import Photos
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import AVFoundation
 
 
 // MARK: - TapesStore
@@ -459,6 +460,19 @@ extension TapesStore {
         tapes[tIndex] = updatedTape
 
         print("✅ Inserted \(newClips.count) clip(s) at index \(insertionIndex) in tape \"\(tapes[tIndex].title)\"")
+        
+        // Generate thumbnails for video clips asynchronously
+        Task {
+            for clip in newClips {
+                if clip.clipType == .video, let url = clip.localURL {
+                    if let thumbnail = await generateThumbnail(from: url) {
+                        await MainActor.run {
+                            updateClip(clip.id, transform: { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.8) }, in: tapeID)
+                        }
+                    }
+                }
+            }
+        }
     }
     
     /// Insert at the visual "center" of the carousel for a specific tape binding.
@@ -487,5 +501,39 @@ extension TapesStore {
         tape.wrappedValue = updatedTape
         objectWillChange.send()
         print("✅ Inserted \(newClips.count) clips into tape \(tape.wrappedValue.id)")
+    }
+    
+    /// Update a specific clip in a tape with proper publishing
+    @MainActor
+    func updateClip(_ id: UUID, transform: (inout Clip) -> Void, in tapeID: UUID) {
+        guard let t = tapes.firstIndex(where: { $0.id == tapeID }) else { 
+            print("❌ TapeStore.updateClip: tape not found \(tapeID)")
+            return 
+        }
+        guard let c = tapes[t].clips.firstIndex(where: { $0.id == id }) else { 
+            print("❌ TapeStore.updateClip: clip not found \(id)")
+            return 
+        }
+        
+        var newTape = tapes[t]
+        transform(&newTape.clips[c])          // mutate copy
+        tapes[t] = newTape                    // REASSIGN to publish
+        print("✅ Updated clip \(id) in tape \(tapeID)")
+    }
+    
+    /// Generate thumbnail from video URL
+    private func generateThumbnail(from url: URL) async -> UIImage? {
+        let asset = AVAsset(url: url)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.maximumSize = CGSize(width: 320, height: 320)
+        
+        do {
+            let cgImage = try await imageGenerator.image(at: CMTime.zero).image
+            return UIImage(cgImage: cgImage)
+        } catch {
+            print("❌ Failed to generate thumbnail: \(error)")
+            return nil
+        }
     }
 }
