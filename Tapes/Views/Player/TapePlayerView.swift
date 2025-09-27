@@ -40,6 +40,8 @@ struct TapePlayerView: View {
         .onDisappear {
             player?.pause()
             controlsTimer?.invalidate()
+            // Clean up notification observers
+            NotificationCenter.default.removeObserver(self)
         }
         .onTapGesture {
             toggleControls()
@@ -168,9 +170,32 @@ struct TapePlayerView: View {
         let playerItem = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: playerItem)
         
+        // Add observer for when video ends
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { _ in
+            self.onVideoEnded()
+        }
+        
         // Auto-play when loaded
         player?.play()
         isPlaying = true
+    }
+    
+    private func onVideoEnded() {
+        print("🎬 Video ended, advancing to next clip")
+        
+        // Auto-advance to next clip if available
+        if currentClipIndex < tape.clips.count - 1 {
+            nextClip()
+        } else {
+            // Reached the end - stop playing
+            player?.pause()
+            isPlaying = false
+            print("🎬 Reached end of tape")
+        }
     }
     
     // MARK: - Controls
