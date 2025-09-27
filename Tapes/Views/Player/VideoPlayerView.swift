@@ -21,6 +21,7 @@ struct VideoPlayerView: View {
                     }
                     .onDisappear {
                         player.pause()
+                        print("🎥 VideoPlayerView: Disappeared for clip \(clip.id)")
                     }
             } else {
                 // Loading or error state
@@ -66,7 +67,7 @@ struct VideoPlayerView: View {
             return
         }
         
-        print("🎥 VideoPlayerView: Setting up player for URL: \(url.absoluteString)")
+        print("🎥 VideoPlayerView: Setting up player for clip \(clip.id), URL: \(url.absoluteString)")
         
         // Check if file exists
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -79,7 +80,7 @@ struct VideoPlayerView: View {
         player = AVPlayer(playerItem: playerItem)
         
         // Don't auto-play - wait for shouldPlay binding
-        print("✅ VideoPlayerView: Player created (not auto-playing)")
+        print("✅ VideoPlayerView: Player created for clip \(clip.id) (not auto-playing)")
     }
 }
 
