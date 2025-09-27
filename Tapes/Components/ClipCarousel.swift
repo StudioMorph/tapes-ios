@@ -16,6 +16,7 @@ struct ClipCarousel: View {
     }
     
     var body: some View {
+        let _ = print("📋 ClipCarousel: \(tape.clips.count) clips, items count: \(items.count)")
         GeometryReader { container in
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
@@ -36,6 +37,9 @@ struct ClipCarousel: View {
         .frame(height: thumbSize.height) // hug
         .onChange(of: tape.clips.count) { oldValue, newValue in
             print("Timeline sees clips = \(newValue)")
+            for (index, clip) in tape.clips.enumerated() {
+                print("  Clip \(index): id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil), localURL=\(clip.localURL?.lastPathComponent ?? "nil")")
+            }
         }
     }
     

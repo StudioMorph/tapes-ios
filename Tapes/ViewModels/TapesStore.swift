@@ -463,7 +463,9 @@ extension TapesStore {
         
         // insert at calculated index; simple append example:
         var updatedTape = tape.wrappedValue
+        print("🔍 Before insert: tape has \(updatedTape.clips.count) clips")
         updatedTape.clips.append(contentsOf: newClips)
+        print("🔍 After insert: tape has \(updatedTape.clips.count) clips")
         tape.wrappedValue = updatedTape
         objectWillChange.send()
         print("✅ Inserted \(newClips.count) clips into tape \(tape.wrappedValue.id)")

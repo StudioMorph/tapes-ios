@@ -70,6 +70,7 @@ struct ClipThumbnailView: View {
     let clip: Clip
     
     var body: some View {
+        let _ = print("🎬 ClipThumbnailView rendering: id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil)")
         ZStack {
             // Thumbnail background - square corners
             Rectangle()
