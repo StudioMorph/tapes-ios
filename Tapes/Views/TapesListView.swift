@@ -1,13 +1,14 @@
 import SwiftUI
 
 struct TapesListView: View {
-    @StateObject private var tapesStore = TapesStore()
+    @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
     @State private var showingPlayer = false
     @State private var showingPlayOptions = false
     @State private var showingQAChecklist = false
     
     var body: some View {
+        let _ = print("Store instance (TapesListView):", ObjectIdentifier(tapesStore))
         NavigationView {
             VStack {
                 headerView

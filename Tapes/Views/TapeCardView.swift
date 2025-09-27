@@ -108,6 +108,9 @@ struct TapeCardView: View {
                         showingMediaPicker = true
                     }
                 )
+                .onChange(of: tape.clips.count) { oldValue, newValue in
+                    print("🔄 Tape clips count changed: \(oldValue) -> \(newValue)")
+                }
                 .zIndex(0) // always behind the line and FAB
                 
                 // 2) Red center line (between clips and FAB)
@@ -156,23 +159,10 @@ struct TapeCardView: View {
                     TapesLog.mediaPicker.info("📦 converted count=\(picked.count, privacy: .public)")
                     guard !picked.isEmpty else { return }
 
-                    var newClips: [Clip] = []
-                    for item in picked {
-                        switch item {
-                        case .video(let url):
-                            let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
-                            newClips.append(clip)
-                        case .photo(let image):
-                            if let imageData = image.jpegData(compressionQuality: 0.8) {
-                                let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
-                                newClips.append(clip)
-                            }
-                        }
+                    await MainActor.run {
+                        print("Store instance (TapeCardView):", ObjectIdentifier(tapeStore))
+                        tapeStore.insertAtCenter(into: $tape, picked: picked)
                     }
-
-                    guard !newClips.isEmpty else { return }
-                    // Use your existing store insertion at the center:
-                    tapeStore.insertAtCenter(into: $tape, picked: picked)
                 }
             }
         }

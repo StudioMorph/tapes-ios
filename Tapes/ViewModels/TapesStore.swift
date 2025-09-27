@@ -418,6 +418,7 @@ extension TapesStore {
     }
     
     /// Inserts picked media at the center of a tape (single source of truth)
+    @MainActor
     public func insertAtCenter(tapeID: Tape.ID, picked: [PickedMedia]) {
         guard let tIndex = tapes.firstIndex(where: { $0.id == tapeID }) else {
             print("❌ TapeStore.insertAtCenter: tape not found \(tapeID)")
@@ -451,12 +452,17 @@ extension TapesStore {
         // Decide insertion index (center if we track it; else append)
         let currentCount = tapes[tIndex].clips.count
         let insertionIndex = currentCount // For now, append at the end
-        tapes[tIndex].clips.insert(contentsOf: newClips, at: min(insertionIndex, tapes[tIndex].clips.count))
+        
+        // Create a new tape with updated clips to trigger @Published
+        var updatedTape = tapes[tIndex]
+        updatedTape.clips.insert(contentsOf: newClips, at: min(insertionIndex, updatedTape.clips.count))
+        tapes[tIndex] = updatedTape
 
         print("✅ Inserted \(newClips.count) clip(s) at index \(insertionIndex) in tape \"\(tapes[tIndex].title)\"")
     }
     
     /// Insert at the visual "center" of the carousel for a specific tape binding.
+    @MainActor
     func insertAtCenter(into tape: Binding<Tape>, picked: [PickedMedia]) {
         guard !picked.isEmpty else { return }
         
@@ -476,7 +482,9 @@ extension TapesStore {
         }
         
         // insert at calculated index; simple append example:
-        tape.wrappedValue.clips.append(contentsOf: newClips)
+        var updatedTape = tape.wrappedValue
+        updatedTape.clips.append(contentsOf: newClips)
+        tape.wrappedValue = updatedTape
         objectWillChange.send()
         print("✅ Inserted \(newClips.count) clips into tape \(tape.wrappedValue.id)")
     }

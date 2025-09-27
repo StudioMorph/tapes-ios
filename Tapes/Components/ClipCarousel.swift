@@ -24,10 +24,9 @@ struct ClipCarousel: View {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
-                ForEach(items.indices, id: \.self) { i in
-                    ThumbnailView(item: items[i], onPlaceholderTap: onPlaceholderTap)
+                ForEach(items) { item in
+                    ThumbnailView(item: item, onPlaceholderTap: onPlaceholderTap)
                         .frame(width: thumbSize.width, height: thumbSize.height)
-                        .id("item-\(i)")
                 }
                 
                 // Trailing 16pt padding INSIDE the card
@@ -40,10 +39,21 @@ struct ClipCarousel: View {
 }
 
 
-public enum CarouselItem {
+public enum CarouselItem: Identifiable {
     case startPlus
     case clip(Clip)
     case endPlus
+    
+    public var id: String {
+        switch self {
+        case .startPlus:
+            return "start-plus"
+        case .clip(let clip):
+            return clip.id.uuidString
+        case .endPlus:
+            return "end-plus"
+        }
+    }
 }
 
 #Preview {
