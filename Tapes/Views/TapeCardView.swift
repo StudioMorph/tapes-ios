@@ -110,6 +110,7 @@ struct TapeCardView: View {
                         showingMediaPicker = true
                     }
                 )
+                .id("carousel-\(tape.clips.count)") // Force view update when clips change
                 .zIndex(0) // always behind the line and FAB
                 
                 // 2) Red center line (between clips and FAB)
