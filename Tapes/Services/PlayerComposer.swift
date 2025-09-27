@@ -18,12 +18,22 @@ public class PlayerComposer: ObservableObject {
         self.tape = tape
         self.transitionPicker = TransitionPicker(tapeId: tape.id)
         self.transitionSequence = transitionPicker.generateTransitionSequence(for: tape)
+        
+        // Ensure currentClipIndex is valid
+        if tape.clips.isEmpty {
+            self.currentClipIndex = 0
+        } else {
+            self.currentClipIndex = min(self.currentClipIndex, max(0, tape.clips.count - 1))
+        }
     }
     
     // MARK: - Playback Control
     
     public func play() {
-        guard !tape.clips.isEmpty else { return }
+        guard !tape.clips.isEmpty else { 
+            print("⚠️ PlayerComposer: Cannot play empty tape")
+            return 
+        }
         
         isPlaying = true
         startPlaybackTimer()
@@ -53,7 +63,7 @@ public class PlayerComposer: ObservableObject {
     // MARK: - Playback State
     
     public var currentClip: Clip? {
-        guard currentClipIndex < tape.clips.count else { return nil }
+        guard !tape.clips.isEmpty && currentClipIndex >= 0 && currentClipIndex < tape.clips.count else { return nil }
         return tape.clips[currentClipIndex]
     }
     
@@ -118,7 +128,8 @@ public class PlayerComposer: ObservableObject {
                 // End of tape
                 isPlaying = false
                 stopPlaybackTimer()
-                currentClipIndex = tape.clips.count - 1
+                // Safely set currentClipIndex to last valid index
+                currentClipIndex = max(0, tape.clips.count - 1)
                 playbackProgress = 1.0
             } else {
                 // Update current transition
