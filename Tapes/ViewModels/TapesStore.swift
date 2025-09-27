@@ -489,7 +489,7 @@ extension TapesStore {
         var newTape = tapes[t]
         transform(&newTape.clips[c])          // mutate copy
         tapes[t] = newTape                    // REASSIGN to publish
-        print("✅ Updated clip \(id) in tape \(tapeID)")
+        print("✅ Updated clip \(id) in tape \(tapeID) - hasThumb: \(newTape.clips[c].thumbnail != nil)")
     }
     
     /// Generate thumbnail from video URL
@@ -528,7 +528,9 @@ extension TapesStore {
                     guard let cg else { return }
                     let ui = UIImage(cgImage: cg)
                     Task { @MainActor in
+                        print("🖼️ Setting thumbnail for clip \(clipID)")
                         self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }, in: tapeID)
+                        print("✅ Thumbnail set for clip \(clipID)")
                     }
                 }
             } catch {
