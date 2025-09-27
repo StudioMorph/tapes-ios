@@ -117,7 +117,7 @@ public struct TapePlayerView: View {
             
             // Video Content
             if let currentClip = composer.currentClip {
-                VideoPlayerView(clip: currentClip)
+                VideoPlayerView(clip: currentClip, shouldPlay: $composer.isPlaying)
                     .onAppear {
                         print("🎬 TapePlayerView: Rendering video for clip \(currentClip.id), URL: \(currentClip.localURL?.absoluteString ?? "nil")")
                     }

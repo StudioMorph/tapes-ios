@@ -15,6 +15,10 @@ struct ThumbnailView: View {
                     }
             case .clip(let clip):
                 ClipThumbnailView(clip: clip)
+                    .onTapGesture {
+                        print("🎬 ClipThumbnailView tapped: \(clip.id)")
+                        // TODO: This should open the TapePlayerView, not play individual videos
+                    }
             case .endPlus:
                 EndPlusView()
                     .onTapGesture {

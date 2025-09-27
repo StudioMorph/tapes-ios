@@ -9,6 +9,7 @@ struct VideoPlayerView: View {
     @State private var player: AVPlayer?
     @State private var playerItem: AVPlayerItem?
     @State private var isPlaying: Bool = false
+    @Binding var shouldPlay: Bool
     
     var body: some View {
         ZStack {
@@ -45,6 +46,17 @@ struct VideoPlayerView: View {
         .onDisappear {
             player?.pause()
         }
+        .onChange(of: shouldPlay) { _, newValue in
+            if newValue {
+                player?.play()
+                isPlaying = true
+                print("🎥 VideoPlayerView: Started playing due to shouldPlay = true")
+            } else {
+                player?.pause()
+                isPlaying = false
+                print("🎥 VideoPlayerView: Paused due to shouldPlay = false")
+            }
+        }
     }
     
     private func setupPlayer() {
@@ -65,11 +77,8 @@ struct VideoPlayerView: View {
         playerItem = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: playerItem)
         
-        // Start playing
-        player?.play()
-        isPlaying = true
-        
-        print("✅ VideoPlayerView: Player created and started")
+        // Don't auto-play - wait for shouldPlay binding
+        print("✅ VideoPlayerView: Player created (not auto-playing)")
     }
 }
 
@@ -78,5 +87,5 @@ struct VideoPlayerView: View {
         localURL: URL(string: "file:///path/to/video.mov"),
         clipType: .video,
         duration: 5.0
-    ))
+    ), shouldPlay: .constant(true))
 }
