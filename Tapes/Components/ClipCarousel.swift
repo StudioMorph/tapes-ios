@@ -18,8 +18,14 @@ struct ClipCarousel: View {
         return result
     }
     
+    // Force re-evaluation when tape changes
+    private var tapeHash: Int {
+        tape.clips.map { "\($0.id)-\($0.thumbnail != nil)" }.joined().hashValue
+    }
+    
     var body: some View {
         let _ = print("📋 ClipCarousel: \(tape.clips.count) clips, items count: \(items.count)")
+        let _ = tapeHash // Force dependency on tape changes
         GeometryReader { container in
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
