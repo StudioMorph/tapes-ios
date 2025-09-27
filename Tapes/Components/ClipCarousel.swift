@@ -8,11 +8,14 @@ struct ClipCarousel: View {
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
+        let result: [CarouselItem]
         if tape.clips.isEmpty {
-            return [.startPlus]
+            result = [.startPlus]
         } else {
-            return [.startPlus] + tape.clips.map { .clip($0) } + [.endPlus]
+            result = [.startPlus] + tape.clips.map { .clip($0) } + [.endPlus]
         }
+        print("📋 Items array: \(result.map { $0.id })")
+        return result
     }
     
     var body: some View {
@@ -29,6 +32,7 @@ struct ClipCarousel: View {
                     let _ = print("🔄 ForEach rendering item: \(item.id)")
                     ThumbnailView(item: item, onPlaceholderTap: onPlaceholderTap)
                         .frame(width: thumbSize.width, height: thumbSize.height)
+                        .id(item.id) // Force SwiftUI to recognize each item
                 }
                 
                 // Trailing 16pt padding INSIDE the card
