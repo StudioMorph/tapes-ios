@@ -472,6 +472,13 @@ extension TapesStore {
         tape.wrappedValue = updatedTape
         objectWillChange.send()
         print("✅ Inserted \(newClips.count) clips into tape \(tape.wrappedValue.id)")
+        
+        // Generate thumbnails and duration for video clips asynchronously
+        for clip in newClips {
+            if clip.clipType == .video, let url = clip.localURL {
+                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tape.wrappedValue.id)
+            }
+        }
     }
     
     /// Update a specific clip in a tape with proper publishing
