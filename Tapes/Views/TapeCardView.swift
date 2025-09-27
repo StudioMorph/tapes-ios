@@ -20,6 +20,7 @@ struct TapeCardView: View {
     let onPlay: () -> Void
     let onAirPlay: () -> Void
     let onThumbnailDelete: (Clip) -> Void
+    
     let onClipInserted: (Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
     let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void

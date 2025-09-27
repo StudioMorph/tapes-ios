@@ -497,6 +497,7 @@ extension TapesStore {
         transform(&newTape.clips[c])          // mutate copy
         tapes[t] = newTape                    // REASSIGN to publish
         print("✅ Updated clip \(id) in tape \(tapeID) - hasThumb: \(newTape.clips[c].thumbnail != nil)")
+        print("🔄 TapesStore: Published tapes array change - tapes.count: \(tapes.count)")
     }
     
     /// Generate thumbnail from video URL

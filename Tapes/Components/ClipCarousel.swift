@@ -26,6 +26,9 @@ struct ClipCarousel: View {
     var body: some View {
         let _ = print("📋 ClipCarousel: \(tape.clips.count) clips, items count: \(items.count)")
         let _ = tapeHash // Force dependency on tape changes
+        
+        // Force re-evaluation by using the hash as an ID
+        let carouselId = "carousel-\(tape.id)-\(tapeHash)"
         GeometryReader { container in
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
@@ -44,6 +47,7 @@ struct ClipCarousel: View {
                 // Trailing 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
             }
+            .id(carouselId) // Force re-evaluation when tape changes
         }
         .frame(height: thumbSize.height) // hug
         .onChange(of: tape.clips.count) { oldValue, newValue in
