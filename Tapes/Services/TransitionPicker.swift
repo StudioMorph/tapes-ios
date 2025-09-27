@@ -13,7 +13,8 @@ public class TransitionPicker {
     
     public init(tapeId: UUID) {
         // Use tape ID as seed for consistent results
-        self.seed = UInt64(tapeId.hashValue)
+        // Use absolute value to ensure positive UInt64
+        self.seed = UInt64(abs(tapeId.hashValue))
         self.randomGenerator = SeededRandomNumberGenerator(seed: self.seed)
     }
     
