@@ -13,6 +13,7 @@ struct TapePlayerView: View {
     @State private var totalDuration: Double = 0
     @State private var currentTime: Double = 0
     @State private var isFinished: Bool = false
+    @State private var progressTimer: Timer?
     
     let tape: Tape
     let onDismiss: () -> Void
@@ -43,6 +44,7 @@ struct TapePlayerView: View {
         .onDisappear {
             player?.pause()
             controlsTimer?.invalidate()
+            progressTimer?.invalidate()
             // Clean up notification observers
             NotificationCenter.default.removeObserver(self)
         }
@@ -138,10 +140,31 @@ struct TapePlayerView: View {
     
     private var globalProgressView: some View {
         VStack(spacing: 8) {
-            // Progress bar
-            ProgressView(value: currentTime, total: totalDuration)
-                .progressViewStyle(LinearProgressViewStyle(tint: .white))
-                .scaleEffect(y: 2)
+            // Interactive progress bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    // Background track
+                    Rectangle()
+                        .fill(Color.white.opacity(0.3))
+                        .frame(height: 4)
+                    
+                    // Progress track
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: geometry.size.width * (currentTime / totalDuration), height: 4)
+                }
+                .onTapGesture {
+                    // For now, just toggle play/pause on tap
+                    togglePlayPause()
+                }
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            scrubToPosition(value.location.x, in: geometry.size.width)
+                        }
+                )
+            }
+            .frame(height: 4)
             
             // Time labels
             HStack {
@@ -217,6 +240,7 @@ struct TapePlayerView: View {
         guard !tape.clips.isEmpty else { return }
         calculateTotalDuration()
         loadCurrentClip()
+        startProgressTracking()
     }
     
     private func calculateTotalDuration() {
@@ -326,6 +350,76 @@ struct TapePlayerView: View {
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+    
+    // MARK: - Progress Tracking
+    
+    private func startProgressTracking() {
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            updateCurrentTime()
+        }
+    }
+    
+    private func updateCurrentTime() {
+        guard let player = player,
+              let currentItem = player.currentItem else { return }
+        
+        let currentTimeInSeconds = CMTimeGetSeconds(currentItem.currentTime())
+        let totalElapsedTime = calculateElapsedTimeForCurrentClip() + currentTimeInSeconds
+        
+        currentTime = totalElapsedTime
+        
+        // Check if we've reached the end
+        if totalElapsedTime >= totalDuration {
+            currentTime = totalDuration
+            if !isFinished {
+                isFinished = true
+                player.pause()
+                isPlaying = false
+            }
+        }
+    }
+    
+    private func calculateElapsedTimeForCurrentClip() -> Double {
+        var elapsedTime: Double = 0
+        for i in 0..<currentClipIndex {
+            if i < tape.clips.count {
+                elapsedTime += tape.clips[i].duration
+            }
+        }
+        return elapsedTime
+    }
+    
+    private func scrubToPosition(_ x: CGFloat, in width: CGFloat) {
+        let progress = max(0, min(1, x / width))
+        let targetTime = progress * totalDuration
+        
+        // Find which clip this time corresponds to
+        var accumulatedTime: Double = 0
+        var targetClipIndex = 0
+        
+        for (index, clip) in tape.clips.enumerated() {
+            if targetTime <= accumulatedTime + clip.duration {
+                targetClipIndex = index
+                break
+            }
+            accumulatedTime += clip.duration
+        }
+        
+        // If we need to change clips
+        if targetClipIndex != currentClipIndex {
+            currentClipIndex = targetClipIndex
+            loadCurrentClip()
+        }
+        
+        // Seek to the correct position within the current clip
+        let timeInCurrentClip = targetTime - accumulatedTime
+        let targetCMTime = CMTime(seconds: timeInCurrentClip, preferredTimescale: 600)
+        player?.seek(to: targetCMTime)
+        
+        // Update current time
+        currentTime = targetTime
+    }
 }
 
 // MARK: - Custom Video Player View (No Built-in Controls)
@@ -351,6 +445,8 @@ struct CustomVideoPlayerView: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         if let playerLayer = context.coordinator.playerLayer {
             playerLayer.frame = uiView.bounds
+            // Ensure the layer is properly configured
+            playerLayer.videoGravity = .resizeAspect
         }
     }
     
