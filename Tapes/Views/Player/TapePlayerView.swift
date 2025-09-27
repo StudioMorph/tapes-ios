@@ -77,9 +77,12 @@ struct TapePlayerView: View {
     private var videoPlayerView: some View {
         GeometryReader { geometry in
             if let player = player {
-                CustomVideoPlayerView(player: player)
+                VideoPlayer(player: player)
                     .onAppear {
                         print("🎬 Playing clip \(currentClipIndex + 1) of \(tape.clips.count)")
+                    }
+                    .onDisappear {
+                        player.pause()
                     }
             } else {
                 // Loading state
@@ -146,25 +149,29 @@ struct TapePlayerView: View {
                     // Background track
                     Rectangle()
                         .fill(Color.white.opacity(0.3))
-                        .frame(height: 4)
+                        .frame(height: 6)
                     
                     // Progress track
                     Rectangle()
                         .fill(Color.white)
-                        .frame(width: geometry.size.width * (currentTime / totalDuration), height: 4)
+                        .frame(width: geometry.size.width * (currentTime / totalDuration), height: 6)
                 }
-                .onTapGesture {
-                    // For now, just toggle play/pause on tap
-                    togglePlayPause()
-                }
+                .contentShape(Rectangle())
                 .gesture(
-                    DragGesture()
+                    DragGesture(minimumDistance: 0)
                         .onChanged { value in
+                            let progress = max(0, min(1, value.location.x / geometry.size.width))
+                            let targetTime = progress * totalDuration
+                            currentTime = targetTime
+                        }
+                        .onEnded { value in
+                            let progress = max(0, min(1, value.location.x / geometry.size.width))
+                            let targetTime = progress * totalDuration
                             scrubToPosition(value.location.x, in: geometry.size.width)
                         }
                 )
             }
-            .frame(height: 4)
+            .frame(height: 6)
             
             // Time labels
             HStack {
@@ -394,6 +401,8 @@ struct TapePlayerView: View {
         let progress = max(0, min(1, x / width))
         let targetTime = progress * totalDuration
         
+        print("🎯 Scrubbing to: \(formatTime(targetTime)) (progress: \(progress))")
+        
         // Find which clip this time corresponds to
         var accumulatedTime: Double = 0
         var targetClipIndex = 0
@@ -406,8 +415,11 @@ struct TapePlayerView: View {
             accumulatedTime += clip.duration
         }
         
+        print("🎯 Target clip index: \(targetClipIndex), current: \(currentClipIndex)")
+        
         // If we need to change clips
         if targetClipIndex != currentClipIndex {
+            print("🎯 Changing to clip \(targetClipIndex + 1)")
             currentClipIndex = targetClipIndex
             loadCurrentClip()
         }
@@ -415,6 +427,8 @@ struct TapePlayerView: View {
         // Seek to the correct position within the current clip
         let timeInCurrentClip = targetTime - accumulatedTime
         let targetCMTime = CMTime(seconds: timeInCurrentClip, preferredTimescale: 600)
+        
+        print("🎯 Seeking to \(formatTime(timeInCurrentClip)) in clip \(targetClipIndex + 1)")
         player?.seek(to: targetCMTime)
         
         // Update current time
@@ -422,42 +436,6 @@ struct TapePlayerView: View {
     }
 }
 
-// MARK: - Custom Video Player View (No Built-in Controls)
-
-struct CustomVideoPlayerView: UIViewRepresentable {
-    let player: AVPlayer
-    
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .black
-        
-        let playerLayer = AVPlayerLayer(player: player)
-        playerLayer.videoGravity = .resizeAspect
-        playerLayer.frame = view.bounds
-        view.layer.addSublayer(playerLayer)
-        
-        // Store the layer for later updates
-        context.coordinator.playerLayer = playerLayer
-        
-        return view
-    }
-    
-    func updateUIView(_ uiView: UIView, context: Context) {
-        if let playerLayer = context.coordinator.playerLayer {
-            playerLayer.frame = uiView.bounds
-            // Ensure the layer is properly configured
-            playerLayer.videoGravity = .resizeAspect
-        }
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    
-    class Coordinator {
-        var playerLayer: AVPlayerLayer?
-    }
-}
 
 #Preview {
     TapePlayerView(
