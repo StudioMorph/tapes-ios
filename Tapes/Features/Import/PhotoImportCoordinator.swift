@@ -10,21 +10,6 @@ public enum PickedMediaType {
     case image
 }
 
-public struct PickedMedia {
-    let type: PickedMediaType
-    let localURL: URL?
-    let imageData: Data?
-    let thumbnail: UIImage?
-    let duration: TimeInterval
-    
-    init(type: PickedMediaType, localURL: URL? = nil, imageData: Data? = nil, thumbnail: UIImage? = nil, duration: TimeInterval) {
-        self.type = type
-        self.localURL = localURL
-        self.imageData = imageData
-        self.thumbnail = thumbnail
-        self.duration = duration
-    }
-}
 
 public enum InsertionStrategy {
     case replaceThenAppend(startIndex: Int)
@@ -87,24 +72,14 @@ public struct PhotoImportCoordinator: View {
                     let thumbnail = await generateThumbnail(from: movie.url)
                     let duration = await getVideoDuration(url: movie.url)
                     
-                    pickedMedia.append(PickedMedia(
-                        type: .video,
-                        localURL: movie.url,
-                        thumbnail: thumbnail,
-                        duration: duration
-                    ))
+                    pickedMedia.append(.video(movie.url))
                 } else if let image = try await item.loadTransferable(type: Data.self) {
                     // Load as image
                     if let uiImage = UIImage(data: image) {
                         let thumbnail = uiImage
                         let duration = Tokens.Timing.photoDefaultDuration
                         
-                        pickedMedia.append(PickedMedia(
-                            type: .image,
-                            imageData: image,
-                            thumbnail: thumbnail,
-                            duration: duration
-                        ))
+                        pickedMedia.append(.photo(uiImage))
                     }
                 }
             } catch {

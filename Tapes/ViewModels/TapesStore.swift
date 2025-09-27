@@ -4,12 +4,6 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 
-// MARK: - PickedMediaItem
-
-public enum PickedMediaItem {
-    case video(URL)
-    case photo(UIImage)
-}
 
 // MARK: - TapesStore
 
@@ -395,16 +389,12 @@ extension TapesStore {
         var newClips: [Clip] = []
         for item in items {
             let clip: Clip
-            switch item.type {
-            case .video:
-                if let url = item.localURL {
-                    clip = Clip.fromVideo(url: url, duration: item.duration, thumbnail: item.thumbnail)
-                } else {
-                    continue // Skip invalid video
-                }
-            case .image:
-                if let imageData = item.imageData {
-                    clip = Clip.fromImage(imageData: imageData, duration: item.duration, thumbnail: item.thumbnail)
+            switch item {
+            case .video(let url):
+                clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+            case .photo(let image):
+                if let imageData = image.jpegData(compressionQuality: 0.8) {
+                    clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
                 } else {
                     continue // Skip invalid image
                 }
@@ -428,7 +418,7 @@ extension TapesStore {
     }
     
     /// Inserts picked media at the center of a tape (single source of truth)
-    public func insertAtCenter(tapeID: Tape.ID, picked: [PickedMediaItem]) {
+    public func insertAtCenter(tapeID: Tape.ID, picked: [PickedMedia]) {
         guard let tIndex = tapes.firstIndex(where: { $0.id == tapeID }) else {
             print("❌ TapeStore.insertAtCenter: tape not found \(tapeID)")
             return
@@ -467,7 +457,7 @@ extension TapesStore {
     }
     
     /// Insert at the visual "center" of the carousel for a specific tape binding.
-    func insertAtCenter(into tape: Binding<Tape>, picked: [PickedMediaItem]) {
+    func insertAtCenter(into tape: Binding<Tape>, picked: [PickedMedia]) {
         guard !picked.isEmpty else { return }
         
         // compute insert index from your existing "center" rule; for now append:

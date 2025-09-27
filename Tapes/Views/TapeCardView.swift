@@ -11,102 +11,6 @@ enum ImportSource {
 }
 
 
-// MARK: - PHPickerResult Extension
-
-extension Array where Element == PHPickerResult {
-    func loadPickedMediaOrdered() async -> [PickedMediaItem] {
-        var ordered: [PickedMediaItem?] = []
-        for _ in 0..<self.count {
-            ordered.append(nil)
-        }
-        await withTaskGroup(of: (Int, PickedMediaItem?)?.self) { group in
-            for (idx, result) in self.enumerated() {
-                group.addTask {
-                    let p = result.itemProvider
-                    // Prefer movie first
-                    if p.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-                        do {
-                            // 1) Try file copy first
-                            let url = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-                                p.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
-                                    if let error = error {
-                                        continuation.resume(throwing: error)
-                                    } else if let url = url {
-                                        continuation.resume(returning: url)
-                                    } else {
-                                        continuation.resume(throwing: NSError(domain: "NoURL", code: -1))
-                                    }
-                                }
-                            }
-                            let dst = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
-                            try? FileManager.default.removeItem(at: dst)
-                            try FileManager.default.copyItem(at: url, to: dst)
-                            print("✅ Loaded movie → \(dst.lastPathComponent)")
-                            return (idx, .video(dst))
-                        } catch {
-                            print("⚠️ Movie load failed (file copy), trying in-place: \(error)")
-                            // 2) Fallback: in-place
-                            do {
-                                let (url, inPlace) = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(URL, Bool), Error>) in
-                                    p.loadInPlaceFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, inPlace, error in
-                                        if let error = error {
-                                            continuation.resume(throwing: error)
-                                        } else if let url = url {
-                                            continuation.resume(returning: (url, inPlace))
-                                        } else {
-                                            continuation.resume(throwing: NSError(domain: "NoURL", code: -1))
-                                        }
-                                    }
-                                }
-                                if inPlace {
-                                    // Use the original URL
-                                    print("✅ Loaded movie (in-place) → \(url.lastPathComponent)")
-                                    return (idx, .video(url))
-                                } else {
-                                    // Copy to temp
-                                    let dst = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
-                                    try? FileManager.default.removeItem(at: dst)
-                                    try FileManager.default.copyItem(at: url, to: dst)
-                                    print("✅ Loaded movie (in-place copy) → \(dst.lastPathComponent)")
-                                    return (idx, .video(dst))
-                                }
-                            } catch {
-                                print("❌ Movie load failed (in-place): \(error.localizedDescription)")
-                                return (idx, nil)
-                            }
-                        }
-                    }
-                    if p.canLoadObject(ofClass: UIImage.self) {
-                        do {
-                            let obj = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UIImage, Error>) in
-                                p.loadObject(ofClass: UIImage.self) { image, error in
-                                    if let error = error {
-                                        continuation.resume(throwing: error)
-                                    } else if let image = image as? UIImage {
-                                        continuation.resume(returning: image)
-                                    } else {
-                                        continuation.resume(throwing: NSError(domain: "NoImage", code: -1))
-                                    }
-                                }
-                            }
-                            print("✅ Loaded image")
-                            return (idx, .photo(obj))
-                        } catch {
-                            print("❌ Image load failed: \(error)")
-                        }
-                    }
-                    print("⚠️ Unsupported provider at index \(idx)")
-                    return (idx, nil)
-                }
-            }
-            for await pair in group {
-                guard let (idx, media) = pair else { continue }
-                ordered[idx] = media
-            }
-        }
-        return ordered.compactMap { $0 }
-    }
-}
 
 
 
@@ -244,16 +148,30 @@ struct TapeCardView: View {
                 allowImages: true,
                 allowVideos: true
             ) { results in
-                print("🧩 onPick called with \(results.count) result(s)")
+                TapesLog.mediaPicker.info("🧩 onPick count=\(results.count, privacy: .public)")
                 guard !results.isEmpty else { return }
-                Task { @MainActor in
-                    let picked = await results.loadPickedMediaOrdered()
-                    print("📦 Converted to PickedMedia count = \(picked.count)")
-                    guard !picked.isEmpty else {
-                        print("⚠️ No picked media resolved; aborting insert.")
-                        return
+
+                Task {
+                    let picked = await resolvePickedMediaOrdered(results)
+                    TapesLog.mediaPicker.info("📦 converted count=\(picked.count, privacy: .public)")
+                    guard !picked.isEmpty else { return }
+
+                    var newClips: [Clip] = []
+                    for item in picked {
+                        switch item {
+                        case .video(let url):
+                            let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+                            newClips.append(clip)
+                        case .photo(let image):
+                            if let imageData = image.jpegData(compressionQuality: 0.8) {
+                                let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                                newClips.append(clip)
+                            }
+                        }
                     }
 
+                    guard !newClips.isEmpty else { return }
+                    // Use your existing store insertion at the center:
                     tapeStore.insertAtCenter(into: $tape, picked: picked)
                 }
             }
@@ -277,12 +195,7 @@ struct TapeCardView: View {
                 let thumbnail = await generateThumbnail(from: movie.url)
                 let duration = await getVideoDuration(url: movie.url)
                 
-                pickedMedia.append(PickedMedia(
-                    type: .video,
-                    localURL: movie.url,
-                    thumbnail: thumbnail,
-                    duration: duration
-                ))
+                pickedMedia.append(.video(movie.url))
             } catch {
                 // Try to load as image
                 do {
@@ -296,12 +209,7 @@ struct TapeCardView: View {
                         let thumbnail = uiImage
                         let duration = Tokens.Timing.photoDefaultDuration
                         
-                        pickedMedia.append(PickedMedia(
-                            type: .image,
-                            imageData: imageData,
-                            thumbnail: thumbnail,
-                            duration: duration
-                        ))
+                        pickedMedia.append(.photo(uiImage))
                     }
                 } catch {
                     print("Error loading media item: \(error)")
@@ -336,7 +244,7 @@ struct TapeCardView: View {
 
 #Preview("Dark Mode") {
     TapeCardView(
-        tape: .constant(Tape.sampleTapes[0]),
+        tape: Binding.constant(Tape.sampleTapes[0]),
         onSettings: {},
         onPlay: {},
         onAirPlay: {},
@@ -353,7 +261,7 @@ struct TapeCardView: View {
 
 #Preview("Light Mode") {
     TapeCardView(
-        tape: .constant(Tape.sampleTapes[0]),
+        tape: Binding.constant(Tape.sampleTapes[0]),
         onSettings: {},
         onPlay: {},
         onAirPlay: {},
