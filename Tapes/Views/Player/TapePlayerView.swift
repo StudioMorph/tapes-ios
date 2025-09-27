@@ -117,10 +117,11 @@ public struct TapePlayerView: View {
             
             // Video Content
             if let currentClip = composer.currentClip {
-                print("🎬 TapePlayerView: Rendering video for clip \(currentClip.id), URL: \(currentClip.localURL?.absoluteString ?? "nil")")
                 VideoPlayerView(clip: currentClip)
+                    .onAppear {
+                        print("🎬 TapePlayerView: Rendering video for clip \(currentClip.id), URL: \(currentClip.localURL?.absoluteString ?? "nil")")
+                    }
             } else {
-                print("🎬 TapePlayerView: No current clip available")
                 // Video Content Placeholder
                 VStack(spacing: Tokens.Spacing.l) {
                     Image(systemName: "play.rectangle.fill")
@@ -134,6 +135,9 @@ public struct TapePlayerView: View {
                     Text("Clip \(composer.currentClipIndex + 1) of \(tape.clipCount)")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(Tokens.Colors.muted)
+                }
+                .onAppear {
+                    print("🎬 TapePlayerView: No current clip available")
                 }
             }
         }
