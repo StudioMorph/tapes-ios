@@ -109,6 +109,7 @@ struct ClipThumbnailView: View {
                 .font(.caption2)
                 .opacity(0.001) // keep essentially invisible; remove later
         }
+        .id("clip-\(clip.id)-\(clip.thumbnail != nil)") // Force re-render when thumbnail changes
     }
 }
 
