@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import AVKit
+import UIKit
 
 // MARK: - Video Player View
 
@@ -14,7 +15,7 @@ struct VideoPlayerView: View {
     var body: some View {
         ZStack {
             if let player = player {
-                VideoPlayer(player: player)
+                CustomVideoPlayerView(player: player)
                     .onAppear {
                         print("🎥 VideoPlayerView: Playing clip \(clip.id), URL: \(clip.localURL?.absoluteString ?? "nil")")
                     }
@@ -79,6 +80,38 @@ struct VideoPlayerView: View {
         
         // Don't auto-play - wait for shouldPlay binding
         print("✅ VideoPlayerView: Player created (not auto-playing)")
+    }
+}
+
+// MARK: - Custom Video Player View (No Built-in Controls)
+
+struct CustomVideoPlayerView: UIViewRepresentable {
+    let player: AVPlayer
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.videoGravity = .resizeAspect
+        view.layer.addSublayer(playerLayer)
+        
+        // Store the layer for later updates
+        context.coordinator.playerLayer = playerLayer
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if let playerLayer = context.coordinator.playerLayer {
+            playerLayer.frame = uiView.bounds
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator {
+        var playerLayer: AVPlayerLayer?
     }
 }
 
