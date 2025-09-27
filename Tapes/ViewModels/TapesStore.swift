@@ -15,8 +15,10 @@ public class TapesStore: ObservableObject {
     @Published public var showingSettingsSheet = false
     
     public init() {
-        // First launch guard - create single empty tape
-        if !UserDefaults.standard.bool(forKey: "hasLaunched") {
+        // If persistence exists, load here; else leave current in-memory state
+        
+        // Always ensure at least one empty tape exists
+        if tapes.isEmpty {
             let newReel = Tape(
                 title: "New Reel",
                 orientation: .portrait,
@@ -26,10 +28,22 @@ public class TapesStore: ObservableObject {
                 clips: []
             )
             tapes.append(newReel)
-            UserDefaults.standard.set(true, forKey: "hasLaunched")
         }
-        // If persistence exists, load here; else leave current in-memory state
     }
+    
+    #if DEBUG
+    func resetForDebug() {
+        tapes = [Tape(
+            title: "New Reel",
+            orientation: .portrait,
+            scaleMode: .fit,
+            transition: .none,
+            transitionDuration: 0.5,
+            clips: []
+        )]
+        // Optionally clear temp imports dir here.
+    }
+    #endif
     
     // MARK: - Tape CRUD Operations
     
