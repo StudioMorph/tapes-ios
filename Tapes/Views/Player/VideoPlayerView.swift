@@ -15,7 +15,7 @@ struct VideoPlayerView: View {
     var body: some View {
         ZStack {
             if let player = player {
-                CustomVideoPlayerView(player: player)
+                VideoPlayer(player: player)
                     .onAppear {
                         print("🎥 VideoPlayerView: Playing clip \(clip.id), URL: \(clip.localURL?.absoluteString ?? "nil")")
                     }
@@ -90,19 +90,29 @@ struct CustomVideoPlayerView: UIViewRepresentable {
     
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
+        view.backgroundColor = .black
+        
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.videoGravity = .resizeAspect
+        playerLayer.frame = view.bounds
         view.layer.addSublayer(playerLayer)
         
         // Store the layer for later updates
         context.coordinator.playerLayer = playerLayer
         
+        print("🖼️ CustomVideoPlayerView: makeUIView - Created playerLayer with frame: \(view.bounds)")
         return view
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
         if let playerLayer = context.coordinator.playerLayer {
-            playerLayer.frame = uiView.bounds
+            // Ensure the layer is properly sized
+            DispatchQueue.main.async {
+                playerLayer.frame = uiView.bounds
+                print("🖼️ CustomVideoPlayerView: updateUIView - Updated frame to: \(uiView.bounds)")
+            }
+        } else {
+            print("⚠️ CustomVideoPlayerView: updateUIView - playerLayer is nil")
         }
     }
     
