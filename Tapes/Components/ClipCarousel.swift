@@ -26,6 +26,7 @@ struct ClipCarousel: View {
                 Color.clear.frame(width: 16)
                 
                 ForEach(items) { item in
+                    let _ = print("🔄 ForEach rendering item: \(item.id)")
                     ThumbnailView(item: item, onPlaceholderTap: onPlaceholderTap)
                         .frame(width: thumbSize.width, height: thumbSize.height)
                 }

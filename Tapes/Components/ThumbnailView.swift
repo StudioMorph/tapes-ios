@@ -5,6 +5,7 @@ struct ThumbnailView: View {
     let onPlaceholderTap: (CarouselItem) -> Void
     
     var body: some View {
+        let _ = print("🖼️ ThumbnailView rendering: \(item.id)")
         ZStack {
             switch item {
             case .startPlus:
