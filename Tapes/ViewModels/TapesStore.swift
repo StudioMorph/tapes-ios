@@ -433,16 +433,10 @@ extension TapesStore {
 
         print("✅ Inserted \(newClips.count) clip(s) at index \(insertionIndex) in tape \"\(tapes[tIndex].title)\"")
         
-        // Generate thumbnails for video clips asynchronously
-        Task {
-            for clip in newClips {
-                if clip.clipType == .video, let url = clip.localURL {
-                    if let thumbnail = await generateThumbnail(from: url) {
-                        await MainActor.run {
-                            updateClip(clip.id, transform: { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.8) }, in: tapeID)
-                        }
-                    }
-                }
+        // Generate thumbnails and duration for video clips asynchronously
+        for clip in newClips {
+            if clip.clipType == .video, let url = clip.localURL {
+                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
             }
         }
     }
@@ -506,6 +500,35 @@ extension TapesStore {
         } catch {
             print("❌ Failed to generate thumbnail: \(error)")
             return nil
+        }
+    }
+    
+    /// Generate thumbnail and duration for a clip using robust async methods
+    func generateThumbAndDuration(for url: URL, clipID: UUID, tapeID: UUID) {
+        Task.detached(priority: .utility) {
+            let asset = AVURLAsset(url: url)
+            do {
+                // Async duration (iOS 16+)
+                let duration = try await asset.load(.duration)
+                await MainActor.run {
+                    self.updateClip(clipID, transform: { $0.duration = duration.seconds }, in: tapeID)
+                }
+
+                // Async CGImage
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                let time = CMTime(seconds: 0.1, preferredTimescale: 600)
+
+                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cg, _, _, _ in
+                    guard let cg else { return }
+                    let ui = UIImage(cgImage: cg)
+                    Task { @MainActor in
+                        self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }, in: tapeID)
+                    }
+                }
+            } catch {
+                print("⚠️ Thumb/duration load failed:", error.localizedDescription)
+            }
         }
     }
 }

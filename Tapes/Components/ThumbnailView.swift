@@ -82,22 +82,14 @@ struct ClipThumbnailView: View {
                     .aspectRatio(contentMode: .fill)
                     .clipped()
             } else {
-                // Fallback content
-                VStack {
-                    Image(systemName: "video")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Tokens.Colors.onSurface)
-                    
-                    if let assetId = clip.assetLocalId {
-                        Text(assetId)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(Tokens.Colors.onSurface)
-                    } else if let url = clip.localURL {
-                        Text(url.lastPathComponent)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(Tokens.Colors.onSurface)
+                // Non-intrusive skeleton (colors from tokens)
+                RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
+                    .fill(Tokens.Colors.elevated)
+                    .overlay {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(Tokens.Colors.onSurface)
                     }
-                }
             }
             
             // Duration badge in bottom-right corner
@@ -109,6 +101,11 @@ struct ClipThumbnailView: View {
                 }
             }
             .padding(8)
+        }
+        .overlay(alignment: .topTrailing) {
+            Text(clip.thumbnail == nil ? "no thumb" : "thumb")
+                .font(.caption2)
+                .opacity(0.001) // keep essentially invisible; remove later
         }
     }
 }

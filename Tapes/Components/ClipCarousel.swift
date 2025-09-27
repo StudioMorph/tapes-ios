@@ -34,6 +34,9 @@ struct ClipCarousel: View {
             }
         }
         .frame(height: thumbSize.height) // hug
+        .onChange(of: tape.clips.count) { oldValue, newValue in
+            print("Timeline sees clips = \(newValue)")
+        }
     }
     
 }
