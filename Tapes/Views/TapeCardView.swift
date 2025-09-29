@@ -188,10 +188,19 @@ struct TapeCardView: View {
                             print("🎯 Before insertion: tape has \(tape.clips.count) clips")
                             tapeStore.insert(newClips, into: tapeID, at: at)
                             print("🎯 After insertion: tape has \(tape.clips.count) clips")
+                            
+                            // Update FAB position to move forward after insertion
+                            // The FAB should now be positioned after the newly inserted clips
+                            fabInsertIndex = at + newClips.count
+                            print("🎯 Updated FAB position: \(fabInsertIndex ?? -1)")
                         } else {
                             // Fallback for legacy paths if any
                             print("🎯 Fallback: Inserting \(newClips.count) clips at end (\(tape.clips.count)) in tape \(tapeID)")
                             tapeStore.insert(newClips, into: tapeID, at: tape.clips.count) // append
+                            
+                            // Update FAB position for fallback case too
+                            fabInsertIndex = tape.clips.count
+                            print("🎯 Updated FAB position (fallback): \(fabInsertIndex ?? -1)")
                         }
                         
                         // Clear state
