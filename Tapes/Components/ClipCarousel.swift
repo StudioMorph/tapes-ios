@@ -49,7 +49,7 @@ struct ClipCarousel: View {
                 // Trailing 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
             }
-            .id(carouselId) // Force re-evaluation when tape changes
+            // Remove the .id() that was causing scroll position reset
         }
         .frame(height: thumbSize.height) // hug
         .onChange(of: tape.clips.count) { oldValue, newValue in
