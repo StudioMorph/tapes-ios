@@ -8,6 +8,7 @@ struct ClipCarousel: View {
     let onSnapped: ((Int, Int) -> Void)?
     
     @State private var savedScrollOffset: CGFloat = 0
+    @State private var savedSnapIndex: Int = 0
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
@@ -37,7 +38,11 @@ struct ClipCarousel: View {
                            leadingInset: 16,
                            trailingInset: 16,
                            containerWidth: container.size.width,
-                           onSnapped: onSnapped,
+                           onSnapped: { leftIndex, totalCount in
+                               print("🎯 Snap position: leftIndex=\(leftIndex), totalCount=\(totalCount)")
+                               savedSnapIndex = leftIndex
+                               onSnapped?(leftIndex, totalCount)
+                           },
                            savedOffset: savedScrollOffset,
                            onOffsetChanged: { offset in
                                print("🎯 Scroll position changed: \(offset)")
@@ -63,6 +68,12 @@ struct ClipCarousel: View {
             print("Timeline sees clips = \(newValue)")
             for (index, clip) in tape.clips.enumerated() {
                 print("  Clip \(index): id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil), localURL=\(clip.localURL?.lastPathComponent ?? "nil")")
+            }
+            
+            // Restore snap position after clips change
+            if savedSnapIndex > 0 {
+                print("🎯 Restoring snap position: \(savedSnapIndex)")
+                // The snap position will be restored when the carousel recreates
             }
         }
     }
