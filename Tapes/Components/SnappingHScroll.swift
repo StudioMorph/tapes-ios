@@ -84,6 +84,11 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             let clampedX = min(max(targetX, 0), maxOffsetX)
             scrollView.setContentOffset(CGPoint(x: clampedX, y: 0), animated: true)
             print("🎯 Programmatic scroll to index \(targetIndex), x=\(clampedX), maxOffsetX=\(maxOffsetX)")
+            
+            // Update the coordinator's currentSnapIndex for programmatic scrolling
+            if let coordinator = scrollView.delegate as? Coordinator {
+                coordinator.updateCurrentSnapIndex(targetIndex)
+            }
         } else if retryCount < maxRetries {
             print("🎯 ContentSize not ready (width=\(scrollView.contentSize.width)), retrying in \(retryDelay)s (attempt \(retryCount + 1)/\(maxRetries))")
             DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
@@ -98,6 +103,19 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         var parent: SnappingHScroll
         weak var hostingController: UIHostingController<HStack<Content>>?
         weak var scrollView: UIScrollView?
+        
+        // State machine for position tracking
+        enum CarouselState {
+            case idle
+            case scrolling
+            case snapping
+            case settling
+        }
+        
+        private var state: CarouselState = .idle
+        private var currentSnapIndex: Int = 1 // Initial value as specified
+        private var isUserScrolling: Bool = false
+        private var isProgrammaticScroll: Bool = false
 
         // We need to know total content width (calculated on the fly)
         init(parent: SnappingHScroll) {
@@ -105,8 +123,63 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         }
         
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            // Track scroll position changes
-            // Note: onOffsetChanged parameter was removed in merge conflict resolution
+            // Update state based on scroll behavior
+            if isUserScrolling {
+                state = .scrolling
+                isProgrammaticScroll = false // Reset programmatic scroll flag when user starts scrolling
+            } else if state == .scrolling {
+                state = .snapping
+            }
+        }
+        
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            isUserScrolling = true
+            isProgrammaticScroll = false // Reset programmatic scroll flag when user starts dragging
+            state = .scrolling
+        }
+        
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            isUserScrolling = false
+            if !decelerate {
+                // User stopped dragging and there's no deceleration
+                state = .settling
+                updatePositionIfValid()
+            }
+        }
+        
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            state = .settling
+            updatePositionIfValid()
+        }
+        
+        func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+            state = .idle
+            isProgrammaticScroll = false // Reset programmatic scroll flag after animation completes
+            updatePositionIfValid()
+        }
+        
+        private func updatePositionIfValid() {
+            guard state == .idle || state == .settling,
+                  isValidSnapIndex(currentSnapIndex) else { return }
+            
+            // Only update position when carousel is truly at rest
+            if let onSnapped = parent.onSnapped {
+                let leftIndex = currentSnapIndex
+                let rightIndex = leftIndex + 1
+                onSnapped(leftIndex, rightIndex)
+                print("🎯 State machine: Updated position to \(leftIndex) (state: \(state))")
+            }
+        }
+        
+        private func isValidSnapIndex(_ index: Int) -> Bool {
+            // Basic validation - can be enhanced with content size checks
+            return index >= 0
+        }
+        
+        func updateCurrentSnapIndex(_ index: Int) {
+            currentSnapIndex = index
+            isProgrammaticScroll = true
+            print("🎯 Coordinator: Updated currentSnapIndex to \(index) (programmatic scroll)")
         }
 
         func scrollViewWillEndDragging(_ scrollView: UIScrollView,
@@ -116,6 +189,12 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             guard parent.itemWidth > 0 else { 
                 print("⚠️ SnappingHScroll: itemWidth is 0 or negative")
                 return 
+            }
+
+            // If this is a programmatic scroll, don't override the target position
+            if isProgrammaticScroll {
+                print("🎯 SnappingHScroll: Programmatic scroll in progress, not overriding target position")
+                return
             }
 
             // Where the system plans to stop
@@ -155,12 +234,11 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             // Assign final target
             targetContentOffset.pointee.x = snappedOffsetX
             
-            // Call onSnapped callback with the snapped indices
-            if let onSnapped = parent.onSnapped {
-                let leftIndex = Int(n)
-                let rightIndex = leftIndex + 1
-                onSnapped(leftIndex, rightIndex)
-            }
+            // Update current snap index for state machine
+            currentSnapIndex = Int(n)
+            
+            // Don't call onSnapped here - let the state machine handle it
+            // when the carousel is truly at rest
         }
     }
 }
