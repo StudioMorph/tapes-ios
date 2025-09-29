@@ -204,8 +204,10 @@ struct TapeCardView: View {
     // MARK: - Snapping Callback
     
     func onSnapped(toLeftIndex leftIndex: Int, total count: Int) {
-        // insert BETWEEN left and right: left + 1 (clamped)
-        let newIndex = max(0, min(leftIndex + 1, count))
+        // The leftIndex represents the boundary index where the red line is positioned
+        // For array insertion, this directly corresponds to the "between index"
+        // No need to add 1 - the boundary index IS the between index
+        let newIndex = max(0, min(leftIndex, count))
         print("🎯 onSnapped: leftIndex=\(leftIndex), count=\(count), newIndex=\(newIndex)")
         fabInsertIndex = newIndex
     }
@@ -214,12 +216,16 @@ struct TapeCardView: View {
     
     func openPickerFromFAB(for tapeID: UUID, currentClipsCount: Int) {
         targetTapeID = tapeID
-        // For FAB, we want to insert at the center position (red line)
+        // For FAB, we want to insert at the red line position
         // The red line is always at the center of the visible area
-        // For now, let's use a simple approach: insert at the center of existing clips
-        let centerIndex = currentClipsCount / 2
-        snapshotInsertIndex = centerIndex
-        print("🎯 openPickerFromFAB: currentClipsCount=\(currentClipsCount), centerIndex=\(centerIndex), snapshot=\(snapshotInsertIndex ?? -1)")
+        // We need to determine which "between index" the red line corresponds to
+        
+        // For now, let's use the snapping callback result if available
+        // Otherwise, use a reasonable default based on the current state
+        let defaultIndex = currentClipsCount / 2
+        let snapIndex = fabInsertIndex ?? defaultIndex
+        snapshotInsertIndex = max(0, min(snapIndex, currentClipsCount))
+        print("🎯 openPickerFromFAB: currentClipsCount=\(currentClipsCount), fabInsertIndex=\(fabInsertIndex ?? -1), defaultIndex=\(defaultIndex), snapshot=\(snapshotInsertIndex ?? -1)")
         showingMediaPicker = true
     }
     
