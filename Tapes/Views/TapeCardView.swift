@@ -214,10 +214,12 @@ struct TapeCardView: View {
     
     func openPickerFromFAB(for tapeID: UUID, currentClipsCount: Int) {
         targetTapeID = tapeID
-        let fallback = currentClipsCount // end if unknown
-        let snapIndex = fabInsertIndex ?? fallback
-        snapshotInsertIndex = max(0, min(snapIndex, currentClipsCount))
-        print("🎯 openPickerFromFAB: fabInsertIndex=\(fabInsertIndex ?? -1), fallback=\(fallback), snapshot=\(snapshotInsertIndex ?? -1)")
+        // For FAB, we want to insert at the center position (red line)
+        // The red line is always at the center of the visible area
+        // For now, let's use a simple approach: insert at the center of existing clips
+        let centerIndex = currentClipsCount / 2
+        snapshotInsertIndex = centerIndex
+        print("🎯 openPickerFromFAB: currentClipsCount=\(currentClipsCount), centerIndex=\(centerIndex), snapshot=\(snapshotInsertIndex ?? -1)")
         showingMediaPicker = true
     }
     
