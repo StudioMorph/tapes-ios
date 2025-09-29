@@ -11,6 +11,7 @@ struct ClipCarousel: View {
     @State private var savedSnapIndex: Int = 0
     @State private var lastClipCount: Int = 0
     @State private var shouldAdvance: Bool = false
+    @State private var targetPosition: Int = 0
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
@@ -36,6 +37,9 @@ struct ClipCarousel: View {
         let _ = print("📋 ClipCarousel: \(tape.clips.count) clips, items count: \(items.count)")
         let _ = tapeHash // Force dependency on tape changes
         
+        // Calculate target position based on current state
+        let currentTargetPosition = calculateTargetPosition()
+        
         // Force re-evaluation by using the hash as an ID
         let carouselId = "carousel-\(tape.id)-\(tapeHash)"
         GeometryReader { container in
@@ -53,7 +57,7 @@ struct ClipCarousel: View {
                                print("🎯 Scroll position changed: \(offset)")
                                savedScrollOffset = offset
                            },
-                           targetSnapIndex: shouldAdvance ? savedSnapIndex : nil) {
+                           targetSnapIndex: currentTargetPosition > 0 ? currentTargetPosition : nil) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
@@ -75,34 +79,19 @@ struct ClipCarousel: View {
             for (index, clip) in tape.clips.enumerated() {
                 print("  Clip \(index): id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil), localURL=\(clip.localURL?.lastPathComponent ?? "nil")")
             }
-            
-            // Detect when clips are added and advance carousel position
-            if newValue > oldValue {
-                let clipsAdded = newValue - oldValue
-                print("🎯 Clips added: \(clipsAdded), advancing carousel position")
-                
-                // Calculate the new target position based on where we were before
-                let newTargetPosition = savedSnapIndex + clipsAdded
-                savedSnapIndex = newTargetPosition
-                print("🎯 New snap position: \(savedSnapIndex)")
-                
-                // Update the insertion index to reflect the new position
-                insertionIndex = savedSnapIndex
-                
-                // Set flag to trigger advancement
-                shouldAdvance = true
-            }
-            
-            lastClipCount = newValue
         }
-        .onChange(of: shouldAdvance) { _, newValue in
-            if newValue {
-                // Reset the flag after triggering advancement
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    shouldAdvance = false
-                }
-            }
+    }
+    
+    // Calculate the target position based on current state
+    private func calculateTargetPosition() -> Int {
+        // If we have clips and the insertion index is set, use that
+        if !tape.clips.isEmpty && insertionIndex > 0 {
+            print("🎯 Using insertion index: \(insertionIndex)")
+            return insertionIndex
         }
+        
+        // Default to showing the first clip
+        return 1
     }
     
 }
