@@ -31,6 +31,9 @@ struct TapeCardView: View {
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var importSource: ImportSource? = nil
+    @State private var fabInsertIndex: Int? = nil  // live position under red line
+    @State private var snapshotInsertIndex: Int? = nil
+    @State private var targetTapeID: UUID?
     
     // Carousel position storage (outside carousel component)
     @State private var savedCarouselPosition: Int = 1 // Current snap position (start at 1 to account for 0-based indexing)
@@ -105,17 +108,17 @@ struct TapeCardView: View {
                     savedCarouselPosition: $savedCarouselPosition,
                     pendingAdvancement: $pendingAdvancement,
                     onPlaceholderTap: { item in
-                        // Store import source and show picker
+                        // Use new positioning functions
                         switch item {
                         case .startPlus:
-                            importSource = .leftPlaceholder(index: 0)
+                            openPickerFromLeftPlaceholder(for: tape.id)
                         case .endPlus:
-                            importSource = .rightPlaceholder(index: tape.clips.count)
+                            openPickerFromRightPlaceholder(for: tape.id, currentClipsCount: tape.clips.count)
                         case .clip:
-                            importSource = .centerFAB // Fallback
+                            openPickerFromFAB(for: tape.id, currentClipsCount: tape.clips.count) // Fallback
                         }
-                        showingMediaPicker = true
-                    }
+                    },
+                    onSnapped: onSnapped
                 )
                 .id("carousel-\(tape.clips.count)") // Force view update when clips change
                 .zIndex(0) // always behind the line and FAB
@@ -132,8 +135,7 @@ struct TapeCardView: View {
                     // Handle FAB tap action based on mode
                     switch fabMode {
                     case .gallery:
-                        importSource = .centerFAB
-                        showingMediaPicker = true
+                        openPickerFromFAB(for: tape.id, currentClipsCount: tape.clips.count)
                     case .camera:
                         // Handle camera action
                         break
@@ -211,10 +213,101 @@ struct TapeCardView: View {
                         
                         // Reset import source
                         importSource = nil
+                        
+                        // Convert picked media to clips
+                        var newClips: [Clip] = []
+                        for item in picked {
+                            switch item {
+                            case .video(let url):
+                                let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+                                newClips.append(clip)
+                            case .photo(let image):
+                                if let imageData = image.jpegData(compressionQuality: 0.8) {
+                                    let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                                    newClips.append(clip)
+                                }
+                            }
+                        }
+                        
+                        guard !newClips.isEmpty else { return }
+                        
+                        // Use snapshot index for insertion
+                        if let at = snapshotInsertIndex {
+                            print("🎯 Inserting \(newClips.count) clips at index \(at) in tape \(tapeID)")
+                            print("🎯 Before insertion: tape has \(tape.clips.count) clips")
+                            tapeStore.insert(newClips, into: tapeID, at: at)
+                            print("🎯 After insertion: tape has \(tape.clips.count) clips")
+                            
+                            // Update FAB position to move forward after insertion
+                            // The FAB should now be positioned after the newly inserted clips
+                            fabInsertIndex = at + newClips.count
+                            print("🎯 Updated FAB position: \(fabInsertIndex ?? -1)")
+                        } else {
+                            // Fallback for legacy paths if any
+                            print("🎯 Fallback: Inserting \(newClips.count) clips at end (\(tape.clips.count)) in tape \(tapeID)")
+                            tapeStore.insert(newClips, into: tapeID, at: tape.clips.count) // append
+                            
+                            // Update FAB position for fallback case too
+                            fabInsertIndex = tape.clips.count
+                            print("🎯 Updated FAB position (fallback): \(fabInsertIndex ?? -1)")
+                        }
+                        
+                        // Clear state
+                        snapshotInsertIndex = nil
+                        targetTapeID = nil
                     }
                 }
             }
         }
+    }
+    
+    // MARK: - Snapping Callback
+    
+    func onSnapped(toLeftIndex leftIndex: Int, total count: Int) {
+        // The leftIndex represents the boundary index where the red line is positioned
+        // For array insertion, this directly corresponds to the "between index"
+        // No need to add 1 - the boundary index IS the between index
+        let newIndex = max(0, min(leftIndex, count))
+        print("🎯 onSnapped: leftIndex=\(leftIndex), count=\(count), newIndex=\(newIndex)")
+        fabInsertIndex = newIndex
+    }
+    
+    // MARK: - Picker Opening Functions
+    
+    func openPickerFromFAB(for tapeID: UUID, currentClipsCount: Int) {
+        targetTapeID = tapeID
+        // For FAB, we want to insert at the red line position
+        // The red line is always at the center of the visible area
+        // We need to determine which "between index" the red line corresponds to
+        
+        // Since the snapping callback might not be called on initial load,
+        // let's use a more direct approach for FAB positioning
+        // The FAB is always at the center, so we want to insert at the center position
+        // For FAB positioning, we want to insert at the center of the timeline
+        let centerIndex: Int
+        if currentClipsCount == 0 {
+            centerIndex = 0  // Empty tape: insert at start
+        } else if currentClipsCount == 1 {
+            centerIndex = 1  // 1 clip: insert after it (at end)
+        } else {
+            centerIndex = currentClipsCount / 2  // Multiple clips: insert at center
+        }
+        snapshotInsertIndex = centerIndex
+        print("🎯 openPickerFromFAB: currentClipsCount=\(currentClipsCount), centerIndex=\(centerIndex), snapshot=\(snapshotInsertIndex ?? -1)")
+        print("🎯 FAB State: fabInsertIndex=\(fabInsertIndex), snapshotInsertIndex=\(snapshotInsertIndex)")
+        showingMediaPicker = true
+    }
+    
+    func openPickerFromLeftPlaceholder(for tapeID: UUID) {
+        targetTapeID = tapeID
+        snapshotInsertIndex = 0
+        showingMediaPicker = true
+    }
+    
+    func openPickerFromRightPlaceholder(for tapeID: UUID, currentClipsCount: Int) {
+        targetTapeID = tapeID
+        snapshotInsertIndex = currentClipsCount
+        showingMediaPicker = true
     }
     
     // MARK: - Helper Functions

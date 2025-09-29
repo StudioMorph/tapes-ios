@@ -7,6 +7,13 @@ struct ClipCarousel: View {
     @Binding var savedCarouselPosition: Int
     @Binding var pendingAdvancement: Int
     let onPlaceholderTap: (CarouselItem) -> Void
+    let onSnapped: ((Int, Int) -> Void)?
+    
+    @State private var savedScrollOffset: CGFloat = 0
+    @State private var savedSnapIndex: Int = 0
+    @State private var lastClipCount: Int = 0
+    @State private var shouldAdvance: Bool = false
+    @State private var targetPosition: Int = 0
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
@@ -20,17 +27,22 @@ struct ClipCarousel: View {
         return result
     }
     
-    // Force re-evaluation when tape changes
-    private var tapeHash: Int {
-        tape.clips.map { "\($0.id)-\($0.thumbnail != nil)" }.joined().hashValue
+    // Hash only thumbnail states - not clip count to avoid carousel recreation
+    private var thumbnailHash: Int {
+        let thumbnailStates = tape.clips.map { "\($0.thumbnail != nil)" }.joined()
+        return thumbnailStates.hashValue
     }
     
     var body: some View {
         let _ = print("📋 ClipCarousel: \(tape.clips.count) clips, items count: \(items.count)")
-        let _ = tapeHash // Force dependency on tape changes
+        let _ = thumbnailHash // Force dependency on thumbnail changes
         
-        // Force re-evaluation by using the hash as an ID
-        let carouselId = "carousel-\(tape.id)-\(tapeHash)"
+        // Calculate target position based on current state
+        let currentTargetPosition = calculateTargetPosition()
+        
+        // Stable ID that doesn't change when clips are added
+        let stableCarouselId = "carousel-\(tape.id)"
+        
         GeometryReader { container in
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
@@ -61,7 +73,7 @@ struct ClipCarousel: View {
                 // Trailing 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
             }
-            .id(carouselId) // Force re-evaluation when tape changes
+            .id(stableCarouselId) // Stable ID - doesn't change when clips added
         }
         .frame(height: thumbSize.height) // hug
         .onChange(of: tape.clips.count) { oldValue, newValue in
@@ -69,7 +81,39 @@ struct ClipCarousel: View {
             for (index, clip) in tape.clips.enumerated() {
                 print("  Clip \(index): id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil), localURL=\(clip.localURL?.lastPathComponent ?? "nil")")
             }
+            
+            // If clips were added, advance the carousel by the number of clips added
+            if newValue > oldValue {
+                let clipsAdded = newValue - oldValue
+                targetPosition = savedSnapIndex + clipsAdded
+                shouldAdvance = true
+                print("🎯 Clips added: \(oldValue) -> \(newValue), advancing by \(clipsAdded) to position \(targetPosition)")
+                
+                // Reset the flag after a delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    shouldAdvance = false
+                    print("🎯 Advancement flag reset")
+                }
+            }
         }
+    }
+    
+    // Calculate the target position based on current state
+    private func calculateTargetPosition() -> Int {
+        // If we should advance due to clips being added, use the calculated target position
+        if shouldAdvance && targetPosition > 0 {
+            print("🎯 Using calculated target position: \(targetPosition)")
+            return targetPosition
+        }
+        
+        // Only return a target position if we have clips and a valid insertion index
+        if !tape.clips.isEmpty && insertionIndex > 0 && insertionIndex <= tape.clips.count {
+            print("🎯 Using insertion index: \(insertionIndex)")
+            return insertionIndex
+        }
+        
+        // No target position - let the carousel stay at its current position
+        return 0
     }
     
 }

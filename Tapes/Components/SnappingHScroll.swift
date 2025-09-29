@@ -59,6 +59,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         context.coordinator.hostingController = hosting
         context.coordinator.scrollView = scrollView
         
+<<<<<<< HEAD
         // Handle programmatic scrolling to target index
         if let targetIndex = targetSnapIndex {
             DispatchQueue.main.async {
@@ -88,6 +89,11 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         // We need to know total content width (calculated on the fly)
         init(parent: SnappingHScroll) {
             self.parent = parent
+        }
+        
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            // Track scroll position changes
+            parent.onOffsetChanged?(scrollView.contentOffset.x)
         }
 
         func scrollViewWillEndDragging(_ scrollView: UIScrollView,
@@ -132,6 +138,13 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             snappedOffsetX = min(max(snappedOffsetX, 0), maxOffsetX)
 
             print("🔍 SnappingHScroll: n = \(n), snappedOffsetX = \(snappedOffsetX), maxOffsetX = \(maxOffsetX)")
+
+            // Call snapping callback if provided
+            if let onSnapped = parent.onSnapped {
+                let leftIndex = Int(n)
+                let totalCount = Int((scrollView.contentSize.width - parent.leadingInset - parent.trailingInset) / parent.itemWidth)
+                onSnapped(leftIndex, totalCount)
+            }
 
             // Assign final target
             targetContentOffset.pointee.x = snappedOffsetX
