@@ -38,8 +38,10 @@ struct TapePlayerView: View {
             }
         }
         .onAppear {
-            setupPlayer()
-            setupControlsTimer()
+            Task { @MainActor in
+                setupPlayer()
+                setupControlsTimer()
+            }
         }
                 .onDisappear {
                     // Stop all audio and clean up
@@ -81,7 +83,7 @@ struct TapePlayerView: View {
         GeometryReader { geometry in
             if let player = player {
                 VideoPlayer(player: player)
-                    .disabled(true) // Disable all built-in controls
+                    .disabled(true)
                     .onAppear {
                         print("🎬 Playing clip \(currentClipIndex + 1) of \(tape.clips.count)")
                     }
