@@ -61,13 +61,14 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         
         // Handle programmatic scrolling to target index
         if let targetIndex = targetSnapIndex {
+            print("🎯 SnappingHScroll: targetSnapIndex=\(targetIndex), contentSize=\(scrollView.contentSize)")
             DispatchQueue.main.async {
                 DispatchQueue.main.async {
                     let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
                     let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
                     let clampedX = min(max(targetX, 0), maxOffsetX)
                     scrollView.setContentOffset(CGPoint(x: clampedX, y: 0), animated: true)
-                    print("🎯 Programmatic scroll to index \(targetIndex), x=\(clampedX)")
+                    print("🎯 Programmatic scroll to index \(targetIndex), x=\(clampedX), maxOffsetX=\(maxOffsetX)")
                 }
             }
         }
@@ -137,13 +138,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             snappedOffsetX = min(max(snappedOffsetX, 0), maxOffsetX)
 
             print("🔍 SnappingHScroll: n = \(n), snappedOffsetX = \(snappedOffsetX), maxOffsetX = \(maxOffsetX)")
-
-            // Call snapping callback if provided
-            if let onSnapped = parent.onSnapped {
-                let leftIndex = Int(n)
-                let totalCount = Int((scrollView.contentSize.width - parent.leadingInset - parent.trailingInset) / parent.itemWidth)
-                onSnapped(leftIndex, totalCount)
-            }
 
             // Assign final target
             targetContentOffset.pointee.x = snappedOffsetX

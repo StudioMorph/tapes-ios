@@ -39,8 +39,9 @@ struct ClipCarousel: View {
                            targetSnapIndex: pendingAdvancement > 0 ? savedCarouselPosition + pendingAdvancement : nil,
                            onSnapped: { leftIndex, rightIndex in
                                // Update saved position when carousel snaps
+                               let oldPosition = savedCarouselPosition
                                savedCarouselPosition = leftIndex
-                               print("🎯 Carousel snapped to position: \(leftIndex)")
+                               print("🎯 Carousel snapped: \(oldPosition) -> \(leftIndex), pendingAdvancement: \(pendingAdvancement)")
                                
                                // Clear pending advancement after applying it
                                if pendingAdvancement > 0 {

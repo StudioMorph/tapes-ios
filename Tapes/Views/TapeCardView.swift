@@ -171,7 +171,7 @@ struct TapeCardView: View {
                         let currentPosition = savedCarouselPosition
                         let mediaCount = picked.count
                         
-                        print("🎯 Before insertion: position=\(currentPosition), adding \(mediaCount) items")
+                        print("🎯 Before insertion: position=\(currentPosition), adding \(mediaCount) items, source=\(importSource)")
                         
                         // Always use the working insertAtCenter method, but adjust positioning
                         switch importSource {
@@ -183,6 +183,7 @@ struct TapeCardView: View {
                             // Move clips to start
                             let newClips = tape.clips
                             tape.clips = newClips + originalClips
+                            print("🎯 Left placeholder: moved \(newClips.count) clips to start")
                         case .rightPlaceholder(let index):
                             // Insert at end by appending to existing clips
                             let originalClips = tape.clips
@@ -191,18 +192,21 @@ struct TapeCardView: View {
                             // Move clips to end
                             let newClips = tape.clips
                             tape.clips = originalClips + newClips
+                            print("🎯 Right placeholder: moved \(newClips.count) clips to end")
                         case .centerFAB:
                             // Insert at center (red line position) - this is the default behavior
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
+                            print("🎯 Center FAB: inserted at center")
                         case .none:
                             // Fallback to center
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
+                            print("🎯 None: fallback to center")
                         }
                         
                         // Set advancement - the carousel will scroll by this amount
                         pendingAdvancement = mediaCount
                         
-                        print("🎯 After insertion: advancement set to \(pendingAdvancement), current position: \(savedCarouselPosition)")
+                        print("🎯 After insertion: advancement set to \(pendingAdvancement), current position: \(savedCarouselPosition), total clips: \(tape.clips.count)")
                         
                         // Reset import source
                         importSource = nil
