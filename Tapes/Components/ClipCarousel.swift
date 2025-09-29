@@ -24,7 +24,8 @@ struct ClipCarousel: View {
     
     // Force re-evaluation when tape changes
     private var tapeHash: Int {
-        tape.clips.map { "\($0.id)-\($0.thumbnail != nil)" }.joined().hashValue
+        // Only hash thumbnail states, not clip IDs, to prevent recreation on clip addition
+        tape.clips.map { "\($0.thumbnail != nil)" }.joined().hashValue
     }
     
     var body: some View {
