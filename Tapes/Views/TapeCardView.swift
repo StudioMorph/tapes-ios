@@ -225,7 +225,15 @@ struct TapeCardView: View {
         // Since the snapping callback might not be called on initial load,
         // let's use a more direct approach for FAB positioning
         // The FAB is always at the center, so we want to insert at the center position
-        let centerIndex = currentClipsCount / 2
+        // For FAB positioning, we want to insert at the center of the timeline
+        let centerIndex: Int
+        if currentClipsCount == 0 {
+            centerIndex = 0  // Empty tape: insert at start
+        } else if currentClipsCount == 1 {
+            centerIndex = 1  // 1 clip: insert after it (at end)
+        } else {
+            centerIndex = currentClipsCount / 2  // Multiple clips: insert at center
+        }
         snapshotInsertIndex = centerIndex
         print("🎯 openPickerFromFAB: currentClipsCount=\(currentClipsCount), centerIndex=\(centerIndex), snapshot=\(snapshotInsertIndex ?? -1)")
         print("🎯 FAB State: fabInsertIndex=\(fabInsertIndex), snapshotInsertIndex=\(snapshotInsertIndex)")
