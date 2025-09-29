@@ -9,6 +9,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     let onSnapped: ((Int, Int) -> Void)?
     let savedOffset: CGFloat?
     let onOffsetChanged: ((CGFloat) -> Void)?
+    let targetSnapIndex: Int?
     let content: () -> Content
 
     init(itemWidth: CGFloat,
@@ -18,6 +19,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
          onSnapped: ((Int, Int) -> Void)? = nil,
          savedOffset: CGFloat? = nil,
          onOffsetChanged: ((CGFloat) -> Void)? = nil,
+         targetSnapIndex: Int? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
         self.leadingInset = leadingInset
@@ -26,6 +28,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         self.onSnapped = onSnapped
         self.savedOffset = savedOffset
         self.onOffsetChanged = onOffsetChanged
+        self.targetSnapIndex = targetSnapIndex
         self.content = content
     }
 
@@ -67,6 +70,15 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             print("🎯 Restoring scroll position: \(savedOffset)")
             DispatchQueue.main.async {
                 scrollView.setContentOffset(CGPoint(x: savedOffset, y: 0), animated: false)
+            }
+        }
+        
+        // Scroll to target snap index if provided
+        if let targetIndex = targetSnapIndex {
+            print("🎯 Scrolling to target snap index: \(targetIndex)")
+            DispatchQueue.main.async {
+                let targetOffset = leadingInset + CGFloat(targetIndex) * itemWidth
+                scrollView.setContentOffset(CGPoint(x: targetOffset, y: 0), animated: true)
             }
         }
         

@@ -9,6 +9,7 @@ struct ClipCarousel: View {
     
     @State private var savedScrollOffset: CGFloat = 0
     @State private var savedSnapIndex: Int = 0
+    @State private var lastClipCount: Int = 0
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
@@ -48,7 +49,8 @@ struct ClipCarousel: View {
                            onOffsetChanged: { offset in
                                print("🎯 Scroll position changed: \(offset)")
                                savedScrollOffset = offset
-                           }) {
+                           },
+                           targetSnapIndex: savedSnapIndex > 0 ? savedSnapIndex : nil) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
@@ -71,11 +73,20 @@ struct ClipCarousel: View {
                 print("  Clip \(index): id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil), localURL=\(clip.localURL?.lastPathComponent ?? "nil")")
             }
             
-            // Restore snap position after clips change
-            if savedSnapIndex > 0 {
-                print("🎯 Restoring snap position: \(savedSnapIndex)")
-                // The snap position will be restored when the carousel recreates
+            // Detect when clips are added and advance carousel position
+            if newValue > oldValue {
+                let clipsAdded = newValue - oldValue
+                print("🎯 Clips added: \(clipsAdded), advancing carousel position")
+                
+                // Advance the saved snap index by the number of clips added
+                savedSnapIndex += clipsAdded
+                print("🎯 New snap position: \(savedSnapIndex)")
+                
+                // Update the insertion index to reflect the new position
+                insertionIndex = savedSnapIndex
             }
+            
+            lastClipCount = newValue
         }
     }
     
