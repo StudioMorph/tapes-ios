@@ -41,13 +41,16 @@ struct TapePlayerView: View {
             setupPlayer()
             setupControlsTimer()
         }
-        .onDisappear {
-            player?.pause()
-            controlsTimer?.invalidate()
-            progressTimer?.invalidate()
-            // Clean up notification observers
-            NotificationCenter.default.removeObserver(self)
-        }
+                .onDisappear {
+                    // Stop all audio and clean up
+                    player?.pause()
+                    player?.replaceCurrentItem(with: nil)
+                    player = nil
+                    controlsTimer?.invalidate()
+                    progressTimer?.invalidate()
+                    // Clean up notification observers
+                    NotificationCenter.default.removeObserver(self)
+                }
         .onTapGesture {
             toggleControls()
         }
@@ -267,6 +270,10 @@ struct TapePlayerView: View {
         
         print("🎬 Loading clip \(currentClipIndex + 1): \(clip.id)")
         
+        // Stop and reset previous player to prevent audio overlap
+        player?.pause()
+        player?.replaceCurrentItem(with: nil)
+        
         let playerItem = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: playerItem)
         
@@ -421,6 +428,9 @@ struct TapePlayerView: View {
         // If we need to change clips
         if targetClipIndex != currentClipIndex {
             print("🎯 Changing to clip \(targetClipIndex + 1)")
+            // Stop current audio before switching
+            player?.pause()
+            player?.replaceCurrentItem(with: nil)
             currentClipIndex = targetClipIndex
             loadCurrentClip()
         }
