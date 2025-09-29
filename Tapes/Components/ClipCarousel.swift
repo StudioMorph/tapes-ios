@@ -78,11 +78,31 @@ struct ClipCarousel: View {
             for (index, clip) in tape.clips.enumerated() {
                 print("  Clip \(index): id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil), localURL=\(clip.localURL?.lastPathComponent ?? "nil")")
             }
+            
+            // If clips were added, advance the carousel by the number of clips added
+            if newValue > oldValue {
+                let clipsAdded = newValue - oldValue
+                targetPosition = savedSnapIndex + clipsAdded
+                shouldAdvance = true
+                print("🎯 Clips added: \(oldValue) -> \(newValue), advancing by \(clipsAdded) to position \(targetPosition)")
+                
+                // Reset the flag after a delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    shouldAdvance = false
+                    print("🎯 Advancement flag reset")
+                }
+            }
         }
     }
     
     // Calculate the target position based on current state
     private func calculateTargetPosition() -> Int {
+        // If we should advance due to clips being added, use the calculated target position
+        if shouldAdvance && targetPosition > 0 {
+            print("🎯 Using calculated target position: \(targetPosition)")
+            return targetPosition
+        }
+        
         // Only return a target position if we have clips and a valid insertion index
         if !tape.clips.isEmpty && insertionIndex > 0 && insertionIndex <= tape.clips.count {
             print("🎯 Using insertion index: \(insertionIndex)")
