@@ -213,48 +213,6 @@ struct TapeCardView: View {
                         
                         // Reset import source
                         importSource = nil
-                        
-                        // Convert picked media to clips
-                        var newClips: [Clip] = []
-                        for item in picked {
-                            switch item {
-                            case .video(let url):
-                                let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
-                                newClips.append(clip)
-                            case .photo(let image):
-                                if let imageData = image.jpegData(compressionQuality: 0.8) {
-                                    let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
-                                    newClips.append(clip)
-                                }
-                            }
-                        }
-                        
-                        guard !newClips.isEmpty else { return }
-                        
-                        // Use snapshot index for insertion
-                        if let at = snapshotInsertIndex {
-                            print("🎯 Inserting \(newClips.count) clips at index \(at) in tape \(tape.id)")
-                            print("🎯 Before insertion: tape has \(tape.clips.count) clips")
-                            tapeStore.insert(newClips, into: tape.id, at: at)
-                            print("🎯 After insertion: tape has \(tape.clips.count) clips")
-                            
-                            // Update FAB position to move forward after insertion
-                            // The FAB should now be positioned after the newly inserted clips
-                            fabInsertIndex = at + newClips.count
-                            print("🎯 Updated FAB position: \(fabInsertIndex ?? -1)")
-                        } else {
-                            // Fallback for legacy paths if any
-                            print("🎯 Fallback: Inserting \(newClips.count) clips at end (\(tape.clips.count)) in tape \(tape.id)")
-                            tapeStore.insert(newClips, into: tape.id, at: tape.clips.count) // append
-                            
-                            // Update FAB position for fallback case too
-                            fabInsertIndex = tape.clips.count
-                            print("🎯 Updated FAB position (fallback): \(fabInsertIndex ?? -1)")
-                        }
-                        
-                        // Clear state
-                        snapshotInsertIndex = nil
-                        targetTapeID = nil
                     }
                 }
             }
