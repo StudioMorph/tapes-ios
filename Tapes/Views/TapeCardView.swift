@@ -222,12 +222,12 @@ struct TapeCardView: View {
         // The red line is always at the center of the visible area
         // We need to determine which "between index" the red line corresponds to
         
-        // For now, let's use the snapping callback result if available
-        // Otherwise, use a reasonable default based on the current state
-        let defaultIndex = currentClipsCount / 2
-        let snapIndex = fabInsertIndex ?? defaultIndex
-        snapshotInsertIndex = max(0, min(snapIndex, currentClipsCount))
-        print("🎯 openPickerFromFAB: currentClipsCount=\(currentClipsCount), fabInsertIndex=\(fabInsertIndex ?? -1), defaultIndex=\(defaultIndex), snapshot=\(snapshotInsertIndex ?? -1)")
+        // Since the snapping callback might not be called on initial load,
+        // let's use a more direct approach for FAB positioning
+        // The FAB is always at the center, so we want to insert at the center position
+        let centerIndex = currentClipsCount / 2
+        snapshotInsertIndex = centerIndex
+        print("🎯 openPickerFromFAB: currentClipsCount=\(currentClipsCount), centerIndex=\(centerIndex), snapshot=\(snapshotInsertIndex ?? -1)")
         print("🎯 FAB State: fabInsertIndex=\(fabInsertIndex), snapshotInsertIndex=\(snapshotInsertIndex)")
         showingMediaPicker = true
     }
