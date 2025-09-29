@@ -144,7 +144,8 @@ public enum CarouselItem: Identifiable {
             insertionIndex: .constant(0),
             savedCarouselPosition: .constant(0),
             pendingAdvancement: .constant(0),
-            onPlaceholderTap: { _ in }
+            onPlaceholderTap: { _ in },
+            onSnapped: nil
         )
         .frame(height: 84)
         .background(Color.gray.opacity(0.3))

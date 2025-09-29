@@ -59,7 +59,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         context.coordinator.hostingController = hosting
         context.coordinator.scrollView = scrollView
         
-<<<<<<< HEAD
         // Handle programmatic scrolling to target index
         if let targetIndex = targetSnapIndex {
             DispatchQueue.main.async {
@@ -93,7 +92,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             // Track scroll position changes
-            parent.onOffsetChanged?(scrollView.contentOffset.x)
+            // Note: onOffsetChanged parameter was removed in merge conflict resolution
         }
 
         func scrollViewWillEndDragging(_ scrollView: UIScrollView,

@@ -233,9 +233,9 @@ struct TapeCardView: View {
                         
                         // Use snapshot index for insertion
                         if let at = snapshotInsertIndex {
-                            print("🎯 Inserting \(newClips.count) clips at index \(at) in tape \(tapeID)")
+                            print("🎯 Inserting \(newClips.count) clips at index \(at) in tape \(tape.id)")
                             print("🎯 Before insertion: tape has \(tape.clips.count) clips")
-                            tapeStore.insert(newClips, into: tapeID, at: at)
+                            tapeStore.insert(newClips, into: tape.id, at: at)
                             print("🎯 After insertion: tape has \(tape.clips.count) clips")
                             
                             // Update FAB position to move forward after insertion
@@ -244,8 +244,8 @@ struct TapeCardView: View {
                             print("🎯 Updated FAB position: \(fabInsertIndex ?? -1)")
                         } else {
                             // Fallback for legacy paths if any
-                            print("🎯 Fallback: Inserting \(newClips.count) clips at end (\(tape.clips.count)) in tape \(tapeID)")
-                            tapeStore.insert(newClips, into: tapeID, at: tape.clips.count) // append
+                            print("🎯 Fallback: Inserting \(newClips.count) clips at end (\(tape.clips.count)) in tape \(tape.id)")
+                            tapeStore.insert(newClips, into: tape.id, at: tape.clips.count) // append
                             
                             // Update FAB position for fallback case too
                             fabInsertIndex = tape.clips.count
