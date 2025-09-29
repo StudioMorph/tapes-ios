@@ -25,23 +25,12 @@ struct ClipCarousel: View {
         return result
     }
     
-    // Force re-evaluation when tape changes
-    private var tapeHash: Int {
-        // Hash clip count and thumbnail states to detect changes
-        let clipCount = tape.clips.count
-        let thumbnailStates = tape.clips.map { "\($0.thumbnail != nil)" }.joined()
-        return "\(clipCount)-\(thumbnailStates)".hashValue
-    }
     
     var body: some View {
         let _ = print("📋 ClipCarousel: \(tape.clips.count) clips, items count: \(items.count)")
-        let _ = tapeHash // Force dependency on tape changes
         
         // Calculate target position based on current state
         let currentTargetPosition = calculateTargetPosition()
-        
-        // Force re-evaluation by using the hash as an ID
-        let carouselId = "carousel-\(tape.id)-\(tapeHash)"
         GeometryReader { container in
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
@@ -71,7 +60,6 @@ struct ClipCarousel: View {
                 // Trailing 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
             }
-            .id(carouselId) // Use stable ID to preserve scroll position
         }
         .frame(height: thumbSize.height) // hug
         .onChange(of: tape.clips.count) { oldValue, newValue in
