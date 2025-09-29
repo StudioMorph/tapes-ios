@@ -14,6 +14,7 @@ struct TapePlayerView: View {
     @State private var currentTime: Double = 0
     @State private var isFinished: Bool = false
     @State private var progressTimer: Timer?
+    @State private var nextPlayerItem: AVPlayerItem?
     
     let tape: Tape
     let onDismiss: () -> Void
@@ -272,12 +273,8 @@ struct TapePlayerView: View {
         
         print("🎬 Loading clip \(currentClipIndex + 1): \(clip.id)")
         
-        // Stop and reset previous player to prevent audio overlap
-        player?.pause()
-        player?.replaceCurrentItem(with: nil)
-        
+        // Create new player item
         let playerItem = AVPlayerItem(url: url)
-        player = AVPlayer(playerItem: playerItem)
         
         // Add observer for when video ends
         NotificationCenter.default.addObserver(
@@ -286,6 +283,14 @@ struct TapePlayerView: View {
             queue: .main
         ) { _ in
             self.onVideoEnded()
+        }
+        
+        // If we have an existing player, replace its item seamlessly
+        if let existingPlayer = player {
+            existingPlayer.replaceCurrentItem(with: playerItem)
+        } else {
+            // First time - create new player
+            player = AVPlayer(playerItem: playerItem)
         }
         
         // Auto-play when loaded
@@ -430,9 +435,6 @@ struct TapePlayerView: View {
         // If we need to change clips
         if targetClipIndex != currentClipIndex {
             print("🎯 Changing to clip \(targetClipIndex + 1)")
-            // Stop current audio before switching
-            player?.pause()
-            player?.replaceCurrentItem(with: nil)
             currentClipIndex = targetClipIndex
             loadCurrentClip()
         }
