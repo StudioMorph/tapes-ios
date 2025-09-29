@@ -199,12 +199,10 @@ struct TapeCardView: View {
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
                         }
                         
-                        // Set target position and advancement
-                        let targetPosition = currentPosition + mediaCount
-                        savedCarouselPosition = targetPosition
+                        // Set advancement - the carousel will scroll by this amount
                         pendingAdvancement = mediaCount
                         
-                        print("🎯 After insertion: target position set to \(targetPosition)")
+                        print("🎯 After insertion: advancement set to \(pendingAdvancement), current position: \(savedCarouselPosition)")
                         
                         // Reset import source
                         importSource = nil
