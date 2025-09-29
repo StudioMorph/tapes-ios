@@ -7,6 +7,8 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     let trailingInset: CGFloat
     let containerWidth: CGFloat
     let onSnapped: ((Int, Int) -> Void)?
+    let savedOffset: CGFloat?
+    let onOffsetChanged: ((CGFloat) -> Void)?
     let content: () -> Content
 
     init(itemWidth: CGFloat,
@@ -14,12 +16,16 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
          trailingInset: CGFloat = 16,
          containerWidth: CGFloat,
          onSnapped: ((Int, Int) -> Void)? = nil,
+         savedOffset: CGFloat? = nil,
+         onOffsetChanged: ((CGFloat) -> Void)? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
         self.leadingInset = leadingInset
         self.trailingInset = trailingInset
         self.containerWidth = containerWidth
         self.onSnapped = onSnapped
+        self.savedOffset = savedOffset
+        self.onOffsetChanged = onOffsetChanged
         self.content = content
     }
 
@@ -55,6 +61,14 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
         context.coordinator.hostingController = hosting
         context.coordinator.scrollView = scrollView
+        
+        // Restore saved scroll position if available
+        if let savedOffset = savedOffset {
+            DispatchQueue.main.async {
+                scrollView.setContentOffset(CGPoint(x: savedOffset, y: 0), animated: false)
+            }
+        }
+        
         return scrollView
     }
 
@@ -71,6 +85,11 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         // We need to know total content width (calculated on the fly)
         init(parent: SnappingHScroll) {
             self.parent = parent
+        }
+        
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            // Track scroll position changes
+            parent.onOffsetChanged?(scrollView.contentOffset.x)
         }
 
         func scrollViewWillEndDragging(_ scrollView: UIScrollView,

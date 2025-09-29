@@ -7,6 +7,8 @@ struct ClipCarousel: View {
     let onPlaceholderTap: (CarouselItem) -> Void
     let onSnapped: ((Int, Int) -> Void)?
     
+    @State private var savedScrollOffset: CGFloat = 0
+    
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
         let result: [CarouselItem]
@@ -28,14 +30,18 @@ struct ClipCarousel: View {
         let _ = print("📋 ClipCarousel: \(tape.clips.count) clips, items count: \(items.count)")
         let _ = tapeHash // Force dependency on tape changes
         
-        // Use a stable ID that doesn't change with every tape update
-        let carouselId = "carousel-\(tape.id)"
+        // Force re-evaluation by using the hash as an ID
+        let carouselId = "carousel-\(tape.id)-\(tapeHash)"
         GeometryReader { container in
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
                            trailingInset: 16,
                            containerWidth: container.size.width,
-                           onSnapped: onSnapped) {
+                           onSnapped: onSnapped,
+                           savedOffset: savedScrollOffset,
+                           onOffsetChanged: { offset in
+                               savedScrollOffset = offset
+                           }) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
