@@ -10,6 +10,7 @@ struct ClipCarousel: View {
     @State private var savedScrollOffset: CGFloat = 0
     @State private var savedSnapIndex: Int = 0
     @State private var lastClipCount: Int = 0
+    @State private var shouldAdvance: Bool = false
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
@@ -25,8 +26,10 @@ struct ClipCarousel: View {
     
     // Force re-evaluation when tape changes
     private var tapeHash: Int {
-        // Only hash thumbnail states, not clip IDs, to prevent recreation on clip addition
-        tape.clips.map { "\($0.thumbnail != nil)" }.joined().hashValue
+        // Hash clip count and thumbnail states to detect changes
+        let clipCount = tape.clips.count
+        let thumbnailStates = tape.clips.map { "\($0.thumbnail != nil)" }.joined()
+        return "\(clipCount)-\(thumbnailStates)".hashValue
     }
     
     var body: some View {
@@ -50,7 +53,7 @@ struct ClipCarousel: View {
                                print("🎯 Scroll position changed: \(offset)")
                                savedScrollOffset = offset
                            },
-                           targetSnapIndex: savedSnapIndex > 0 ? savedSnapIndex : nil) {
+                           targetSnapIndex: shouldAdvance ? savedSnapIndex : nil) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
@@ -78,15 +81,27 @@ struct ClipCarousel: View {
                 let clipsAdded = newValue - oldValue
                 print("🎯 Clips added: \(clipsAdded), advancing carousel position")
                 
-                // Advance the saved snap index by the number of clips added
-                savedSnapIndex += clipsAdded
+                // Calculate the new target position based on where we were before
+                let newTargetPosition = savedSnapIndex + clipsAdded
+                savedSnapIndex = newTargetPosition
                 print("🎯 New snap position: \(savedSnapIndex)")
                 
                 // Update the insertion index to reflect the new position
                 insertionIndex = savedSnapIndex
+                
+                // Set flag to trigger advancement
+                shouldAdvance = true
             }
             
             lastClipCount = newValue
+        }
+        .onChange(of: shouldAdvance) { _, newValue in
+            if newValue {
+                // Reset the flag after triggering advancement
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    shouldAdvance = false
+                }
+            }
         }
     }
     
