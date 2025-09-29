@@ -14,6 +14,7 @@ struct TapePlayerView: View {
     @State private var currentTime: Double = 0
     @State private var isFinished: Bool = false
     @State private var progressTimer: Timer?
+    @State private var isTransitioning: Bool = false
     
     let tape: Tape
     let onDismiss: () -> Void
@@ -82,14 +83,23 @@ struct TapePlayerView: View {
     private var videoPlayerView: some View {
         GeometryReader { geometry in
             if let player = player {
-                VideoPlayer(player: player)
-                    .disabled(true)
-                    .onAppear {
-                        print("🎬 Playing clip \(currentClipIndex + 1) of \(tape.clips.count)")
+                ZStack {
+                    VideoPlayer(player: player)
+                        .disabled(true)
+                        .onAppear {
+                            print("🎬 Playing clip \(currentClipIndex + 1) of \(tape.clips.count)")
+                        }
+                        .onDisappear {
+                            player.pause()
+                        }
+                    
+                    // Crossfade overlay during transitions
+                    if isTransitioning {
+                        Color.black
+                            .opacity(0.3)
+                            .transition(.opacity)
                     }
-                    .onDisappear {
-                        player.pause()
-                    }
+                }
             } else {
                 // Loading state
                 VStack {
@@ -272,8 +282,17 @@ struct TapePlayerView: View {
         
         print("🎬 Loading clip \(currentClipIndex + 1): \(clip.id)")
         
-        // Create new player item first
+        // Start transition overlay
+        withAnimation(.easeInOut(duration: 0.1)) {
+            isTransitioning = true
+        }
+        
+        // Stop and reset previous player to prevent audio overlap
+        player?.pause()
+        player?.replaceCurrentItem(with: nil)
+        
         let playerItem = AVPlayerItem(url: url)
+        player = AVPlayer(playerItem: playerItem)
         
         // Add observer for when video ends
         NotificationCenter.default.addObserver(
@@ -284,12 +303,16 @@ struct TapePlayerView: View {
             self.onVideoEnded()
         }
         
-        // Replace current item with new one (smooth transition)
-        player?.replaceCurrentItem(with: playerItem)
-        
         // Auto-play when loaded
         player?.play()
         isPlaying = true
+        
+        // End transition overlay after a brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isTransitioning = false
+            }
+        }
     }
     
     private func onVideoEnded() {
@@ -429,6 +452,9 @@ struct TapePlayerView: View {
         // If we need to change clips
         if targetClipIndex != currentClipIndex {
             print("🎯 Changing to clip \(targetClipIndex + 1)")
+            // Stop current audio before switching
+            player?.pause()
+            player?.replaceCurrentItem(with: nil)
             currentClipIndex = targetClipIndex
             loadCurrentClip()
         }
