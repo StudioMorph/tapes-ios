@@ -184,9 +184,11 @@ struct TapeCardView: View {
                         
                         // Use snapshot index for insertion
                         if let at = snapshotInsertIndex {
+                            print("🎯 Inserting \(newClips.count) clips at index \(at) in tape \(tapeID)")
                             tapeStore.insert(newClips, into: tapeID, at: at)
                         } else {
                             // Fallback for legacy paths if any
+                            print("🎯 Fallback: Inserting \(newClips.count) clips at end (\(tape.clips.count)) in tape \(tapeID)")
                             tapeStore.insert(newClips, into: tapeID, at: tape.clips.count) // append
                         }
                         
@@ -203,7 +205,9 @@ struct TapeCardView: View {
     
     func onSnapped(toLeftIndex leftIndex: Int, total count: Int) {
         // insert BETWEEN left and right: left + 1 (clamped)
-        fabInsertIndex = max(0, min(leftIndex + 1, count))
+        let newIndex = max(0, min(leftIndex + 1, count))
+        print("🎯 onSnapped: leftIndex=\(leftIndex), count=\(count), newIndex=\(newIndex)")
+        fabInsertIndex = newIndex
     }
     
     // MARK: - Picker Opening Functions
@@ -211,7 +215,9 @@ struct TapeCardView: View {
     func openPickerFromFAB(for tapeID: UUID, currentClipsCount: Int) {
         targetTapeID = tapeID
         let fallback = currentClipsCount // end if unknown
-        snapshotInsertIndex = max(0, min(fabInsertIndex ?? fallback, currentClipsCount))
+        let snapIndex = fabInsertIndex ?? fallback
+        snapshotInsertIndex = max(0, min(snapIndex, currentClipsCount))
+        print("🎯 openPickerFromFAB: fabInsertIndex=\(fabInsertIndex ?? -1), fallback=\(fallback), snapshot=\(snapshotInsertIndex ?? -1)")
         showingMediaPicker = true
     }
     
