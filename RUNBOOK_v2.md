@@ -44,6 +44,11 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Snap so one item sits left and one right of FAB
   - Shows index label (`TapeName/pos:N`)
   - Start/end placeholders: "+"
+  - **Media Import Positioning:**
+    - Red FAB (center): Insert clips at red line position (between clips under FAB)
+    - Left "+" placeholder: Insert clips at start of timeline
+    - Right "+" placeholder: Insert clips at end of timeline
+    - Selection order is preserved for multi-select imports
 
 - **Clip Edit Sheet**
   - Actions: Trim (native), Rotate 90°, Fit/Fill, Share/AirDrop, Remove (confirm)

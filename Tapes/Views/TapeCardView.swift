@@ -161,7 +161,24 @@ struct TapeCardView: View {
                     guard !picked.isEmpty else { return }
 
                     await MainActor.run {
-                        tapeStore.insertAtCenter(into: $tape, picked: picked)
+                        // Insert based on the source that triggered the picker
+                        switch importSource {
+                        case .leftPlaceholder(let index):
+                            // Insert at start
+                            tapeStore.insertMedia(picked, at: .replaceThenAppend(startIndex: 0), in: tape.id)
+                        case .rightPlaceholder(let index):
+                            // Insert at end
+                            tapeStore.insertMedia(picked, at: .replaceThenAppend(startIndex: tape.clips.count), in: tape.id)
+                        case .centerFAB:
+                            // Insert at center (red line position)
+                            tapeStore.insertMedia(picked, at: .insertAtCenter, in: tape.id)
+                        case .none:
+                            // Fallback to center
+                            tapeStore.insertMedia(picked, at: .insertAtCenter, in: tape.id)
+                        }
+                        
+                        // Reset import source
+                        importSource = nil
                     }
                 }
             }
