@@ -44,11 +44,17 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Snap so one item sits left and one right of FAB
   - Shows index label (`TapeName/pos:N`)
   - Start/end placeholders: "+"
-  - **Media Import Positioning:**
-    - Red FAB (center): Insert clips at red line position (between clips under FAB)
-    - Left "+" placeholder: Insert clips at start of timeline
-    - Right "+" placeholder: Insert clips at end of timeline
-    - Selection order is preserved for multi-select imports
+- **Media Import Positioning:**
+  - **Red FAB (center)**: Insert clips at red line position using "between index" system
+    - Red line corresponds to 0-based "between index" p ∈ [0…N] where N = clips.count
+    - If red line is before first clip → p = 0 (insert at start)
+    - If red line is between clip i and clip i+1 → p = i+1 (insert between them)
+    - If red line is after last clip → p = N (insert at end)
+    - Position is snapshotted when picker opens to handle user scrolling
+  - **Left "+" placeholder**: Always insert at index 0 (start of timeline)
+  - **Right "+" placeholder**: Always insert at index clips.count (end of timeline)
+  - **Selection order**: Preserved for multi-select imports
+  - **Array insertion**: Clips are inserted at the exact "between index" in the timeline array
 
 - **Clip Edit Sheet**
   - Actions: Trim (native), Rotate 90°, Fit/Fill, Share/AirDrop, Remove (confirm)

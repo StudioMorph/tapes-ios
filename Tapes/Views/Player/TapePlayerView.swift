@@ -173,7 +173,7 @@ struct TapePlayerView: View {
                         }
                         .onEnded { value in
                             let progress = max(0, min(1, value.location.x / geometry.size.width))
-                            let targetTime = progress * totalDuration
+                            let _ = progress * totalDuration
                             scrubToPosition(value.location.x, in: geometry.size.width)
                         }
                 )
