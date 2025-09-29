@@ -84,14 +84,14 @@ struct ClipCarousel: View {
     
     // Calculate the target position based on current state
     private func calculateTargetPosition() -> Int {
-        // If we have clips and the insertion index is set, use that
-        if !tape.clips.isEmpty && insertionIndex > 0 {
+        // Only return a target position if we have clips and a valid insertion index
+        if !tape.clips.isEmpty && insertionIndex > 0 && insertionIndex <= tape.clips.count {
             print("🎯 Using insertion index: \(insertionIndex)")
             return insertionIndex
         }
         
-        // Default to showing the first clip
-        return 1
+        // No target position - let the carousel stay at its current position
+        return 0
     }
     
 }
