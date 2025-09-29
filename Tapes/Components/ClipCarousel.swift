@@ -40,6 +40,7 @@ struct ClipCarousel: View {
                            onSnapped: onSnapped,
                            savedOffset: savedScrollOffset,
                            onOffsetChanged: { offset in
+                               print("🎯 Scroll position changed: \(offset)")
                                savedScrollOffset = offset
                            }) {
                 // Leading 16pt padding INSIDE the card

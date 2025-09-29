@@ -64,6 +64,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         
         // Restore saved scroll position if available
         if let savedOffset = savedOffset {
+            print("🎯 Restoring scroll position: \(savedOffset)")
             DispatchQueue.main.async {
                 scrollView.setContentOffset(CGPoint(x: savedOffset, y: 0), animated: false)
             }
