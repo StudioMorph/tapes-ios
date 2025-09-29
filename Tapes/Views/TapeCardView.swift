@@ -161,20 +161,30 @@ struct TapeCardView: View {
                     guard !picked.isEmpty else { return }
 
                     await MainActor.run {
-                        // Insert based on the source that triggered the picker
+                        // Always use the working insertAtCenter method, but adjust positioning
                         switch importSource {
                         case .leftPlaceholder(let index):
-                            // Insert at start
-                            tapeStore.insertMedia(picked, at: .replaceThenAppend(startIndex: 0), in: tape.id)
+                            // Insert at start by temporarily modifying the tape
+                            let originalClips = tape.clips
+                            tape.clips = []
+                            tapeStore.insertAtCenter(into: $tape, picked: picked)
+                            // Move clips to start
+                            let newClips = tape.clips
+                            tape.clips = newClips + originalClips
                         case .rightPlaceholder(let index):
-                            // Insert at end
-                            tapeStore.insertMedia(picked, at: .replaceThenAppend(startIndex: tape.clips.count), in: tape.id)
+                            // Insert at end by appending to existing clips
+                            let originalClips = tape.clips
+                            tape.clips = []
+                            tapeStore.insertAtCenter(into: $tape, picked: picked)
+                            // Move clips to end
+                            let newClips = tape.clips
+                            tape.clips = originalClips + newClips
                         case .centerFAB:
-                            // Insert at center (red line position)
-                            tapeStore.insertMedia(picked, at: .insertAtCenter, in: tape.id)
+                            // Insert at center (red line position) - this is the default behavior
+                            tapeStore.insertAtCenter(into: $tape, picked: picked)
                         case .none:
                             // Fallback to center
-                            tapeStore.insertMedia(picked, at: .insertAtCenter, in: tape.id)
+                            tapeStore.insertAtCenter(into: $tape, picked: picked)
                         }
                         
                         // Reset import source
