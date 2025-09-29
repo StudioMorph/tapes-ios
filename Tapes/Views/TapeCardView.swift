@@ -185,7 +185,9 @@ struct TapeCardView: View {
                         // Use snapshot index for insertion
                         if let at = snapshotInsertIndex {
                             print("🎯 Inserting \(newClips.count) clips at index \(at) in tape \(tapeID)")
+                            print("🎯 Before insertion: tape has \(tape.clips.count) clips")
                             tapeStore.insert(newClips, into: tapeID, at: at)
+                            print("🎯 After insertion: tape has \(tape.clips.count) clips")
                         } else {
                             // Fallback for legacy paths if any
                             print("🎯 Fallback: Inserting \(newClips.count) clips at end (\(tape.clips.count)) in tape \(tapeID)")
@@ -226,6 +228,7 @@ struct TapeCardView: View {
         let snapIndex = fabInsertIndex ?? defaultIndex
         snapshotInsertIndex = max(0, min(snapIndex, currentClipsCount))
         print("🎯 openPickerFromFAB: currentClipsCount=\(currentClipsCount), fabInsertIndex=\(fabInsertIndex ?? -1), defaultIndex=\(defaultIndex), snapshot=\(snapshotInsertIndex ?? -1)")
+        print("🎯 FAB State: fabInsertIndex=\(fabInsertIndex), snapshotInsertIndex=\(snapshotInsertIndex)")
         showingMediaPicker = true
     }
     
