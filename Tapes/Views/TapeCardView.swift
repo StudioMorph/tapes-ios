@@ -32,6 +32,10 @@ struct TapeCardView: View {
     @State private var showingMediaPicker = false
     @State private var importSource: ImportSource? = nil
     
+    // Carousel position storage (outside carousel component)
+    @State private var savedCarouselPosition: Int = 1 // Current snap position (start at 1 to account for 0-based indexing)
+    @State private var pendingAdvancement: Int = 0 // How many positions to advance after insertion
+    
     var body: some View {
         let _ = print("🎯 TapeCardView: tape id=\(tape.id), clips=\(tape.clips.count)")
         VStack(alignment: .leading, spacing: 0) {
@@ -98,6 +102,8 @@ struct TapeCardView: View {
                     tape: $tape,
                     thumbSize: CGSize(width: thumbW, height: thumbH),
                     insertionIndex: $insertionIndex,
+                    savedCarouselPosition: $savedCarouselPosition,
+                    pendingAdvancement: $pendingAdvancement,
                     onPlaceholderTap: { item in
                         // Store import source and show picker
                         switch item {
@@ -161,6 +167,12 @@ struct TapeCardView: View {
                     guard !picked.isEmpty else { return }
 
                     await MainActor.run {
+                        // Capture current position before insertion
+                        let currentPosition = savedCarouselPosition
+                        let mediaCount = picked.count
+                        
+                        print("🎯 Before insertion: position=\(currentPosition), adding \(mediaCount) items")
+                        
                         // Always use the working insertAtCenter method, but adjust positioning
                         switch importSource {
                         case .leftPlaceholder(let index):
@@ -171,6 +183,8 @@ struct TapeCardView: View {
                             // Move clips to start
                             let newClips = tape.clips
                             tape.clips = newClips + originalClips
+                            // Advance by the number of clips inserted
+                            pendingAdvancement = mediaCount
                         case .rightPlaceholder(let index):
                             // Insert at end by appending to existing clips
                             let originalClips = tape.clips
@@ -179,13 +193,21 @@ struct TapeCardView: View {
                             // Move clips to end
                             let newClips = tape.clips
                             tape.clips = originalClips + newClips
+                            // Advance by the number of clips inserted
+                            pendingAdvancement = mediaCount
                         case .centerFAB:
                             // Insert at center (red line position) - this is the default behavior
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
+                            // Advance by the number of clips inserted
+                            pendingAdvancement = mediaCount
                         case .none:
                             // Fallback to center
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
+                            // Advance by the number of clips inserted
+                            pendingAdvancement = mediaCount
                         }
+                        
+                        print("🎯 After insertion: new position should be \(currentPosition + pendingAdvancement)")
                         
                         // Reset import source
                         importSource = nil

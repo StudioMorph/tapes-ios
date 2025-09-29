@@ -4,6 +4,8 @@ struct ClipCarousel: View {
     @Binding var tape: Tape
     let thumbSize: CGSize
     @Binding var insertionIndex: Int
+    @Binding var savedCarouselPosition: Int
+    @Binding var pendingAdvancement: Int
     let onPlaceholderTap: (CarouselItem) -> Void
     
     // Direct observation of tape.clips - no caching
@@ -33,7 +35,19 @@ struct ClipCarousel: View {
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
                            trailingInset: 16,
-                           containerWidth: container.size.width) {
+                           containerWidth: container.size.width,
+                           targetSnapIndex: pendingAdvancement > 0 ? savedCarouselPosition + pendingAdvancement : nil,
+                           onSnapped: { leftIndex, rightIndex in
+                               // Update saved position when carousel snaps
+                               savedCarouselPosition = leftIndex
+                               print("🎯 Carousel snapped to position: \(leftIndex)")
+                               
+                               // Clear pending advancement after applying it
+                               if pendingAdvancement > 0 {
+                                   print("🎯 Applied advancement of \(pendingAdvancement), new position: \(leftIndex)")
+                                   pendingAdvancement = 0
+                               }
+                           }) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
@@ -84,6 +98,8 @@ public enum CarouselItem: Identifiable {
             tape: .constant(Tape.sampleTapes[0]),
             thumbSize: CGSize(width: 150, height: 84),
             insertionIndex: .constant(0),
+            savedCarouselPosition: .constant(0),
+            pendingAdvancement: .constant(0),
             onPlaceholderTap: { _ in }
         )
         .frame(height: 84)

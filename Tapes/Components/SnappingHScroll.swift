@@ -6,17 +6,23 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     let leadingInset: CGFloat
     let trailingInset: CGFloat
     let containerWidth: CGFloat
+    let targetSnapIndex: Int?
+    let onSnapped: ((Int, Int) -> Void)?
     let content: () -> Content
 
     init(itemWidth: CGFloat,
          leadingInset: CGFloat = 16,
          trailingInset: CGFloat = 16,
          containerWidth: CGFloat,
+         targetSnapIndex: Int? = nil,
+         onSnapped: ((Int, Int) -> Void)? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
         self.leadingInset = leadingInset
         self.trailingInset = trailingInset
         self.containerWidth = containerWidth
+        self.targetSnapIndex = targetSnapIndex
+        self.onSnapped = onSnapped
         self.content = content
     }
 
@@ -52,6 +58,20 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
         context.coordinator.hostingController = hosting
         context.coordinator.scrollView = scrollView
+        
+        // Handle programmatic scrolling to target index
+        if let targetIndex = targetSnapIndex {
+            DispatchQueue.main.async {
+                DispatchQueue.main.async {
+                    let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
+                    let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
+                    let clampedX = min(max(targetX, 0), maxOffsetX)
+                    scrollView.setContentOffset(CGPoint(x: clampedX, y: 0), animated: true)
+                    print("🎯 Programmatic scroll to index \(targetIndex), x=\(clampedX)")
+                }
+            }
+        }
+        
         return scrollView
     }
 
@@ -115,6 +135,13 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
             // Assign final target
             targetContentOffset.pointee.x = snappedOffsetX
+            
+            // Call onSnapped callback with the snapped indices
+            if let onSnapped = parent.onSnapped {
+                let leftIndex = Int(n)
+                let rightIndex = leftIndex + 1
+                onSnapped(leftIndex, rightIndex)
+            }
         }
     }
 }
