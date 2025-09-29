@@ -175,6 +175,9 @@ struct TapeCardView: View {
                         
                         print("🎯 Before insertion: position=\(currentPosition), adding \(mediaCount) items")
                         
+                        // Calculate target position before any insertion
+                        let targetPosition = currentPosition + mediaCount
+                        
                         // Always use the working insertAtCenter method, but adjust positioning
                         switch importSource {
                         case .leftPlaceholder(let index):
@@ -185,8 +188,9 @@ struct TapeCardView: View {
                             // Move clips to start
                             let newClips = tape.clips
                             tape.clips = newClips + originalClips
-                            // Advance by the number of clips inserted
-                            pendingAdvancement = mediaCount
+                            // Set target position directly
+                            savedCarouselPosition = targetPosition
+                            pendingAdvancement = 0
                         case .rightPlaceholder(let index):
                             // Insert at end by appending to existing clips
                             let originalClips = tape.clips
@@ -195,21 +199,24 @@ struct TapeCardView: View {
                             // Move clips to end
                             let newClips = tape.clips
                             tape.clips = originalClips + newClips
-                            // Advance by the number of clips inserted
-                            pendingAdvancement = mediaCount
+                            // Set target position directly
+                            savedCarouselPosition = targetPosition
+                            pendingAdvancement = 0
                         case .centerFAB:
                             // Insert at center (red line position) - this is the default behavior
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
-                            // Advance by the number of clips inserted
-                            pendingAdvancement = mediaCount
+                            // Set target position directly
+                            savedCarouselPosition = targetPosition
+                            pendingAdvancement = 0
                         case .none:
                             // Fallback to center
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
-                            // Advance by the number of clips inserted
-                            pendingAdvancement = mediaCount
+                            // Set target position directly
+                            savedCarouselPosition = targetPosition
+                            pendingAdvancement = 0
                         }
                         
-                        print("🎯 After insertion: new position should be \(currentPosition + pendingAdvancement)")
+                        print("🎯 After insertion: target position set to \(targetPosition)")
                         
                         // Reset import source
                         importSource = nil
