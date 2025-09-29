@@ -185,14 +185,10 @@ struct TapeCardView: View {
                             tape.clips = newClips + originalClips
                             print("🎯 Left placeholder: moved \(newClips.count) clips to start")
                         case .rightPlaceholder(let index):
-                            // Insert at end by appending to existing clips
-                            let originalClips = tape.clips
-                            tape.clips = []
+                            // Insert at end by using the existing insertAtCenter method
+                            print("🎯 Right placeholder: appending \(picked.count) items to end")
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
-                            // Move clips to end
-                            let newClips = tape.clips
-                            tape.clips = originalClips + newClips
-                            print("🎯 Right placeholder: moved \(newClips.count) clips to end")
+                            print("🎯 Right placeholder: added \(picked.count) clips to end, total clips: \(tape.clips.count)")
                         case .centerFAB:
                             // Insert at center (red line position) - this is the default behavior
                             tapeStore.insertAtCenter(into: $tape, picked: picked)

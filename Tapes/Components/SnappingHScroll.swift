@@ -62,15 +62,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         // Handle programmatic scrolling to target index
         if let targetIndex = targetSnapIndex {
             print("🎯 SnappingHScroll: targetSnapIndex=\(targetIndex), contentSize=\(scrollView.contentSize)")
-            DispatchQueue.main.async {
-                DispatchQueue.main.async {
-                    let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
-                    let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
-                    let clampedX = min(max(targetX, 0), maxOffsetX)
-                    scrollView.setContentOffset(CGPoint(x: clampedX, y: 0), animated: true)
-                    print("🎯 Programmatic scroll to index \(targetIndex), x=\(clampedX), maxOffsetX=\(maxOffsetX)")
-                }
-            }
+            performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: 0)
         }
         
         return scrollView
@@ -79,6 +71,27 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     func updateUIView(_ uiView: UIScrollView, context: Context) {
         context.coordinator.parent = self
         // No-op; SwiftUI content updates through hosting controller automatically.
+    }
+    
+    private func performProgrammaticScroll(scrollView: UIScrollView, targetIndex: Int, retryCount: Int) {
+        let maxRetries = 5
+        let retryDelay: TimeInterval = 0.1
+        
+        // Check if contentSize is valid
+        if scrollView.contentSize.width > 0 {
+            let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
+            let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
+            let clampedX = min(max(targetX, 0), maxOffsetX)
+            scrollView.setContentOffset(CGPoint(x: clampedX, y: 0), animated: true)
+            print("🎯 Programmatic scroll to index \(targetIndex), x=\(clampedX), maxOffsetX=\(maxOffsetX)")
+        } else if retryCount < maxRetries {
+            print("🎯 ContentSize not ready (width=\(scrollView.contentSize.width)), retrying in \(retryDelay)s (attempt \(retryCount + 1)/\(maxRetries))")
+            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
+                self.performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: retryCount + 1)
+            }
+        } else {
+            print("⚠️ Failed to perform programmatic scroll after \(maxRetries) retries - contentSize still invalid")
+        }
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
