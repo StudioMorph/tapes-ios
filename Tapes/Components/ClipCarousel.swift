@@ -38,7 +38,7 @@ struct ClipCarousel: View {
         let _ = thumbnailHash // Force dependency on thumbnail changes
         
         // Calculate target position based on current state
-        let currentTargetPosition = calculateTargetPosition()
+        let _ = calculateTargetPosition()
         
         // Stable ID that doesn't change when clips are added
         let stableCarouselId = "carousel-\(tape.id)"
@@ -48,7 +48,7 @@ struct ClipCarousel: View {
                            leadingInset: 16,
                            trailingInset: 16,
                            containerWidth: container.size.width,
-                           targetSnapIndex: pendingAdvancement > 0 ? savedCarouselPosition + pendingAdvancement : nil,
+                           targetSnapIndex: pendingAdvancement > 0 ? savedCarouselPosition : nil,
                            onSnapped: { leftIndex, rightIndex in
                                // Update saved position when carousel snaps
                                savedCarouselPosition = leftIndex
