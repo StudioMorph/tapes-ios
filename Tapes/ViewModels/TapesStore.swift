@@ -481,6 +481,25 @@ extension TapesStore {
         }
     }
     
+    /// Insert clips at an explicit index (struct-safe publish)
+    @MainActor
+    func insert(_ newClips: [Clip], into tapeID: UUID, at index: Int) {
+        guard let ti = tapes.firstIndex(where: { $0.id == tapeID }) else { return }
+        var tape = tapes[ti]
+        let at = max(0, min(index, tape.clips.count))
+        tape.clips.insert(contentsOf: newClips, at: at)
+        tapes[ti] = tape // reassign to publish
+        
+        // Generate thumbnails and duration for video clips asynchronously
+        for clip in newClips {
+            if clip.clipType == .video, let url = clip.localURL {
+                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
+            }
+        }
+        
+        print("✅ Inserted \(newClips.count) clips at index \(at) in tape \(tapeID)")
+    }
+    
     /// Update a specific clip in a tape with proper publishing
     @MainActor
     func updateClip(_ id: UUID, transform: (inout Clip) -> Void, in tapeID: UUID) {

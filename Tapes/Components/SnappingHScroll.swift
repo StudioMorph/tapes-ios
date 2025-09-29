@@ -6,17 +6,20 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     let leadingInset: CGFloat
     let trailingInset: CGFloat
     let containerWidth: CGFloat
+    let onSnapped: ((Int, Int) -> Void)?
     let content: () -> Content
 
     init(itemWidth: CGFloat,
          leadingInset: CGFloat = 16,
          trailingInset: CGFloat = 16,
          containerWidth: CGFloat,
+         onSnapped: ((Int, Int) -> Void)? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
         self.leadingInset = leadingInset
         self.trailingInset = trailingInset
         self.containerWidth = containerWidth
+        self.onSnapped = onSnapped
         self.content = content
     }
 
@@ -112,6 +115,13 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             snappedOffsetX = min(max(snappedOffsetX, 0), maxOffsetX)
 
             print("🔍 SnappingHScroll: n = \(n), snappedOffsetX = \(snappedOffsetX), maxOffsetX = \(maxOffsetX)")
+
+            // Call snapping callback if provided
+            if let onSnapped = parent.onSnapped {
+                let leftIndex = Int(n)
+                let totalCount = Int((scrollView.contentSize.width - parent.leadingInset - parent.trailingInset) / parent.itemWidth)
+                onSnapped(leftIndex, totalCount)
+            }
 
             // Assign final target
             targetContentOffset.pointee.x = snappedOffsetX

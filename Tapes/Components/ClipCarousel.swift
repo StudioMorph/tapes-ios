@@ -5,6 +5,7 @@ struct ClipCarousel: View {
     let thumbSize: CGSize
     @Binding var insertionIndex: Int
     let onPlaceholderTap: (CarouselItem) -> Void
+    let onSnapped: ((Int, Int) -> Void)?
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
@@ -33,7 +34,8 @@ struct ClipCarousel: View {
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
                            trailingInset: 16,
-                           containerWidth: container.size.width) {
+                           containerWidth: container.size.width,
+                           onSnapped: onSnapped) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
@@ -84,7 +86,8 @@ public enum CarouselItem: Identifiable {
             tape: .constant(Tape.sampleTapes[0]),
             thumbSize: CGSize(width: 150, height: 84),
             insertionIndex: .constant(0),
-            onPlaceholderTap: { _ in }
+            onPlaceholderTap: { _ in },
+            onSnapped: nil
         )
         .frame(height: 84)
         .background(Color.gray.opacity(0.3))
