@@ -8,7 +8,7 @@ public enum FABMode: CaseIterable {
     var icon: String {
         switch self {
         case .camera:
-            return "camera.fill"
+            return "video.fill"
         case .gallery:
             return "photo.on.rectangle"
         case .transition:
