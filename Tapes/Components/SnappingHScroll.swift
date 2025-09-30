@@ -79,15 +79,27 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         
         // Check if contentSize is valid
         if scrollView.contentSize.width > 0 {
-            let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
+            // Step 1: Set to current position without animation (maintain visual context)
+            let currentPosition = getCurrentCarouselPosition(scrollView: scrollView)
+            let currentX = leadingInset + CGFloat(currentPosition) * itemWidth - containerWidth / 2.0
             let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
-            let clampedX = min(max(targetX, 0), maxOffsetX)
-            scrollView.setContentOffset(CGPoint(x: clampedX, y: 0), animated: true)
-            print("🎯 Programmatic scroll to index \(targetIndex), x=\(clampedX), maxOffsetX=\(maxOffsetX)")
+            let clampedCurrentX = min(max(currentX, 0), maxOffsetX)
             
-            // Update the coordinator's currentSnapIndex for programmatic scrolling
-            if let coordinator = scrollView.delegate as? Coordinator {
-                coordinator.updateCurrentSnapIndex(targetIndex)
+            // Set to current position without animation
+            scrollView.setContentOffset(CGPoint(x: clampedCurrentX, y: 0), animated: false)
+            print("🎯 Step 1: Set to current position \(currentPosition) without animation, x=\(clampedCurrentX)")
+            
+            // Step 2: Animate to target position after a brief delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
+                let clampedTargetX = min(max(targetX, 0), maxOffsetX)
+                scrollView.setContentOffset(CGPoint(x: clampedTargetX, y: 0), animated: true)
+                print("🎯 Step 2: Animate to target position \(targetIndex), x=\(clampedTargetX)")
+                
+                // Update the coordinator's currentSnapIndex for programmatic scrolling
+                if let coordinator = scrollView.delegate as? Coordinator {
+                    coordinator.updateCurrentSnapIndex(targetIndex)
+                }
             }
         } else if retryCount < maxRetries {
             print("🎯 ContentSize not ready (width=\(scrollView.contentSize.width)), retrying in \(retryDelay)s (attempt \(retryCount + 1)/\(maxRetries))")
@@ -97,6 +109,15 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         } else {
             print("⚠️ Failed to perform programmatic scroll after \(maxRetries) retries - contentSize still invalid")
         }
+    }
+    
+    /// Get the current carousel position based on scroll offset
+    private func getCurrentCarouselPosition(scrollView: UIScrollView) -> Int {
+        let currentOffset = scrollView.contentOffset.x
+        let centerX = containerWidth / 2.0
+        let adjustedOffset = currentOffset + centerX
+        let position = (adjustedOffset - leadingInset) / itemWidth
+        return max(0, Int(round(position)))
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
