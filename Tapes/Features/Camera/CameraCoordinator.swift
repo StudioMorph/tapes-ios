@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import AVFoundation
+import Photos
 
 class CameraCoordinator: NSObject, ObservableObject {
     @Published var isPresented = false
@@ -34,8 +35,99 @@ class CameraCoordinator: NSObject, ObservableObject {
     
     func handleCapturedMedia(_ media: [PickedMedia]) {
         self.capturedMedia = media
-        self.completion?(media)
-        self.isPresented = false
+        
+        // Save media to Photos library
+        saveMediaToPhotosLibrary(media) { [weak self] savedMedia in
+            DispatchQueue.main.async {
+                self?.completion?(savedMedia)
+                self?.isPresented = false
+            }
+        }
+    }
+    
+    private func saveMediaToPhotosLibrary(_ media: [PickedMedia], completion: @escaping ([PickedMedia]) -> Void) {
+        guard !media.isEmpty else {
+            completion([])
+            return
+        }
+        
+        // Check Photos permission
+        let status = PHPhotoLibrary.authorizationStatus()
+        
+        switch status {
+        case .authorized, .limited:
+            performSave(media: media, completion: completion)
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization { newStatus in
+                if newStatus == .authorized || newStatus == .limited {
+                    self.performSave(media: media, completion: completion)
+                } else {
+                    // Permission denied, return original media without saving
+                    DispatchQueue.main.async {
+                        completion(media)
+                    }
+                }
+            }
+        case .denied, .restricted:
+            // Permission denied, return original media without saving
+            DispatchQueue.main.async {
+                completion(media)
+            }
+        @unknown default:
+            DispatchQueue.main.async {
+                completion(media)
+            }
+        }
+    }
+    
+    private func performSave(media: [PickedMedia], completion: @escaping ([PickedMedia]) -> Void) {
+        var savedMedia: [PickedMedia] = []
+        let group = DispatchGroup()
+        
+        for item in media {
+            group.enter()
+            
+            switch item {
+            case .video(let url):
+                // Save video to Photos library
+                PHPhotoLibrary.shared().performChanges({
+                    if let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url) {
+                        let _ = request.placeholderForCreatedAsset
+                        // Create a new PickedMedia with the saved asset
+                        let savedItem = PickedMedia.video(url)
+                        savedMedia.append(savedItem)
+                    }
+                }) { success, error in
+                    if success {
+                        print("✅ Video saved to Photos library: \(url.lastPathComponent)")
+                    } else {
+                        print("❌ Failed to save video: \(error?.localizedDescription ?? "Unknown error")")
+                    }
+                    group.leave()
+                }
+                
+            case .photo(let image):
+                // Save photo to Photos library
+                PHPhotoLibrary.shared().performChanges({
+                    let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    let _ = request.placeholderForCreatedAsset
+                    // Create a new PickedMedia with the saved asset
+                    let savedItem = PickedMedia.photo(image)
+                    savedMedia.append(savedItem)
+                }) { success, error in
+                    if success {
+                        print("✅ Photo saved to Photos library")
+                    } else {
+                        print("❌ Failed to save photo: \(error?.localizedDescription ?? "Unknown error")")
+                    }
+                    group.leave()
+                }
+            }
+        }
+        
+        group.notify(queue: .main) {
+            completion(savedMedia)
+        }
     }
 }
 
