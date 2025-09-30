@@ -49,11 +49,14 @@ struct CameraView: UIViewControllerRepresentable {
         picker.mediaTypes = ["public.movie", "public.image"] // Allow both video and photo
         picker.videoQuality = .typeHigh
         picker.allowsEditing = false
+        picker.cameraCaptureMode = .video // Set video as default
+        picker.modalPresentationStyle = .fullScreen // Ensure full screen presentation
         return picker
     }
     
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {
-        // No updates needed
+        // Ensure the picker maintains full screen presentation
+        uiViewController.modalPresentationStyle = .fullScreen
     }
     
     func makeCoordinator() -> Coordinator {
