@@ -27,6 +27,7 @@ struct TapeCardView: View {
     
     @EnvironmentObject var tapeStore: TapesStore
     @StateObject private var castManager = CastManager.shared
+    @StateObject private var cameraCoordinator = CameraCoordinator()
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
@@ -135,8 +136,11 @@ struct TapeCardView: View {
                         importSource = .centerFAB
                         showingMediaPicker = true
                     case .camera:
-                        // Handle camera action
-                        break
+                        // Launch native camera
+                        importSource = .centerFAB
+                        cameraCoordinator.presentCamera { capturedMedia in
+                            handleMediaInsertion(picked: capturedMedia, source: .centerFAB)
+                        }
                     case .transition:
                         // Handle transition action
                         break
@@ -217,9 +221,45 @@ struct TapeCardView: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {
+            CameraView(coordinator: cameraCoordinator)
+        }
     }
     
     // MARK: - Helper Functions
+    
+    /// Handle media insertion from camera or other sources
+    private func handleMediaInsertion(picked: [PickedMedia], source: ImportSource) {
+        guard !picked.isEmpty else { return }
+        
+        Task {
+            await MainActor.run {
+                // Capture current position before insertion
+                let currentPosition = savedCarouselPosition
+                let mediaCount = picked.count
+                
+                print("🎯 Camera: inserting \(mediaCount) items at position \(currentPosition)")
+                
+                // Insert media based on source
+                switch source {
+                case .centerFAB:
+                    // Insert at current carousel position (where FAB is positioned)
+                    let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
+                    insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
+                    print("🎯 Camera FAB: inserted at position \(insertionIndex) (carousel position: \(savedCarouselPosition))")
+                default:
+                    // Fallback to center
+                    tapeStore.insertAtCenter(into: $tape, picked: picked)
+                    print("🎯 Camera: fallback to center")
+                }
+                
+                // Set advancement - the carousel will scroll by this amount
+                pendingAdvancement = mediaCount
+                
+                print("🎯 After camera insertion: advancement set to \(pendingAdvancement), current position: \(savedCarouselPosition), total clips: \(tape.clips.count)")
+            }
+        }
+    }
     
     /// Calculate the insertion index based on carousel position
     private func calculateInsertionIndex(from carouselPosition: Int, tape: Tape) -> Int {
