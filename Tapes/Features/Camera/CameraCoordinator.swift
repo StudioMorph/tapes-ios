@@ -51,6 +51,7 @@ struct CameraView: UIViewControllerRepresentable {
         picker.allowsEditing = false
         picker.cameraCaptureMode = .video // Set video as default
         picker.modalPresentationStyle = .fullScreen // Ensure full screen presentation
+        picker.modalTransitionStyle = .coverVertical // Standard camera transition
         return picker
     }
     

@@ -223,6 +223,7 @@ struct TapeCardView: View {
         }
         .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {
             CameraView(coordinator: cameraCoordinator)
+                .ignoresSafeArea(.all, edges: .all)
         }
     }
     
