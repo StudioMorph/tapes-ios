@@ -7,6 +7,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     let trailingInset: CGFloat
     let containerWidth: CGFloat
     let targetSnapIndex: Int?
+    let currentSnapIndex: Int
     let onSnapped: ((Int, Int) -> Void)?
     let content: () -> Content
 
@@ -15,6 +16,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
          trailingInset: CGFloat = 16,
          containerWidth: CGFloat,
          targetSnapIndex: Int? = nil,
+         currentSnapIndex: Int = 1,
          onSnapped: ((Int, Int) -> Void)? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
@@ -22,6 +24,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         self.trailingInset = trailingInset
         self.containerWidth = containerWidth
         self.targetSnapIndex = targetSnapIndex
+        self.currentSnapIndex = currentSnapIndex
         self.onSnapped = onSnapped
         self.content = content
     }
@@ -80,7 +83,8 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         // Check if contentSize is valid
         if scrollView.contentSize.width > 0 {
             // Step 1: Set to current position without animation (maintain visual context)
-            let currentPosition = getCurrentCarouselPosition(scrollView: scrollView)
+            // Use the currentSnapIndex from the SnappingHScroll (savedCarouselPosition)
+            let currentPosition = self.currentSnapIndex
             let currentX = leadingInset + CGFloat(currentPosition) * itemWidth - containerWidth / 2.0
             let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
             let clampedCurrentX = min(max(currentX, 0), maxOffsetX)
@@ -134,7 +138,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         }
         
         private var state: CarouselState = .idle
-        private var currentSnapIndex: Int = 1 // Initial value as specified
+        private var currentSnapIndex: Int = 1 // Will be updated with actual position
         private var isUserScrolling: Bool = false
         private var isProgrammaticScroll: Bool = false
 

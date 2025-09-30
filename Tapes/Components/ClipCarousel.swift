@@ -37,6 +37,7 @@ struct ClipCarousel: View {
                            trailingInset: 16,
                            containerWidth: container.size.width,
                            targetSnapIndex: pendingAdvancement > 0 ? savedCarouselPosition + pendingAdvancement : nil,
+                           currentSnapIndex: savedCarouselPosition,
                            onSnapped: { leftIndex, rightIndex in
                                // Update saved position when carousel snaps
                                let oldPosition = savedCarouselPosition
