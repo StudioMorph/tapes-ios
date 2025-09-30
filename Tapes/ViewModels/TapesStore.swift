@@ -14,8 +14,15 @@ public class TapesStore: ObservableObject {
     @Published public var selectedTape: Tape?
     @Published public var showingSettingsSheet = false
     
+    // MARK: - Persistence
+    private let persistenceKey = "SavedTapes"
+    private let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+    private var persistenceURL: URL {
+        documentsDirectory.appendingPathComponent("tapes.json")
+    }
+    
     public init() {
-        // If persistence exists, load here; else leave current in-memory state
+        loadTapesFromDisk()
         
         // Always ensure at least one empty tape exists
         if tapes.isEmpty {
@@ -28,6 +35,7 @@ public class TapesStore: ObservableObject {
                 clips: []
             )
             tapes.append(newReel)
+            saveTapesToDisk()
             print("🏗️ TapesStore init: Created empty tape with id \(newReel.id)")
         } else {
             print("🏗️ TapesStore init: Found \(tapes.count) existing tapes")
@@ -53,6 +61,7 @@ public class TapesStore: ObservableObject {
     public func createNewTape() -> Tape {
         let newTape = Tape()
         tapes.append(newTape)
+        autoSave()
         return newTape
     }
     
@@ -68,15 +77,20 @@ public class TapesStore: ObservableObject {
             if selectedTape?.id == tape.id {
                 selectedTape = tape
             }
+            
+            // Auto-save changes
+            autoSave()
         }
     }
     
     public func deleteTape(_ tape: Tape) {
         tapes.removeAll { $0.id == tape.id }
+        autoSave()
     }
     
     public func deleteTape(by id: UUID) {
         tapes.removeAll { $0.id == id }
+        autoSave()
     }
     
     // MARK: - Selected Tape Management
@@ -436,6 +450,9 @@ extension TapesStore {
 
         print("✅ Inserted \(newClips.count) clip(s) at index \(insertionIndex) in tape \"\(tapes[tIndex].title)\"")
         
+        // Auto-save changes
+        autoSave()
+        
         // Generate thumbnails and duration for video clips asynchronously
         for clip in newClips {
             if clip.clipType == .video, let url = clip.localURL {
@@ -473,6 +490,9 @@ extension TapesStore {
         objectWillChange.send()
         print("✅ Inserted \(newClips.count) clips into tape \(tape.wrappedValue.id)")
         
+        // Auto-save changes
+        autoSave()
+        
         // Generate thumbnails and duration for video clips asynchronously
         for clip in newClips {
             if clip.clipType == .video, let url = clip.localURL {
@@ -489,6 +509,9 @@ extension TapesStore {
         let at = max(0, min(index, tape.clips.count))
         tape.clips.insert(contentsOf: newClips, at: at)
         tapes[ti] = tape // reassign to publish
+        
+        // Auto-save changes
+        autoSave()
         
         // Generate thumbnails and duration for video clips asynchronously
         for clip in newClips {
@@ -517,6 +540,9 @@ extension TapesStore {
         tapes[t] = newTape                    // REASSIGN to publish
         print("✅ Updated clip \(id) in tape \(tapeID) - hasThumb: \(newTape.clips[c].thumbnail != nil)")
         print("🔄 TapesStore: Published tapes array change - tapes.count: \(tapes.count)")
+        
+        // Auto-save changes
+        autoSave()
     }
     
     /// Generate thumbnail from video URL
@@ -564,5 +590,35 @@ extension TapesStore {
                 print("⚠️ Thumb/duration load failed:", error.localizedDescription)
             }
         }
+    }
+    
+    // MARK: - Persistence Methods
+    
+    /// Save tapes to disk
+    private func saveTapesToDisk() {
+        do {
+            let data = try JSONEncoder().encode(tapes)
+            try data.write(to: persistenceURL)
+            print("💾 Saved \(tapes.count) tapes to disk")
+        } catch {
+            print("❌ Failed to save tapes to disk: \(error)")
+        }
+    }
+    
+    /// Load tapes from disk
+    private func loadTapesFromDisk() {
+        do {
+            let data = try Data(contentsOf: persistenceURL)
+            tapes = try JSONDecoder().decode([Tape].self, from: data)
+            print("📂 Loaded \(tapes.count) tapes from disk")
+        } catch {
+            print("⚠️ No saved tapes found or failed to load: \(error)")
+            tapes = []
+        }
+    }
+    
+    /// Auto-save when tapes change
+    private func autoSave() {
+        saveTapesToDisk()
     }
 }
