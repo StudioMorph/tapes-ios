@@ -196,9 +196,10 @@ struct TapeCardView: View {
                             tape.clips = originalClips + newClips
                             print("🎯 Right placeholder: added \(picked.count) clips to end, total clips: \(tape.clips.count)")
                         case .centerFAB:
-                            // Insert at center (red line position) - this is the default behavior
-                            tapeStore.insertAtCenter(into: $tape, picked: picked)
-                            print("🎯 Center FAB: inserted at center")
+                            // Insert at current carousel position (where FAB is positioned)
+                            let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
+                            insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
+                            print("🎯 Center FAB: inserted at position \(insertionIndex) (carousel position: \(savedCarouselPosition))")
                         case .none:
                             // Fallback to center
                             tapeStore.insertAtCenter(into: $tape, picked: picked)
@@ -219,6 +220,61 @@ struct TapeCardView: View {
     }
     
     // MARK: - Helper Functions
+    
+    /// Calculate the insertion index based on carousel position
+    private func calculateInsertionIndex(from carouselPosition: Int, tape: Tape) -> Int {
+        // Carousel items: [startPlus, clip1, clip2, clip3, endPlus]
+        // Position 0 = startPlus (insert at beginning)
+        // Position 1 = between startPlus and clip1 (insert at 0)
+        // Position 2 = between clip1 and clip2 (insert at 1)
+        // Position 3 = between clip2 and clip3 (insert at 2)
+        // Position 4 = between clip3 and endPlus (insert at 3)
+        // Position 5 = endPlus (insert at end)
+        
+        if tape.clips.isEmpty {
+            return 0 // Insert at beginning for empty tape
+        }
+        
+        // Convert carousel position to clip insertion index
+        // Position 1+ corresponds to insertion between clips
+        let insertionIndex = max(0, min(carouselPosition - 1, tape.clips.count))
+        return insertionIndex
+    }
+    
+    /// Insert clips at a specific position in the tape
+    private func insertClipsAtPosition(picked: [PickedMedia], at index: Int, into tape: Binding<Tape>) {
+        guard !picked.isEmpty else { return }
+        
+        // Convert picked media to clips
+        var newClips: [Clip] = []
+        for item in picked {
+            switch item {
+            case .video(let url):
+                let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+                newClips.append(clip)
+            case .photo(let image):
+                if let imageData = image.jpegData(compressionQuality: 0.8) {
+                    let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                    newClips.append(clip)
+                }
+            }
+        }
+        
+        // Insert clips at the calculated position
+        var updatedTape = tape.wrappedValue
+        let insertIndex = min(index, updatedTape.clips.count)
+        updatedTape.clips.insert(contentsOf: newClips, at: insertIndex)
+        tape.wrappedValue = updatedTape
+        
+        print("✅ Inserted \(newClips.count) clips at index \(insertIndex) in tape \(updatedTape.id)")
+        
+        // Generate thumbnails and duration for video clips asynchronously
+        for clip in newClips {
+            if clip.clipType == .video, let url = clip.localURL {
+                tapeStore.generateThumbAndDuration(for: url, clipID: clip.id, tapeID: updatedTape.id)
+            }
+        }
+    }
     
     private func processPickerResults(_ results: [PHPickerResult]) async -> [PickedMedia] {
         var pickedMedia: [PickedMedia] = []
