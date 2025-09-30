@@ -62,6 +62,11 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         context.coordinator.hostingController = hosting
         context.coordinator.scrollView = scrollView
         
+        // Set initial position immediately to avoid flash
+        DispatchQueue.main.async {
+            self.setInitialPosition(scrollView: scrollView)
+        }
+        
         // Handle programmatic scrolling to target index
         if let targetIndex = targetSnapIndex {
             print("🎯 SnappingHScroll: targetSnapIndex=\(targetIndex), contentSize=\(scrollView.contentSize)")
@@ -113,6 +118,18 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         } else {
             print("⚠️ Failed to perform programmatic scroll after \(maxRetries) retries - contentSize still invalid")
         }
+    }
+    
+    /// Set the initial position to avoid flash
+    private func setInitialPosition(scrollView: UIScrollView) {
+        // Set the scroll view to the current position immediately
+        let currentPosition = currentSnapIndex
+        let currentX = leadingInset + CGFloat(currentPosition) * itemWidth - containerWidth / 2.0
+        let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
+        let clampedCurrentX = min(max(currentX, 0), maxOffsetX)
+        
+        scrollView.setContentOffset(CGPoint(x: clampedCurrentX, y: 0), animated: false)
+        print("🎯 Initial position set to \(currentPosition) without animation, x=\(clampedCurrentX)")
     }
     
     /// Get the current carousel position based on scroll offset
