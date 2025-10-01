@@ -37,6 +37,14 @@ struct TapeCardView: View {
     @State private var savedCarouselPosition: Int = 1 // Start at 1 to account for 0-based indexing
     @State private var pendingAdvancement: Int = 0 // How many positions to advance after insertion
     
+    // Session flag for initial positioning
+    @State private var isNewSession = true
+    
+    // Initial carousel position - set to last position (1 + total media count)
+    private var initialCarouselPosition: Int {
+        return 1 + tape.clips.count
+    }
+    
     var body: some View {
         let _ = print("🎯 TapeCardView: tape id=\(tape.id), clips=\(tape.clips.count)")
         VStack(alignment: .leading, spacing: 0) {
@@ -105,6 +113,8 @@ struct TapeCardView: View {
                     insertionIndex: $insertionIndex,
                     savedCarouselPosition: $savedCarouselPosition,
                     pendingAdvancement: $pendingAdvancement,
+                    isNewSession: $isNewSession,
+                    initialCarouselPosition: initialCarouselPosition,
                     onPlaceholderTap: { item in
                         // Store import source and show picker
                         switch item {

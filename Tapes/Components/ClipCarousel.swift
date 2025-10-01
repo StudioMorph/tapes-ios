@@ -6,6 +6,8 @@ struct ClipCarousel: View {
     @Binding var insertionIndex: Int
     @Binding var savedCarouselPosition: Int
     @Binding var pendingAdvancement: Int
+    @Binding var isNewSession: Bool
+    let initialCarouselPosition: Int
     let onPlaceholderTap: (CarouselItem) -> Void
     
     // Direct observation of tape.clips - no caching
@@ -37,7 +39,7 @@ struct ClipCarousel: View {
                            trailingInset: 16,
                            containerWidth: container.size.width,
                            targetSnapIndex: pendingAdvancement > 0 ? savedCarouselPosition + pendingAdvancement : nil,
-                           currentSnapIndex: savedCarouselPosition,
+                           currentSnapIndex: isNewSession ? initialCarouselPosition : savedCarouselPosition,
                            onSnapped: { leftIndex, rightIndex in
                                // Update saved position when carousel snaps
                                let oldPosition = savedCarouselPosition
@@ -48,6 +50,12 @@ struct ClipCarousel: View {
                                if pendingAdvancement > 0 {
                                    print("🎯 Applied advancement of \(pendingAdvancement), new position: \(leftIndex)")
                                    pendingAdvancement = 0
+                               }
+                               
+                               // Mark session as "opened" after first positioning
+                               if isNewSession {
+                                   isNewSession = false
+                                   print("🎯 Session marked as opened, future updates will use savedCarouselPosition")
                                }
                            }) {
                 // Leading 16pt padding INSIDE the card
@@ -102,6 +110,8 @@ public enum CarouselItem: Identifiable {
             insertionIndex: .constant(0),
             savedCarouselPosition: .constant(1),
             pendingAdvancement: .constant(0),
+            isNewSession: .constant(true),
+            initialCarouselPosition: 1,
             onPlaceholderTap: { _ in }
         )
         .frame(height: 84)
