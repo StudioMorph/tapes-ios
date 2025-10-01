@@ -42,6 +42,7 @@ struct TapeCardView: View {
     
     // Pending target for programmatic scroll (scoped by tape ID)
     @State private var pendingTargetItemIndex: Int? = nil
+    @State private var pendingToken: UUID? = nil
     
     // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
@@ -119,6 +120,7 @@ struct TapeCardView: View {
                     isNewSession: $isNewSession,
                     initialCarouselPosition: initialCarouselPosition,
                     pendingTargetItemIndex: $pendingTargetItemIndex,
+                    pendingToken: $pendingToken,
                     onPlaceholderTap: { item in
                         // Store import source and show picker
                         switch item {
@@ -228,10 +230,14 @@ struct TapeCardView: View {
                         let pAfter = pSnapshot + k
                         let targetItemIndex = pAfter + 1 // Convert to item-space (+1 for start-plus)
                         
-                        print("🎯 calc: p_after=\(pAfter), targetItemIndex=\(targetItemIndex), tape=\(tape.id)")
+                        print("🎯 calc: tape=\(tape.id), p_snapshot=\(pSnapshot), k=\(k), p_after=\(pAfter), targetItemIndex=\(targetItemIndex)")
                         
-                        // Set pending target for programmatic scroll (scoped by tape ID)
+                        // Generate monotonic token for this operation
+                        let token = UUID()
+                        pendingToken = token
                         pendingTargetItemIndex = targetItemIndex
+                        
+                        print("🎯 schedule: tape=\(tape.id), targetItemIndex=\(targetItemIndex), token=\(token.uuidString.prefix(8))")
                         
                         // First-content side effect: create new empty tape if this was the first content
                         checkAndCreateEmptyTapeIfNeeded()
@@ -279,10 +285,14 @@ struct TapeCardView: View {
                 let pAfter = pSnapshot + k
                 let targetItemIndex = pAfter + 1 // Convert to item-space (+1 for start-plus)
                 
-                print("🎯 calc: p_after=\(pAfter), targetItemIndex=\(targetItemIndex), tape=\(tape.id)")
+                print("🎯 calc: tape=\(tape.id), p_snapshot=\(pSnapshot), k=\(k), p_after=\(pAfter), targetItemIndex=\(targetItemIndex)")
                 
-                // Set pending target for programmatic scroll (scoped by tape ID)
+                // Generate monotonic token for this operation
+                let token = UUID()
+                pendingToken = token
                 pendingTargetItemIndex = targetItemIndex
+                
+                print("🎯 schedule: tape=\(tape.id), targetItemIndex=\(targetItemIndex), token=\(token.uuidString.prefix(8))")
                 
                 // First-content side effect: create new empty tape if this was the first content
                 checkAndCreateEmptyTapeIfNeeded()

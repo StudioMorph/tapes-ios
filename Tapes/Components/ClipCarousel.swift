@@ -9,6 +9,7 @@ struct ClipCarousel: View {
     @Binding var isNewSession: Bool
     let initialCarouselPosition: Int
     @Binding var pendingTargetItemIndex: Int?
+    @Binding var pendingToken: UUID?
     let onPlaceholderTap: (CarouselItem) -> Void
     
     // Direct observation of tape.clips - no caching
@@ -41,6 +42,8 @@ struct ClipCarousel: View {
                            containerWidth: container.size.width,
                            targetSnapIndex: pendingTargetItemIndex,
                            currentSnapIndex: isNewSession ? (initialCarouselPosition + 1) : (savedCarouselPosition + 1),
+                           pendingToken: pendingToken,
+                           tapeId: tape.id,
                            onSnapped: { leftIndex, rightIndex in
                                // Convert from item-space to clip-space
                                let clipLeft = max(0, leftIndex - 1)
@@ -54,6 +57,7 @@ struct ClipCarousel: View {
                                if pendingTargetItemIndex != nil {
                                    print("🎯 Applied programmatic scroll to itemIndex=\(leftIndex), tape=\(tape.id)")
                                    pendingTargetItemIndex = nil
+                                   pendingToken = nil
                                }
                                
                                // Mark session as "opened" after first positioning
@@ -117,6 +121,7 @@ public enum CarouselItem: Identifiable {
             isNewSession: .constant(true),
             initialCarouselPosition: 1,
             pendingTargetItemIndex: .constant(nil),
+            pendingToken: .constant(nil),
             onPlaceholderTap: { _ in }
         )
         .frame(height: 84)

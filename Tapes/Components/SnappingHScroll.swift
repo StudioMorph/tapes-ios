@@ -8,6 +8,8 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     let containerWidth: CGFloat
     let targetSnapIndex: Int?
     let currentSnapIndex: Int
+    let pendingToken: UUID?
+    let tapeId: UUID
     let onSnapped: ((Int, Int) -> Void)?
     let content: () -> Content
 
@@ -17,6 +19,8 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
          containerWidth: CGFloat,
          targetSnapIndex: Int? = nil,
          currentSnapIndex: Int = 1,
+         pendingToken: UUID? = nil,
+         tapeId: UUID,
          onSnapped: ((Int, Int) -> Void)? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
@@ -25,6 +29,8 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         self.containerWidth = containerWidth
         self.targetSnapIndex = targetSnapIndex
         self.currentSnapIndex = currentSnapIndex
+        self.pendingToken = pendingToken
+        self.tapeId = tapeId
         self.onSnapped = onSnapped
         self.content = content
     }
@@ -62,9 +68,15 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         context.coordinator.hostingController = hosting
         context.coordinator.scrollView = scrollView
         
-        // Set initial position immediately to avoid flash
-        DispatchQueue.main.async {
-            self.setInitialPosition(scrollView: scrollView)
+        // Ordering logic: Skip initial position if there's a pending target
+        if targetSnapIndex != nil {
+            print("🎯 skip-initial: tape=\(tapeId) (pending target)")
+            // Skip initial position set when there's a pending target
+        } else {
+            // Set initial position immediately to avoid flash
+            DispatchQueue.main.async {
+                self.setInitialPosition(scrollView: scrollView)
+            }
         }
         
         // Handle programmatic scrolling to target index
@@ -87,25 +99,32 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         
         // Check if layout is ready
         if scrollView.contentSize.width > 0 && scrollView.bounds.width > 0 {
-            print("🎯 apply: programmatic scroll to itemIndex=\(targetIndex) (layout ready)")
-            
-            // Calculate target position
-            let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
-            let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
-            let clampedTargetX = min(max(targetX, 0), maxOffsetX)
-            
-            // Set programmatic scroll flag to prevent feedback
-            if let coordinator = scrollView.delegate as? Coordinator {
-                coordinator.isProgrammaticScroll = true
-                coordinator.updateCurrentSnapIndex(targetIndex)
+            // Check token validity to prevent stale applies
+            if let currentToken = pendingToken {
+                print("🎯 apply: tape=\(tapeId), token=\(currentToken.uuidString.prefix(8)), itemIndex=\(targetIndex)")
+                
+                // Calculate target position
+                let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
+                let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
+                let clampedTargetX = min(max(targetX, 0), maxOffsetX)
+                
+                // Set programmatic scroll flag to prevent feedback
+                if let coordinator = scrollView.delegate as? Coordinator {
+                    coordinator.isProgrammaticScroll = true
+                    coordinator.updateCurrentSnapIndex(targetIndex)
+                }
+                
+                // Perform the scroll
+                scrollView.setContentOffset(CGPoint(x: clampedTargetX, y: 0), animated: true)
+                print("🎯 apply: tape=\(tapeId), token=\(currentToken.uuidString.prefix(8)), itemIndex=\(targetIndex), x=\(clampedTargetX)")
+                
+            } else {
+                print("🎯 stale-apply: tape=\(tapeId) token mismatch")
             }
             
-            // Perform the scroll
-            scrollView.setContentOffset(CGPoint(x: clampedTargetX, y: 0), animated: true)
-            print("🎯 apply: scrolled to x=\(clampedTargetX)")
-            
         } else if retryCount < maxRetries {
-            print("🎯 defer: contentSize=\(scrollView.contentSize.width), bounds=\(scrollView.bounds.width) → retry")
+            let tokenString = pendingToken?.uuidString.prefix(8) ?? "nil"
+            print("🎯 defer: tape=\(tapeId), token=\(tokenString) (w=\(scrollView.contentSize.width), b=\(scrollView.bounds.width))")
             DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
                 self.performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: retryCount + 1)
             }
