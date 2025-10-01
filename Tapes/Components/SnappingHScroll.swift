@@ -151,7 +151,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         private var state: CarouselState = .idle
         private var currentSnapIndex: Int = 1 // Will be updated with actual position
         private var isUserScrolling: Bool = false
-        private var isProgrammaticScroll: Bool = false
+        var isProgrammaticScroll: Bool = false
 
         // We need to know total content width (calculated on the fly)
         init(parent: SnappingHScroll) {
