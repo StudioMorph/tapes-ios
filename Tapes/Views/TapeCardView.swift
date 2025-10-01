@@ -225,6 +225,9 @@ struct TapeCardView: View {
                         
                         print("🎯 After insertion: advancement set to \(pendingAdvancement), current position: \(savedCarouselPosition), total clips: \(tape.clips.count)")
                         
+                        // First-content side effect: create new empty tape if this was the first content
+                        checkAndCreateEmptyTapeIfNeeded()
+                        
                         // Reset import source
                         importSource = nil
                     }
@@ -268,6 +271,9 @@ struct TapeCardView: View {
                 pendingAdvancement = mediaCount
                 
                 print("🎯 After camera insertion: advancement set to \(pendingAdvancement), current position: \(savedCarouselPosition), total clips: \(tape.clips.count)")
+                
+                // First-content side effect: create new empty tape if this was the first content
+                checkAndCreateEmptyTapeIfNeeded()
             }
         }
     }
@@ -386,6 +392,20 @@ struct TapeCardView: View {
         let asset = AVAsset(url: url)
         let duration = try? await asset.load(.duration)
         return CMTimeGetSeconds(duration ?? .zero)
+    }
+    
+    /// Check if this tape just received its first content and create new empty tape if needed
+    private func checkAndCreateEmptyTapeIfNeeded() {
+        // Check if tape just transitioned from 0 → >0 clips and hasReceivedFirstContent == false
+        if tape.clips.count > 0 && !tape.hasReceivedFirstContent {
+            // Set hasReceivedFirstContent = true on this tape and persist
+            tape.hasReceivedFirstContent = true
+            
+            // Insert a new empty tape at index 0
+            tapeStore.insertEmptyTapeAtTop()
+            
+            print("🧩 first-content: tape=\(tape.id) now has clips > 0 → flag=true; inserting new empty at top")
+        }
     }
 }
 

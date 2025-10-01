@@ -87,6 +87,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var clips: [Clip]
     public var createdAt: Date
     public var updatedAt: Date
+    public var hasReceivedFirstContent: Bool
     
     public init(
         id: UUID = UUID(),
@@ -97,7 +98,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         transitionDuration: Double = 0.5,
         clips: [Clip] = [],
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        hasReceivedFirstContent: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -108,6 +110,33 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.clips = clips
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.hasReceivedFirstContent = hasReceivedFirstContent
+    }
+    
+    // MARK: - Coding Keys
+    
+    private enum CodingKeys: String, CodingKey {
+        case id, title, orientation, scaleMode, transition, transitionDuration
+        case clips, createdAt, updatedAt, hasReceivedFirstContent
+    }
+    
+    // MARK: - Custom Decoder for Backward Compatibility
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        orientation = try container.decode(TapeOrientation.self, forKey: .orientation)
+        scaleMode = try container.decode(ScaleMode.self, forKey: .scaleMode)
+        transition = try container.decode(TransitionType.self, forKey: .transition)
+        transitionDuration = try container.decode(Double.self, forKey: .transitionDuration)
+        clips = try container.decode([Clip].self, forKey: .clips)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        
+        // Backward compatibility: default to false if key is missing
+        hasReceivedFirstContent = try container.decodeIfPresent(Bool.self, forKey: .hasReceivedFirstContent) ?? false
     }
     
     // MARK: - Computed Properties

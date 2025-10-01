@@ -32,7 +32,8 @@ public class TapesStore: ObservableObject {
                 scaleMode: .fit,
                 transition: .none,
                 transitionDuration: 0.5,
-                clips: []
+                clips: [],
+                hasReceivedFirstContent: false
             )
             tapes.append(newReel)
             saveTapesToDisk()
@@ -40,6 +41,9 @@ public class TapesStore: ObservableObject {
         } else {
             print("🏗️ TapesStore init: Found \(tapes.count) existing tapes")
         }
+        
+        // Restore empty tape invariant after loading
+        restoreEmptyTapeInvariant()
     }
     
     #if DEBUG
@@ -620,5 +624,36 @@ extension TapesStore {
     /// Auto-save when tapes change
     private func autoSave() {
         saveTapesToDisk()
+    }
+    
+    // MARK: - Empty Tape Management
+    
+    /// Insert a new empty tape at index 0
+    public func insertEmptyTapeAtTop() {
+        let newEmptyTape = Tape(
+            title: "New Reel",
+            orientation: .portrait,
+            scaleMode: .fit,
+            transition: .none,
+            transitionDuration: 0.5,
+            clips: [],
+            hasReceivedFirstContent: false
+        )
+        tapes.insert(newEmptyTape, at: 0)
+        autoSave()
+        print("🧩 Created new empty tape at top with id: \(newEmptyTape.id)")
+    }
+    
+    /// Restore invariant: ensure empty tape exists at top after loading
+    public func restoreEmptyTapeInvariant() {
+        // Check if first tape is empty
+        if let firstTape = tapes.first, firstTape.clips.isEmpty {
+            // First tape is already empty, no action needed
+            return
+        }
+        
+        // No empty tape at top, insert one
+        insertEmptyTapeAtTop()
+        print("🧩 invariant: inserted top empty tape on launch")
     }
 }
