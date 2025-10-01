@@ -124,6 +124,11 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - **Snapping / Insertion**
   - FAB fixed; carousel snaps around it
   - New clip inserts between left and right neighbor
+  - **Carousel Position Management**: Single source of truth with proper ordering
+    - Skip initial position when pending target exists
+    - Monotonic token system prevents stale applies
+    - Scope isolation by tape ID prevents cross-talk
+    - Strong programmatic scroll guards prevent feedback loops
 
 - **Aspect Ratio**
   - Global orientation sets canvas
@@ -136,6 +141,33 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - **Export Implementation**
   - iOS: AVMutableComposition + AVMutableAudioMix
   - Android: FFmpegKit filtergraph (xfade + acrossfade)
+
+- **Carousel Race Condition Fix (v2.1)**
+  - **Problem**: Two competing position setters caused incorrect carousel positioning
+  - **Solution**: Single source of truth with proper ordering and timing guarantees
+  - **Implementation**:
+    - Ordering: Skip initial position when `pendingTargetItemIndex` exists
+    - Token System: Monotonic UUID tokens prevent stale applies
+    - Scope Isolation: All operations scoped by `tape.id`
+    - Layout Gating: Only apply when `contentSize.width > 0 && bounds.width > 0`
+    - Feedback Prevention: `isProgrammaticScroll` flag prevents double-advancement
+  - **Files Modified**:
+    - `Tapes/Views/TapeCardView.swift`: Added token system and proper logging
+    - `Tapes/Components/ClipCarousel.swift`: Updated to pass tokens and clear targets
+    - `Tapes/Components/SnappingHScroll.swift`: Implemented ordering logic and validation
+  - **Commit**: `86c492e` - Comprehensive carousel race condition resolution
+
+- **First-Content → Insert Top Empty Tape Feature (v2.0)**
+  - **Goal**: When first media is added to an empty tape, create new empty tape at top
+  - **Implementation**:
+    - `Tape` model: Added `hasReceivedFirstContent: Bool` (persistent)
+    - `TapesStore`: Added `insertEmptyTapeAtTop()` and `restoreEmptyTapeInvariant()`
+    - `TapeCardView`: Added `checkAndCreateEmptyTapeIfNeeded()` side effect
+  - **Behavior**: First import into empty tape → media lands in viewed tape → new empty tape appears at index 0 → selection remains on original tape
+  - **Files Modified**:
+    - `Tapes/Models/Tape.swift`: Added persistent `hasReceivedFirstContent` property
+    - `Tapes/ViewModels/TapesStore.swift`: Added empty tape management methods
+    - `Tapes/Views/TapeCardView.swift`: Added first-content side effect logic
 
 ---
 
