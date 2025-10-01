@@ -85,38 +85,32 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         let maxRetries = 5
         let retryDelay: TimeInterval = 0.1
         
-        // Check if contentSize is valid
-        if scrollView.contentSize.width > 0 {
-            // Step 1: Set to current position without animation (maintain visual context)
-            // Use the currentSnapIndex from the SnappingHScroll (savedCarouselPosition)
-            let currentPosition = self.currentSnapIndex
-            let currentX = leadingInset + CGFloat(currentPosition) * itemWidth - containerWidth / 2.0
+        // Check if layout is ready
+        if scrollView.contentSize.width > 0 && scrollView.bounds.width > 0 {
+            print("🎯 apply: programmatic scroll to itemIndex=\(targetIndex) (layout ready)")
+            
+            // Calculate target position
+            let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
             let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
-            let clampedCurrentX = min(max(currentX, 0), maxOffsetX)
+            let clampedTargetX = min(max(targetX, 0), maxOffsetX)
             
-            // Set to current position without animation
-            scrollView.setContentOffset(CGPoint(x: clampedCurrentX, y: 0), animated: false)
-            print("🎯 Step 1: Set to current position \(currentPosition) without animation, x=\(clampedCurrentX)")
-            
-            // Step 2: Animate to target position after a brief delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
-                let clampedTargetX = min(max(targetX, 0), maxOffsetX)
-                scrollView.setContentOffset(CGPoint(x: clampedTargetX, y: 0), animated: true)
-                print("🎯 Step 2: Animate to target position \(targetIndex), x=\(clampedTargetX)")
-                
-                // Update the coordinator's currentSnapIndex for programmatic scrolling
-                if let coordinator = scrollView.delegate as? Coordinator {
-                    coordinator.updateCurrentSnapIndex(targetIndex)
-                }
+            // Set programmatic scroll flag to prevent feedback
+            if let coordinator = scrollView.delegate as? Coordinator {
+                coordinator.isProgrammaticScroll = true
+                coordinator.updateCurrentSnapIndex(targetIndex)
             }
+            
+            // Perform the scroll
+            scrollView.setContentOffset(CGPoint(x: clampedTargetX, y: 0), animated: true)
+            print("🎯 apply: scrolled to x=\(clampedTargetX)")
+            
         } else if retryCount < maxRetries {
-            print("🎯 ContentSize not ready (width=\(scrollView.contentSize.width)), retrying in \(retryDelay)s (attempt \(retryCount + 1)/\(maxRetries))")
+            print("🎯 defer: contentSize=\(scrollView.contentSize.width), bounds=\(scrollView.bounds.width) → retry")
             DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
                 self.performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: retryCount + 1)
             }
         } else {
-            print("⚠️ Failed to perform programmatic scroll after \(maxRetries) retries - contentSize still invalid")
+            print("⚠️ Failed to perform programmatic scroll after \(maxRetries) retries - layout still invalid")
         }
     }
     
@@ -196,7 +190,10 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         
         func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
             state = .idle
-            isProgrammaticScroll = false // Reset programmatic scroll flag after animation completes
+            if isProgrammaticScroll {
+                print("🎯 snapped (programmatic): position=\(currentSnapIndex)")
+                isProgrammaticScroll = false // Reset programmatic scroll flag after animation completes
+            }
             updatePositionIfValid()
         }
         
@@ -209,7 +206,11 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
                 let leftIndex = currentSnapIndex
                 let rightIndex = leftIndex + 1
                 onSnapped(leftIndex, rightIndex)
-                print("🎯 State machine: Updated position to \(leftIndex) (state: \(state))")
+                if isProgrammaticScroll {
+                    print("🎯 snapped (programmatic): position=\(leftIndex)")
+                } else {
+                    print("🎯 snapped (user): position=\(leftIndex)")
+                }
             }
         }
         

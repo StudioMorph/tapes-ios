@@ -33,16 +33,19 @@ struct TapeCardView: View {
     @State private var showingMediaPicker = false
     @State private var importSource: ImportSource? = nil
     
-    // Carousel position tracking
-    @State private var savedCarouselPosition: Int = 1 // Start at 1 to account for 0-based indexing
-    @State private var pendingAdvancement: Int = 0 // How many positions to advance after insertion
+    // Carousel position tracking - all in clip-space
+    @State private var savedCarouselPosition: Int = 0 // Clip-space position (0 = start, N = end)
+    @State private var pendingAdvancement: Int = 0 // How many positions to advance after insertion (clip-space)
     
     // Session flag for initial positioning
     @State private var isNewSession = true
     
-    // Initial carousel position - set to last position (1 + total media count)
+    // Pending target for programmatic scroll (scoped by tape ID)
+    @State private var pendingTargetItemIndex: Int? = nil
+    
+    // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
-        return 1 + tape.clips.count
+        return tape.clips.count // Clip-space: 0 = start, N = end
     }
     
     var body: some View {
@@ -115,6 +118,7 @@ struct TapeCardView: View {
                     pendingAdvancement: $pendingAdvancement,
                     isNewSession: $isNewSession,
                     initialCarouselPosition: initialCarouselPosition,
+                    pendingTargetItemIndex: $pendingTargetItemIndex,
                     onPlaceholderTap: { item in
                         // Store import source and show picker
                         switch item {
@@ -181,11 +185,11 @@ struct TapeCardView: View {
                     guard !picked.isEmpty else { return }
 
                     await MainActor.run {
-                        // Capture current position before insertion
-                        let currentPosition = savedCarouselPosition
-                        let mediaCount = picked.count
+                        // Capture current position in clip-space before insertion
+                        let pSnapshot = savedCarouselPosition
+                        let k = picked.count
                         
-                        print("🎯 Before insertion: position=\(currentPosition), adding \(mediaCount) items, source=\(importSource)")
+                        print("🎯 calc: p_snapshot=\(pSnapshot), k=\(k), tape=\(tape.id)")
                         
                         // Always use the working insertAtCenter method, but adjust positioning
                         switch importSource {
@@ -220,10 +224,14 @@ struct TapeCardView: View {
                             print("🎯 None: fallback to center")
                         }
                         
-                        // Set advancement - the carousel will scroll by this amount
-                        pendingAdvancement = mediaCount
+                        // Calculate target position in clip-space after insertion
+                        let pAfter = pSnapshot + k
+                        let targetItemIndex = pAfter + 1 // Convert to item-space (+1 for start-plus)
                         
-                        print("🎯 After insertion: advancement set to \(pendingAdvancement), current position: \(savedCarouselPosition), total clips: \(tape.clips.count)")
+                        print("🎯 calc: p_after=\(pAfter), targetItemIndex=\(targetItemIndex), tape=\(tape.id)")
+                        
+                        // Set pending target for programmatic scroll (scoped by tape ID)
+                        pendingTargetItemIndex = targetItemIndex
                         
                         // First-content side effect: create new empty tape if this was the first content
                         checkAndCreateEmptyTapeIfNeeded()
@@ -248,11 +256,11 @@ struct TapeCardView: View {
         
         Task {
             await MainActor.run {
-                // Capture current position before insertion
-                let currentPosition = savedCarouselPosition
-                let mediaCount = picked.count
+                // Capture current position in clip-space before insertion
+                let pSnapshot = savedCarouselPosition
+                let k = picked.count
                 
-                print("🎯 Camera: inserting \(mediaCount) items at position \(currentPosition)")
+                print("🎯 calc: p_snapshot=\(pSnapshot), k=\(k), tape=\(tape.id)")
                 
                 // Insert media based on source
                 switch source {
@@ -267,10 +275,14 @@ struct TapeCardView: View {
                     print("🎯 Camera: fallback to center")
                 }
                 
-                // Set advancement - the carousel will scroll by this amount
-                pendingAdvancement = mediaCount
+                // Calculate target position in clip-space after insertion
+                let pAfter = pSnapshot + k
+                let targetItemIndex = pAfter + 1 // Convert to item-space (+1 for start-plus)
                 
-                print("🎯 After camera insertion: advancement set to \(pendingAdvancement), current position: \(savedCarouselPosition), total clips: \(tape.clips.count)")
+                print("🎯 calc: p_after=\(pAfter), targetItemIndex=\(targetItemIndex), tape=\(tape.id)")
+                
+                // Set pending target for programmatic scroll (scoped by tape ID)
+                pendingTargetItemIndex = targetItemIndex
                 
                 // First-content side effect: create new empty tape if this was the first content
                 checkAndCreateEmptyTapeIfNeeded()
@@ -278,23 +290,11 @@ struct TapeCardView: View {
         }
     }
     
-    /// Calculate the insertion index based on carousel position
+    /// Calculate the insertion index based on carousel position (clip-space)
     private func calculateInsertionIndex(from carouselPosition: Int, tape: Tape) -> Int {
-        // Carousel items: [startPlus, clip1, clip2, clip3, endPlus]
-        // Position 0 = startPlus (insert at beginning)
-        // Position 1 = between startPlus and clip1 (insert at 0)
-        // Position 2 = between clip1 and clip2 (insert at 1)
-        // Position 3 = between clip2 and clip3 (insert at 2)
-        // Position 4 = between clip3 and endPlus (insert at 3)
-        // Position 5 = endPlus (insert at end)
-        
-        if tape.clips.isEmpty {
-            return 0 // Insert at beginning for empty tape
-        }
-        
-        // Convert carousel position to clip insertion index
-        // Position 1+ corresponds to insertion between clips
-        let insertionIndex = max(0, min(carouselPosition - 1, tape.clips.count))
+        // carouselPosition is in clip-space: 0 = start, N = end
+        // Convert to clip insertion index
+        let insertionIndex = max(0, min(carouselPosition, tape.clips.count))
         return insertionIndex
     }
     

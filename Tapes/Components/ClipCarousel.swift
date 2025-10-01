@@ -8,6 +8,7 @@ struct ClipCarousel: View {
     @Binding var pendingAdvancement: Int
     @Binding var isNewSession: Bool
     let initialCarouselPosition: Int
+    @Binding var pendingTargetItemIndex: Int?
     let onPlaceholderTap: (CarouselItem) -> Void
     
     // Direct observation of tape.clips - no caching
@@ -38,18 +39,21 @@ struct ClipCarousel: View {
                            leadingInset: 16,
                            trailingInset: 16,
                            containerWidth: container.size.width,
-                           targetSnapIndex: pendingAdvancement > 0 ? savedCarouselPosition + pendingAdvancement : nil,
-                           currentSnapIndex: isNewSession ? initialCarouselPosition : savedCarouselPosition,
+                           targetSnapIndex: pendingTargetItemIndex,
+                           currentSnapIndex: isNewSession ? (initialCarouselPosition + 1) : (savedCarouselPosition + 1),
                            onSnapped: { leftIndex, rightIndex in
+                               // Convert from item-space to clip-space
+                               let clipLeft = max(0, leftIndex - 1)
+                               
                                // Update saved position when carousel snaps
                                let oldPosition = savedCarouselPosition
-                               savedCarouselPosition = leftIndex
-                               print("🎯 Carousel snapped: \(oldPosition) -> \(leftIndex), pendingAdvancement: \(pendingAdvancement)")
+                               savedCarouselPosition = clipLeft
+                               print("🎯 Carousel snapped: \(oldPosition) -> \(clipLeft) (item-space: \(leftIndex)), tape=\(tape.id)")
                                
-                               // Clear pending advancement after applying it
-                               if pendingAdvancement > 0 {
-                                   print("🎯 Applied advancement of \(pendingAdvancement), new position: \(leftIndex)")
-                                   pendingAdvancement = 0
+                               // Clear pending target after applying it
+                               if pendingTargetItemIndex != nil {
+                                   print("🎯 Applied programmatic scroll to itemIndex=\(leftIndex), tape=\(tape.id)")
+                                   pendingTargetItemIndex = nil
                                }
                                
                                // Mark session as "opened" after first positioning
@@ -112,6 +116,7 @@ public enum CarouselItem: Identifiable {
             pendingAdvancement: .constant(0),
             isNewSession: .constant(true),
             initialCarouselPosition: 1,
+            pendingTargetItemIndex: .constant(nil),
             onPlaceholderTap: { _ in }
         )
         .frame(height: 84)
