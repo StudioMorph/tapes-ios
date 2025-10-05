@@ -83,7 +83,7 @@ public struct PhotoImportCoordinator: View {
                     }
                 }
             } catch {
-                print("Error loading media item: \(error)")
+                TapesLog.mediaPicker.error("Failed to load media item: \(error.localizedDescription)")
             }
         }
         
@@ -100,7 +100,7 @@ public struct PhotoImportCoordinator: View {
             let cgImage = try await imageGenerator.image(at: .zero).image
             return UIImage(cgImage: cgImage)
         } catch {
-            print("Error generating thumbnail: \(error)")
+            TapesLog.mediaPicker.error("Failed to generate thumbnail: \(error.localizedDescription)")
             return nil
         }
     }

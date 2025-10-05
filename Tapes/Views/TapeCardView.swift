@@ -5,8 +5,8 @@ import PhotosUI
 import UniformTypeIdentifiers
 
 enum ImportSource {
-    case leftPlaceholder(index: Int)
-    case rightPlaceholder(index: Int)
+    case leftPlaceholder
+    case rightPlaceholder
     case centerFAB
 }
 
@@ -49,9 +49,7 @@ struct TapeCardView: View {
         return tape.clips.count // Clip-space: 0 = start, N = end
     }
     
-    var body: some View {
-        let _ = print("🎯 TapeCardView: tape id=\(tape.id), clips=\(tape.clips.count)")
-        VStack(alignment: .leading, spacing: 0) {
+    var body: some View {        VStack(alignment: .leading, spacing: 0) {
             // Title row
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 // Left group: Title (hug) + 4 + pencil
@@ -105,8 +103,10 @@ struct TapeCardView: View {
             
             // Timeline container
             let screenW = UIScreen.main.bounds.width
-            let thumbW = floor((screenW - Tokens.FAB.size) / 2.0)
-            let thumbH = floor(thumbW * 9.0 / 16.0)
+            let availableWidth = max(0, screenW - Tokens.FAB.size)
+            let thumbW = max(0, floor(availableWidth / 2.0))
+            let aspectRatio: CGFloat = 9.0 / 16.0
+            let thumbH = max(0, floor(thumbW * aspectRatio))
             
             
             ZStack(alignment: .center) {
@@ -125,9 +125,9 @@ struct TapeCardView: View {
                         // Store import source and show picker
                         switch item {
                         case .startPlus:
-                            importSource = .leftPlaceholder(index: 0)
+                            importSource = .leftPlaceholder
                         case .endPlus:
-                            importSource = .rightPlaceholder(index: tape.clips.count)
+                            importSource = .rightPlaceholder
                         case .clip:
                             importSource = .centerFAB // Fallback
                         }
@@ -172,6 +172,11 @@ struct TapeCardView: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.card)
         )
+        .onAppear {
+            if isNewSession {
+                savedCarouselPosition = initialCarouselPosition
+            }
+        }
         .sheet(isPresented: $showingMediaPicker) {
             SystemMediaPicker(
                 isPresented: $showingMediaPicker,
@@ -191,53 +196,25 @@ struct TapeCardView: View {
                         let pSnapshot = savedCarouselPosition
                         let k = picked.count
                         
-                        print("🎯 calc: p_snapshot=\(pSnapshot), k=\(k), tape=\(tape.id)")
-                        
-                        // Always use the working insertAtCenter method, but adjust positioning
+                        // Route insertion through the boundary currently under the FAB
                         switch importSource {
-                        case .leftPlaceholder(let index):
-                            // Insert at start by temporarily modifying the tape
-                            let originalClips = tape.clips
-                            tape.clips = []
-                            tapeStore.insertAtCenter(into: $tape, picked: picked)
-                            // Move clips to start
-                            let newClips = tape.clips
-                            tape.clips = newClips + originalClips
-                            print("🎯 Left placeholder: moved \(newClips.count) clips to start")
-                        case .rightPlaceholder(let index):
-                            // Insert at end by using insertAtCenter and then moving to end
-                            print("🎯 Right placeholder: appending \(picked.count) items to end")
-                            let originalClips = tape.clips
-                            tapeStore.insertAtCenter(into: $tape, picked: picked)
-                            let allClips = tape.clips
-                            // Extract only the new clips (the ones added by insertAtCenter)
-                            let newClips = Array(allClips.suffix(picked.count))
-                            // Move new clips to end
-                            tape.clips = originalClips + newClips
-                            print("🎯 Right placeholder: added \(picked.count) clips to end, total clips: \(tape.clips.count)")
-                        case .centerFAB:
-                            // Insert at current carousel position (where FAB is positioned)
+                        case .leftPlaceholder:
+                            insertClipsAtPosition(picked: picked, at: 0, into: $tape)
+                        case .rightPlaceholder:
+                            insertClipsAtPosition(picked: picked, at: tape.clips.count, into: $tape)
+                        case .centerFAB, .none:
                             let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
                             insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
-                            print("🎯 Center FAB: inserted at position \(insertionIndex) (carousel position: \(savedCarouselPosition))")
-                        case .none:
-                            // Fallback to center
-                            tapeStore.insertAtCenter(into: $tape, picked: picked)
-                            print("🎯 None: fallback to center")
                         }
                         
                         // Calculate target position in clip-space after insertion
                         let pAfter = pSnapshot + k
                         let targetItemIndex = pAfter + 1 // Convert to item-space (+1 for start-plus)
                         
-                        print("🎯 calc: tape=\(tape.id), p_snapshot=\(pSnapshot), k=\(k), p_after=\(pAfter), targetItemIndex=\(targetItemIndex)")
-                        
                         // Generate monotonic token for this operation
                         let token = UUID()
                         pendingToken = token
                         pendingTargetItemIndex = targetItemIndex
-                        
-                        print("🎯 schedule: tape=\(tape.id), targetItemIndex=\(targetItemIndex), token=\(token.uuidString.prefix(8))")
                         
                         // First-content side effect: create new empty tape if this was the first content
                         checkAndCreateEmptyTapeIfNeeded()
@@ -266,33 +243,25 @@ struct TapeCardView: View {
                 let pSnapshot = savedCarouselPosition
                 let k = picked.count
                 
-                print("🎯 calc: p_snapshot=\(pSnapshot), k=\(k), tape=\(tape.id)")
-                
                 // Insert media based on source
                 switch source {
                 case .centerFAB:
                     // Insert at current carousel position (where FAB is positioned)
                     let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
                     insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
-                    print("🎯 Camera FAB: inserted at position \(insertionIndex) (carousel position: \(savedCarouselPosition))")
                 default:
-                    // Fallback to center
-                    tapeStore.insertAtCenter(into: $tape, picked: picked)
-                    print("🎯 Camera: fallback to center")
+                    let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
+                    insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
                 }
                 
                 // Calculate target position in clip-space after insertion
                 let pAfter = pSnapshot + k
                 let targetItemIndex = pAfter + 1 // Convert to item-space (+1 for start-plus)
                 
-                print("🎯 calc: tape=\(tape.id), p_snapshot=\(pSnapshot), k=\(k), p_after=\(pAfter), targetItemIndex=\(targetItemIndex)")
-                
                 // Generate monotonic token for this operation
                 let token = UUID()
                 pendingToken = token
                 pendingTargetItemIndex = targetItemIndex
-                
-                print("🎯 schedule: tape=\(tape.id), targetItemIndex=\(targetItemIndex), token=\(token.uuidString.prefix(8))")
                 
                 // First-content side effect: create new empty tape if this was the first content
                 checkAndCreateEmptyTapeIfNeeded()
@@ -308,33 +277,33 @@ struct TapeCardView: View {
         return insertionIndex
     }
     
-    /// Insert clips at a specific position in the tape
-    private func insertClipsAtPosition(picked: [PickedMedia], at index: Int, into tape: Binding<Tape>) {
-        guard !picked.isEmpty else { return }
-        
-        // Convert picked media to clips
-        var newClips: [Clip] = []
+    private func makeClips(from picked: [PickedMedia]) -> [Clip] {
+        var clips: [Clip] = []
         for item in picked {
             switch item {
             case .video(let url):
-                let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
-                newClips.append(clip)
+                clips.append(Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil))
             case .photo(let image):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
-                    newClips.append(clip)
+                    clips.append(Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image))
                 }
             }
         }
+        return clips
+    }
+    
+    /// Insert clips at a specific position in the tape
+    private func insertClipsAtPosition(picked: [PickedMedia], at index: Int, into tape: Binding<Tape>) {
+        let newClips = makeClips(from: picked)
+        guard !newClips.isEmpty else { return }
         
         // Insert clips at the calculated position
         var updatedTape = tape.wrappedValue
-        let insertIndex = min(index, updatedTape.clips.count)
+        let insertIndex = max(0, min(index, updatedTape.clips.count))
         updatedTape.clips.insert(contentsOf: newClips, at: insertIndex)
+        updatedTape.updatedAt = Date()
         tape.wrappedValue = updatedTape
-        
-        print("✅ Inserted \(newClips.count) clips at index \(insertIndex) in tape \(updatedTape.id)")
-        
+        tapeStore.updateTape(updatedTape)        
         // Generate thumbnails and duration for video clips asynchronously
         for clip in newClips {
             if clip.clipType == .video, let url = clip.localURL {
@@ -343,6 +312,7 @@ struct TapeCardView: View {
         }
     }
     
+
     private func processPickerResults(_ results: [PHPickerResult]) async -> [PickedMedia] {
         var pickedMedia: [PickedMedia] = []
         
@@ -375,7 +345,7 @@ struct TapeCardView: View {
                         pickedMedia.append(.photo(uiImage))
                     }
                 } catch {
-                    print("Error loading media item: \(error)")
+                    TapesLog.mediaPicker.error("Failed to load media item: \(error.localizedDescription)")
                 }
             }
         }
@@ -393,7 +363,7 @@ struct TapeCardView: View {
             let cgImage = try await imageGenerator.image(at: .zero).image
             return UIImage(cgImage: cgImage)
         } catch {
-            print("Error generating thumbnail: \(error)")
+            TapesLog.mediaPicker.error("Thumbnail generation failed: \(error.localizedDescription)")
             return nil
         }
     }
@@ -414,8 +384,7 @@ struct TapeCardView: View {
             // Insert a new empty tape at index 0
             tapeStore.insertEmptyTapeAtTop()
             
-            print("🧩 first-content: tape=\(tape.id) now has clips > 0 → flag=true; inserting new empty at top")
-        }
+            }
     }
 }
 

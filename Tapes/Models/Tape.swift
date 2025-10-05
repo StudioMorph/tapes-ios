@@ -144,8 +144,9 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var duration: TimeInterval {
         // Calculate total duration including transitions
         let clipDuration = clips.reduce(0) { $0 + $1.duration }
-        let transitionTime = clips.count > 1 ? 
-            Double(clips.count - 1) * transitionDuration : 0
+        let transitionCount = max(0, clips.count - 1)
+        let transitionsEnabled = transition != .none
+        let transitionTime = transitionsEnabled ? Double(transitionCount) * transitionDuration : 0
         return clipDuration + transitionTime
     }
     
@@ -161,12 +162,13 @@ public struct Tape: Identifiable, Codable, Equatable {
     
     public mutating func addClip(_ clip: Clip, at index: Int? = nil) {
         let insertIndex = index ?? clips.count
-        clips.insert(clip, at: min(insertIndex, clips.count))
+        let boundedIndex = max(0, min(insertIndex, clips.count))
+        clips.insert(clip, at: boundedIndex)
         updatedAt = Date()
     }
     
     public mutating func removeClip(at index: Int) {
-        guard index < clips.count else { return }
+        guard index >= 0 && index < clips.count else { return }
         clips.remove(at: index)
         updatedAt = Date()
     }

@@ -5,7 +5,6 @@ struct ThumbnailView: View {
     let onPlaceholderTap: (CarouselItem) -> Void
     
     var body: some View {
-        let _ = print("🖼️ ThumbnailView rendering: \(item.id)")
         ZStack {
             switch item {
             case .startPlus:
@@ -16,7 +15,6 @@ struct ThumbnailView: View {
             case .clip(let clip):
                 ClipThumbnailView(clip: clip)
                     .onTapGesture {
-                        print("🎬 ClipThumbnailView tapped: \(clip.id)")
                         // TODO: This should open the TapePlayerView, not play individual videos
                     }
             case .endPlus:
@@ -75,7 +73,6 @@ struct ClipThumbnailView: View {
     let clip: Clip
     
     var body: some View {
-        let _ = print("🎬 ClipThumbnailView rendering: id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil)")
         ZStack {
             // Thumbnail background - square corners
             Rectangle()

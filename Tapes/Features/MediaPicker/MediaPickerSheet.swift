@@ -35,7 +35,7 @@ struct SystemMediaPicker: UIViewControllerRepresentable {
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            print("📸 PHPicker didFinishPicking — results.count = \(results.count)")
+            TapesLog.mediaPicker.info("PHPicker didFinishPicking — results.count = \(results.count)")
             parent.isPresented = false
             // Hand back to SwiftUI
             parent.onPicked(results)

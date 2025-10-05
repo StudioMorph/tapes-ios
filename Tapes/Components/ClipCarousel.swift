@@ -14,14 +14,10 @@ struct ClipCarousel: View {
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
-        let result: [CarouselItem]
         if tape.clips.isEmpty {
-            result = [.startPlus]
-        } else {
-            result = [.startPlus] + tape.clips.map { .clip($0) } + [.endPlus]
+            return [.startPlus]
         }
-        print("📋 Items array: \(result.map { $0.id })")
-        return result
+        return [.startPlus] + tape.clips.map { .clip($0) } + [.endPlus]
     }
     
     // Force re-evaluation when tape changes
@@ -30,9 +26,6 @@ struct ClipCarousel: View {
     }
     
     var body: some View {
-        let _ = print("📋 ClipCarousel: \(tape.clips.count) clips, items count: \(items.count)")
-        let _ = tapeHash // Force dependency on tape changes
-        
         // Force re-evaluation by using the hash as an ID
         let carouselId = "carousel-\(tape.id)-\(tapeHash)"
         GeometryReader { container in
@@ -51,11 +44,8 @@ struct ClipCarousel: View {
                                // Update saved position when carousel snaps
                                let oldPosition = savedCarouselPosition
                                savedCarouselPosition = clipLeft
-                               print("🎯 Carousel snapped: \(oldPosition) -> \(clipLeft) (item-space: \(leftIndex)), tape=\(tape.id)")
-                               
                                // Clear pending target after applying it
                                if pendingTargetItemIndex != nil {
-                                   print("🎯 Applied programmatic scroll to itemIndex=\(leftIndex), tape=\(tape.id)")
                                    pendingTargetItemIndex = nil
                                    pendingToken = nil
                                }
@@ -63,14 +53,12 @@ struct ClipCarousel: View {
                                // Mark session as "opened" after first positioning
                                if isNewSession {
                                    isNewSession = false
-                                   print("🎯 Session marked as opened, future updates will use savedCarouselPosition")
                                }
                            }) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
                 ForEach(items) { item in
-                    let _ = print("🔄 ForEach rendering item: \(item.id)")
                     ThumbnailView(item: item, onPlaceholderTap: onPlaceholderTap)
                         .frame(width: thumbSize.width, height: thumbSize.height)
                         .id(item.id) // Force SwiftUI to recognize each item
@@ -82,12 +70,6 @@ struct ClipCarousel: View {
             .id(carouselId) // Force re-evaluation when tape changes
         }
         .frame(height: thumbSize.height) // hug
-        .onChange(of: tape.clips.count) { oldValue, newValue in
-            print("Timeline sees clips = \(newValue)")
-            for (index, clip) in tape.clips.enumerated() {
-                print("  Clip \(index): id=\(clip.id), type=\(clip.clipType), hasThumb=\(clip.thumbnail != nil), localURL=\(clip.localURL?.lastPathComponent ?? "nil")")
-            }
-        }
     }
     
 }

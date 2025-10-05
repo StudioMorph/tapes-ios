@@ -37,9 +37,6 @@ public class TapesStore: ObservableObject {
             )
             tapes.append(newReel)
             saveTapesToDisk()
-            print("🏗️ TapesStore init: Created empty tape with id \(newReel.id)")
-        } else {
-            print("🏗️ TapesStore init: Found \(tapes.count) existing tapes")
         }
         
         // Restore empty tape invariant after loading
@@ -215,6 +212,7 @@ public class TapesStore: ObservableObject {
     
     public func clearAllTapes() {
         tapes.removeAll()
+        insertEmptyTapeAtTop()
     }
     
     public func duplicateTape(_ tape: Tape) -> Tape {
@@ -234,6 +232,7 @@ public class TapesStore: ObservableObject {
         }
         
         tapes.append(duplicatedTape)
+        autoSave()
         return duplicatedTape
     }
     
@@ -415,7 +414,7 @@ extension TapesStore {
     @MainActor
     public func insertAtCenter(tapeID: Tape.ID, picked: [PickedMedia]) {
         guard let tIndex = tapes.firstIndex(where: { $0.id == tapeID }) else {
-            print("❌ TapeStore.insertAtCenter: tape not found \(tapeID)")
+            TapesLog.store.error("insertAtCenter: tape not found \(tapeID)")
             return
         }
 
@@ -433,13 +432,13 @@ extension TapesStore {
                     let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
                     newClips.append(clip)
                 } else {
-                    print("⚠️ Could not build Clip from photo (UIImage)")
+                    TapesLog.store.warning("Could not build clip from UIImage data")
                 }
             }
         }
         
         guard !newClips.isEmpty else {
-            print("⚠️ insertAtCenter: nothing to insert")
+            TapesLog.store.warning("insertAtCenter called with no clips to insert")
             return
         }
 
@@ -452,8 +451,6 @@ extension TapesStore {
         updatedTape.clips.insert(contentsOf: newClips, at: min(insertionIndex, updatedTape.clips.count))
         tapes[tIndex] = updatedTape
 
-        print("✅ Inserted \(newClips.count) clip(s) at index \(insertionIndex) in tape \"\(tapes[tIndex].title)\"")
-        
         // Auto-save changes
         autoSave()
         
@@ -470,7 +467,6 @@ extension TapesStore {
     func insertAtCenter(into tape: Binding<Tape>, picked: [PickedMedia]) {
         guard !picked.isEmpty else { return }
         
-        // compute insert index from your existing "center" rule; for now append:
         var newClips: [Clip] = []
         for item in picked {
             switch item {
@@ -485,19 +481,15 @@ extension TapesStore {
             }
         }
         
-        // insert at calculated index; simple append example:
+        guard !newClips.isEmpty else { return }
+        
         var updatedTape = tape.wrappedValue
-        print("🔍 Before insert: tape has \(updatedTape.clips.count) clips")
         updatedTape.clips.append(contentsOf: newClips)
-        print("🔍 After insert: tape has \(updatedTape.clips.count) clips")
         tape.wrappedValue = updatedTape
         objectWillChange.send()
-        print("✅ Inserted \(newClips.count) clips into tape \(tape.wrappedValue.id)")
         
-        // Auto-save changes
         autoSave()
         
-        // Generate thumbnails and duration for video clips asynchronously
         for clip in newClips {
             if clip.clipType == .video, let url = clip.localURL {
                 generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tape.wrappedValue.id)
@@ -514,37 +506,31 @@ extension TapesStore {
         tape.clips.insert(contentsOf: newClips, at: at)
         tapes[ti] = tape // reassign to publish
         
-        // Auto-save changes
         autoSave()
         
-        // Generate thumbnails and duration for video clips asynchronously
         for clip in newClips {
             if clip.clipType == .video, let url = clip.localURL {
                 generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
             }
         }
-        
-        print("✅ Inserted \(newClips.count) clips at index \(at) in tape \(tapeID)")
     }
     
     /// Update a specific clip in a tape with proper publishing
     @MainActor
     func updateClip(_ id: UUID, transform: (inout Clip) -> Void, in tapeID: UUID) {
         guard let t = tapes.firstIndex(where: { $0.id == tapeID }) else { 
-            print("❌ TapeStore.updateClip: tape not found \(tapeID)")
+            TapesLog.store.error("updateClip: tape not found \(tapeID)")
             return 
         }
         guard let c = tapes[t].clips.firstIndex(where: { $0.id == id }) else { 
-            print("❌ TapeStore.updateClip: clip not found \(id)")
+            TapesLog.store.error("updateClip: clip not found \(id)")
             return 
         }
         
         var newTape = tapes[t]
         transform(&newTape.clips[c])          // mutate copy
         tapes[t] = newTape                    // REASSIGN to publish
-        print("✅ Updated clip \(id) in tape \(tapeID) - hasThumb: \(newTape.clips[c].thumbnail != nil)")
-        print("🔄 TapesStore: Published tapes array change - tapes.count: \(tapes.count)")
-        
+                        
         // Auto-save changes
         autoSave()
     }
@@ -560,7 +546,7 @@ extension TapesStore {
             let cgImage = try await imageGenerator.image(at: CMTime.zero).image
             return UIImage(cgImage: cgImage)
         } catch {
-            print("❌ Failed to generate thumbnail: \(error)")
+            TapesLog.store.error("Failed to generate thumbnail: \(error.localizedDescription)")
             return nil
         }
     }
@@ -585,13 +571,11 @@ extension TapesStore {
                     guard let cg else { return }
                     let ui = UIImage(cgImage: cg)
                     Task { @MainActor in
-                        print("🖼️ Setting thumbnail for clip \(clipID)")
                         self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }, in: tapeID)
-                        print("✅ Thumbnail set for clip \(clipID)")
                     }
                 }
             } catch {
-                print("⚠️ Thumb/duration load failed:", error.localizedDescription)
+                TapesLog.store.error("Failed to load thumbnail/duration: \(error.localizedDescription)")
             }
         }
     }
@@ -603,9 +587,8 @@ extension TapesStore {
         do {
             let data = try JSONEncoder().encode(tapes)
             try data.write(to: persistenceURL)
-            print("💾 Saved \(tapes.count) tapes to disk")
         } catch {
-            print("❌ Failed to save tapes to disk: \(error)")
+            TapesLog.store.error("Failed to save tapes: \(error.localizedDescription)")
         }
     }
     
@@ -614,9 +597,8 @@ extension TapesStore {
         do {
             let data = try Data(contentsOf: persistenceURL)
             tapes = try JSONDecoder().decode([Tape].self, from: data)
-            print("📂 Loaded \(tapes.count) tapes from disk")
         } catch {
-            print("⚠️ No saved tapes found or failed to load: \(error)")
+            TapesLog.store.warning("No saved tapes found or failed to load: \(error.localizedDescription)")
             tapes = []
         }
     }
@@ -641,7 +623,6 @@ extension TapesStore {
         )
         tapes.insert(newEmptyTape, at: 0)
         autoSave()
-        print("🧩 Created new empty tape at top with id: \(newEmptyTape.id)")
     }
     
     /// Restore invariant: ensure empty tape exists at top after loading
@@ -654,6 +635,5 @@ extension TapesStore {
         
         // No empty tape at top, insert one
         insertEmptyTapeAtTop()
-        print("🧩 invariant: inserted top empty tape on launch")
     }
 }

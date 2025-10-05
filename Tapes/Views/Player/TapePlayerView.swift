@@ -1,6 +1,8 @@
 import SwiftUI
 import AVFoundation
 import AVKit
+import Photos
+import UIKit
 
 // MARK: - Unified Tape Player View
 
@@ -15,6 +17,13 @@ struct TapePlayerView: View {
     @State private var isFinished: Bool = false
     @State private var progressTimer: Timer?
     @State private var nextPlayerItem: AVPlayerItem?
+    @State private var currentImage: UIImage?
+    @State private var imageAnimationProgress: CGFloat = 0
+    @State private var imageAnimationDuration: Double = 0
+    @State private var imageClipTotalDuration: Double = 0
+    @State private var imageRemainingDuration: Double = 0
+    @State private var imageClipStartTime: Date?
+    @State private var imageClipWorkItem: DispatchWorkItem?
     
     let tape: Tape
     let onDismiss: () -> Void
@@ -49,8 +58,10 @@ struct TapePlayerView: View {
                     player?.pause()
                     player?.replaceCurrentItem(with: nil)
                     player = nil
+                    resetImageState()
                     controlsTimer?.invalidate()
                     progressTimer?.invalidate()
+                    imageClipWorkItem?.cancel()
                     // Clean up notification observers
                     NotificationCenter.default.removeObserver(self)
                 }
@@ -85,14 +96,20 @@ struct TapePlayerView: View {
             if let player = player {
                 VideoPlayer(player: player)
                     .disabled(true)
-                    .onAppear {
-                        print("🎬 Playing clip \(currentClipIndex + 1) of \(tape.clips.count)")
-                    }
                     .onDisappear {
                         player.pause()
                     }
+            } else if let image = currentImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .scaleEffect(1 + 0.12 * CGFloat(imageAnimationProgress))
+                    .offset(x: -geometry.size.width * 0.04 * imageAnimationProgress,
+                            y: -geometry.size.height * 0.05 * imageAnimationProgress)
+                    .animation(.linear(duration: imageAnimationDuration), value: imageAnimationProgress)
+                    .clipped()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
             } else {
-                // Loading state
                 VStack {
                     ProgressView()
                         .scaleEffect(1.5)
@@ -102,6 +119,7 @@ struct TapePlayerView: View {
                         .foregroundColor(.white)
                         .padding(.top)
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
         }
     }
@@ -152,6 +170,7 @@ struct TapePlayerView: View {
         VStack(spacing: 8) {
             // Interactive progress bar
             GeometryReader { geometry in
+                let progressValue = totalDuration > 0 ? min(max(currentTime / totalDuration, 0), 1) : 0
                 ZStack(alignment: .leading) {
                     // Background track
                     Rectangle()
@@ -161,7 +180,7 @@ struct TapePlayerView: View {
                     // Progress track
                     Rectangle()
                         .fill(Color.white)
-                        .frame(width: geometry.size.width * (currentTime / totalDuration), height: 6)
+                        .frame(width: geometry.size.width * progressValue, height: 6)
                 }
                 .contentShape(Rectangle())
                 .gesture(
@@ -234,7 +253,7 @@ struct TapePlayerView: View {
             Spacer()
             
             if let clip = currentClip {
-                Text(formatTime(clip.duration))
+                Text(formatTime(effectiveDuration(for: clip)))
                     .foregroundColor(.white)
             }
         }
@@ -247,36 +266,102 @@ struct TapePlayerView: View {
         guard currentClipIndex < tape.clips.count else { return nil }
         return tape.clips[currentClipIndex]
     }
+
+    private func effectiveDuration(for clip: Clip) -> Double {
+        if clip.clipType == .image {
+            let base = clip.duration > 0 ? clip.duration : 4.0
+            return max(base, 0.1)
+        }
+        return max(clip.duration, 0)
+    }
     
     // MARK: - Setup
     
     private func setupPlayer() {
         guard !tape.clips.isEmpty else { return }
+        currentClipIndex = 0
+        isFinished = false
         calculateTotalDuration()
         loadCurrentClip()
         startProgressTracking()
+        updateCurrentTime()
     }
     
     private func calculateTotalDuration() {
         totalDuration = tape.clips.reduce(0) { total, clip in
-            total + clip.duration
+            total + effectiveDuration(for: clip)
         }
-        print("🎬 Total duration: \(formatTime(totalDuration))")
     }
     
     private func loadCurrentClip() {
-        guard let clip = currentClip,
-              let url = clip.localURL else {
-            print("❌ No clip or URL available")
+        resetImageState()
+        player?.pause()
+        currentTime = calculateElapsedTimeForCurrentClip()
+        isFinished = false
+
+        guard let clip = currentClip else {
+            TapesLog.player.error("No clip available")
             return
         }
-        
-        print("🎬 Loading clip \(currentClipIndex + 1): \(clip.id)")
-        
-        // Create new player item
+
+        if clip.clipType == .image {
+            if let data = clip.imageData, let image = UIImage(data: data) {
+                startImageClip(with: image, clip: clip)
+            } else if let localURL = clip.localURL, let image = UIImage(contentsOfFile: localURL.path) {
+                startImageClip(with: image, clip: clip)
+            } else if let assetLocalId = clip.assetLocalId {
+                loadPhotoFromPHAsset(assetLocalId: assetLocalId, clip: clip)
+            } else if let thumbData = clip.thumbnail, let image = UIImage(data: thumbData) {
+                startImageClip(with: image, clip: clip)
+            } else {
+                TapesLog.player.error("Unable to resolve image clip: \(clip.id)")
+                onVideoEnded()
+            }
+            return
+        }
+
+        if let localURL = clip.localURL {
+            playVideo(from: localURL)
+        } else if let assetLocalId = clip.assetLocalId {
+            loadVideoFromPHAsset(assetLocalId: assetLocalId)
+        } else {
+            TapesLog.player.error("No valid media source for clip \(clip.id)")
+        }
+    }
+
+
+
+    private func playVideo(from url: URL) {
         let playerItem = AVPlayerItem(url: url)
-        
-        // Add observer for when video ends
+        attachPlayerItem(playerItem)
+    }
+
+    private func loadVideoFromPHAsset(assetLocalId: String) {
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
+        guard let phAsset = fetchResult.firstObject else {
+            TapesLog.player.error("PHAsset not found: \(assetLocalId)")
+            return
+        }
+
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+
+        PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { avAsset, _, _ in
+            DispatchQueue.main.async {
+                if let urlAsset = avAsset as? AVURLAsset {
+                    self.playVideo(from: urlAsset.url)
+                } else if let composition = avAsset as? AVComposition {
+                    let playerItem = AVPlayerItem(asset: composition)
+                    self.attachPlayerItem(playerItem)
+                } else {
+                    TapesLog.player.error("Failed to resolve PHAsset to playable format: \(assetLocalId)")
+                }
+            }
+        }
+    }
+
+    private func attachPlayerItem(_ playerItem: AVPlayerItem) {
         NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
@@ -284,51 +369,175 @@ struct TapePlayerView: View {
         ) { _ in
             self.onVideoEnded()
         }
-        
-        // If we have an existing player, replace its item seamlessly
+
         if let existingPlayer = player {
             existingPlayer.replaceCurrentItem(with: playerItem)
         } else {
-            // First time - create new player
             player = AVPlayer(playerItem: playerItem)
         }
-        
-        // Auto-play when loaded
+
         player?.play()
         isPlaying = true
     }
-    
+
+    private func loadPhotoFromPHAsset(assetLocalId: String, clip: Clip) {
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
+        guard let phAsset = fetchResult.firstObject else {
+            TapesLog.player.error("Photo asset not found: \(assetLocalId)")
+            onVideoEnded()
+            return
+        }
+
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+
+        PHImageManager.default().requestImage(for: phAsset,
+                                               targetSize: PHImageManagerMaximumSize,
+                                               contentMode: .aspectFill,
+                                               options: options) { image, _ in
+            DispatchQueue.main.async {
+                guard self.currentClip?.id == clip.id else { return }
+                if let image {
+                    self.startImageClip(with: image, clip: clip)
+                } else {
+                    TapesLog.player.error("Failed to load image for asset: \(assetLocalId)")
+                    self.onImageClipEnded()
+                }
+            }
+        }
+    }
+
+    private func startImageClip(with image: UIImage, clip: Clip) {
+        resetImageState()
+        currentImage = image
+        player = nil
+        isPlaying = true
+
+        let duration = effectiveDuration(for: clip)
+        imageClipTotalDuration = duration
+        imageRemainingDuration = duration
+        imageClipStartTime = Date()
+        imageAnimationProgress = 0
+        imageAnimationDuration = duration
+
+        withAnimation(.linear(duration: imageAnimationDuration)) {
+            imageAnimationProgress = 1
+        }
+
+        scheduleImageClipCompletion(after: duration)
+        updateCurrentTime()
+    }
+
+    private func scheduleImageClipCompletion(after duration: Double) {
+        imageClipWorkItem?.cancel()
+        guard duration > 0 else {
+            onImageClipEnded()
+            return
+        }
+        let workItem = DispatchWorkItem {
+            onImageClipEnded()
+        }
+        imageClipWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: workItem)
+    }
+
+    private func pauseImageClip() {
+        guard let start = imageClipStartTime else { return }
+        let elapsed = Date().timeIntervalSince(start)
+        imageClipWorkItem?.cancel()
+        imageClipWorkItem = nil
+        imageRemainingDuration = max(0, imageClipTotalDuration - elapsed)
+        imageClipStartTime = nil
+        imageAnimationDuration = 0
+        let progress = imageClipTotalDuration > 0 ? min(max(elapsed / imageClipTotalDuration, 0), 1) : 1
+        withAnimation(.linear(duration: 0)) {
+            imageAnimationProgress = CGFloat(progress)
+        }
+        isPlaying = false
+    }
+
+    private func resumeImageClip() {
+        guard imageRemainingDuration > 0 else {
+            onImageClipEnded()
+            return
+        }
+        imageClipStartTime = Date()
+        imageAnimationDuration = imageRemainingDuration
+        withAnimation(.linear(duration: imageAnimationDuration)) {
+            imageAnimationProgress = 1
+        }
+        scheduleImageClipCompletion(after: imageRemainingDuration)
+        isPlaying = true
+        updateCurrentTime()
+    }
+
+    private func onImageClipEnded() {
+        imageClipWorkItem?.cancel()
+        imageClipWorkItem = nil
+        imageClipStartTime = nil
+        imageRemainingDuration = 0
+        imageClipTotalDuration = 0
+        imageAnimationDuration = 0
+        imageAnimationProgress = 0
+        currentImage = nil
+        isPlaying = false
+        onVideoEnded()
+    }
+
+    private func resetImageState() {
+        imageClipWorkItem?.cancel()
+        imageClipWorkItem = nil
+        imageClipStartTime = nil
+        imageClipTotalDuration = 0
+        imageRemainingDuration = 0
+        imageAnimationDuration = 0
+        imageAnimationProgress = 0
+        currentImage = nil
+        isPlaying = false
+    }
+
     private func onVideoEnded() {
-        print("🎬 Video ended, advancing to next clip")
-        
-        // Auto-advance to next clip if available
+        resetImageState()
+
         if currentClipIndex < tape.clips.count - 1 {
-            nextClip()
+            currentClipIndex += 1
+            loadCurrentClip()
         } else {
-            // Reached the end - show finished state
             player?.pause()
             isPlaying = false
             isFinished = true
-            print("🎬 Reached end of tape")
         }
     }
-    
+
     private func playAgain() {
+        resetImageState()
+        player?.pause()
         currentClipIndex = 0
         currentTime = 0
         isFinished = false
         loadCurrentClip()
     }
-    
+
+
     // MARK: - Controls
     
     private func togglePlayPause() {
-        if isPlaying {
-            player?.pause()
-            isPlaying = false
-        } else {
-            player?.play()
-            isPlaying = true
+        if let player = player {
+            if isPlaying {
+                player.pause()
+                isPlaying = false
+            } else {
+                player.play()
+                isPlaying = true
+            }
+        } else if currentImage != nil {
+            if isPlaying {
+                pauseImageClip()
+            } else {
+                resumeImageClip()
+                setupControlsTimer()
+            }
         }
     }
     
@@ -383,72 +592,84 @@ struct TapePlayerView: View {
     }
     
     private func updateCurrentTime() {
-        guard let player = player,
-              let currentItem = player.currentItem else { return }
-        
-        let currentTimeInSeconds = CMTimeGetSeconds(currentItem.currentTime())
-        let totalElapsedTime = calculateElapsedTimeForCurrentClip() + currentTimeInSeconds
-        
-        currentTime = totalElapsedTime
-        
-        // Check if we've reached the end
-        if totalElapsedTime >= totalDuration {
-            currentTime = totalDuration
-            if !isFinished {
+        if let player = player, let currentItem = player.currentItem {
+            let currentTimeInSeconds = CMTimeGetSeconds(currentItem.currentTime())
+            let totalElapsedTime = calculateElapsedTimeForCurrentClip() + max(currentTimeInSeconds, 0)
+            currentTime = min(totalElapsedTime, totalDuration)
+
+            if totalElapsedTime >= totalDuration, !isFinished {
+                currentTime = totalDuration
                 isFinished = true
                 player.pause()
                 isPlaying = false
             }
-        }
-    }
-    
-    private func calculateElapsedTimeForCurrentClip() -> Double {
-        var elapsedTime: Double = 0
-        for i in 0..<currentClipIndex {
-            if i < tape.clips.count {
-                elapsedTime += tape.clips[i].duration
+        } else if currentImage != nil {
+            let elapsed: Double
+            if let start = imageClipStartTime {
+                elapsed = Date().timeIntervalSince(start)
+            } else {
+                elapsed = imageClipTotalDuration - imageRemainingDuration
             }
+            let clampedElapsed = min(max(elapsed, 0), imageClipTotalDuration)
+            currentTime = min(calculateElapsedTimeForCurrentClip() + clampedElapsed, totalDuration)
+        } else {
+            currentTime = min(currentTime, totalDuration)
         }
-        return elapsedTime
     }
-    
+
+    private func calculateElapsedTimeForCurrentClip() -> Double {
+        guard currentClipIndex > 0 else { return 0 }
+        return tape.clips.prefix(currentClipIndex).reduce(0) { $0 + effectiveDuration(for: $1) }
+    }
+
     private func scrubToPosition(_ x: CGFloat, in width: CGFloat) {
+        guard totalDuration > 0 else { return }
         let progress = max(0, min(1, x / width))
         let targetTime = progress * totalDuration
-        
-        print("🎯 Scrubbing to: \(formatTime(targetTime)) (progress: \(progress))")
-        
-        // Find which clip this time corresponds to
+
         var accumulatedTime: Double = 0
         var targetClipIndex = 0
-        
+
         for (index, clip) in tape.clips.enumerated() {
-            if targetTime <= accumulatedTime + clip.duration {
+            let clipDuration = effectiveDuration(for: clip)
+            if targetTime <= accumulatedTime + clipDuration {
                 targetClipIndex = index
                 break
             }
-            accumulatedTime += clip.duration
+            accumulatedTime += clipDuration
         }
-        
-        print("🎯 Target clip index: \(targetClipIndex), current: \(currentClipIndex)")
-        
-        // If we need to change clips
+
         if targetClipIndex != currentClipIndex {
-            print("🎯 Changing to clip \(targetClipIndex + 1)")
             currentClipIndex = targetClipIndex
             loadCurrentClip()
         }
-        
-        // Seek to the correct position within the current clip
-        let timeInCurrentClip = targetTime - accumulatedTime
-        let targetCMTime = CMTime(seconds: timeInCurrentClip, preferredTimescale: 600)
-        
-        print("🎯 Seeking to \(formatTime(timeInCurrentClip)) in clip \(targetClipIndex + 1)")
-        player?.seek(to: targetCMTime)
-        
-        // Update current time
-        currentTime = targetTime
+
+        let targetClip = tape.clips[currentClipIndex]
+        let clipDuration = effectiveDuration(for: targetClip)
+        let timeInCurrentClip = min(max(targetTime - accumulatedTime, 0), clipDuration)
+
+        if let player = player {
+            let targetCMTime = CMTime(seconds: timeInCurrentClip, preferredTimescale: 600)
+            player.seek(to: targetCMTime)
+        } else if currentImage != nil {
+            imageClipStartTime = Date().addingTimeInterval(-timeInCurrentClip)
+            imageRemainingDuration = max(clipDuration - timeInCurrentClip, 0)
+            imageAnimationDuration = imageRemainingDuration
+            let progress = clipDuration > 0 ? min(max(timeInCurrentClip / clipDuration, 0), 1) : 1
+            withAnimation(.linear(duration: 0)) {
+                imageAnimationProgress = CGFloat(progress)
+            }
+            if isPlaying {
+                scheduleImageClipCompletion(after: imageRemainingDuration)
+                withAnimation(.linear(duration: imageAnimationDuration)) {
+                    imageAnimationProgress = 1
+                }
+            }
+        }
+
+        currentTime = min(targetTime, totalDuration)
     }
+
 }
 
 

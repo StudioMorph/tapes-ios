@@ -70,7 +70,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         
         // Ordering logic: Skip initial position if there's a pending target
         if targetSnapIndex != nil {
-            print("🎯 skip-initial: tape=\(tapeId) (pending target)")
             // Skip initial position set when there's a pending target
         } else {
             // Set initial position immediately to avoid flash
@@ -81,10 +80,9 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         
         // Handle programmatic scrolling to target index
         if let targetIndex = targetSnapIndex {
-            print("🎯 SnappingHScroll: targetSnapIndex=\(targetIndex), contentSize=\(scrollView.contentSize)")
             performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: 0)
         }
-        
+
         return scrollView
     }
 
@@ -100,9 +98,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         // Check if layout is ready
         if scrollView.contentSize.width > 0 && scrollView.bounds.width > 0 {
             // Check token validity to prevent stale applies
-            if let currentToken = pendingToken {
-                print("🎯 apply: tape=\(tapeId), token=\(currentToken.uuidString.prefix(8)), itemIndex=\(targetIndex)")
-                
+            if pendingToken != nil {
                 // Calculate target position
                 let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
                 let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
@@ -116,20 +112,16 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
                 
                 // Perform the scroll
                 scrollView.setContentOffset(CGPoint(x: clampedTargetX, y: 0), animated: true)
-                print("🎯 apply: tape=\(tapeId), token=\(currentToken.uuidString.prefix(8)), itemIndex=\(targetIndex), x=\(clampedTargetX)")
-                
             } else {
-                print("🎯 stale-apply: tape=\(tapeId) token mismatch")
+                TapesLog.ui.warning("SnappingHScroll token mismatch for tape \(tapeId)")
             }
             
         } else if retryCount < maxRetries {
-            let tokenString = pendingToken?.uuidString.prefix(8) ?? "nil"
-            print("🎯 defer: tape=\(tapeId), token=\(tokenString) (w=\(scrollView.contentSize.width), b=\(scrollView.bounds.width))")
             DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
                 self.performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: retryCount + 1)
             }
         } else {
-            print("⚠️ Failed to perform programmatic scroll after \(maxRetries) retries - layout still invalid")
+            TapesLog.ui.error("SnappingHScroll failed to perform programmatic scroll after \(maxRetries) retries")
         }
     }
     
@@ -142,7 +134,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         let clampedCurrentX = min(max(currentX, 0), maxOffsetX)
         
         scrollView.setContentOffset(CGPoint(x: clampedCurrentX, y: 0), animated: false)
-        print("🎯 Initial position set to \(currentPosition) without animation, x=\(clampedCurrentX)")
     }
     
     /// Get the current carousel position based on scroll offset
@@ -210,7 +201,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
             state = .idle
             if isProgrammaticScroll {
-                print("🎯 snapped (programmatic): position=\(currentSnapIndex)")
                 isProgrammaticScroll = false // Reset programmatic scroll flag after animation completes
             }
             updatePositionIfValid()
@@ -225,11 +215,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
                 let leftIndex = currentSnapIndex
                 let rightIndex = leftIndex + 1
                 onSnapped(leftIndex, rightIndex)
-                if isProgrammaticScroll {
-                    print("🎯 snapped (programmatic): position=\(leftIndex)")
-                } else {
-                    print("🎯 snapped (user): position=\(leftIndex)")
-                }
             }
         }
         
@@ -241,7 +226,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         func updateCurrentSnapIndex(_ index: Int) {
             currentSnapIndex = index
             isProgrammaticScroll = true
-            print("🎯 Coordinator: Updated currentSnapIndex to \(index) (programmatic scroll)")
         }
 
         func scrollViewWillEndDragging(_ scrollView: UIScrollView,
@@ -249,13 +233,12 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
                                        targetContentOffset: UnsafeMutablePointer<CGPoint>) {
 
             guard parent.itemWidth > 0 else { 
-                print("⚠️ SnappingHScroll: itemWidth is 0 or negative")
+                TapesLog.ui.error("SnappingHScroll received non-positive item width")
                 return 
             }
 
             // If this is a programmatic scroll, don't override the target position
             if isProgrammaticScroll {
-                print("🎯 SnappingHScroll: Programmatic scroll in progress, not overriding target position")
                 return
             }
 
@@ -275,8 +258,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
             // Convert to nearest boundary index
             let rawN = (estimatedBoundaryX - parent.leadingInset) / parent.itemWidth
-            print("🔍 SnappingHScroll: rawN = \(rawN), itemWidth = \(parent.itemWidth), leadingInset = \(parent.leadingInset)")
-            
             var n = round(rawN)
             if n < 0 { n = 0 }
             // We can't know N precisely here; clamp later using content size.
@@ -290,9 +271,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             // Clamp to valid range
             let maxOffsetX = max(0, (scrollView.contentSize.width - parent.containerWidth))
             snappedOffsetX = min(max(snappedOffsetX, 0), maxOffsetX)
-
-            print("🔍 SnappingHScroll: n = \(n), snappedOffsetX = \(snappedOffsetX), maxOffsetX = \(maxOffsetX)")
-
             // Assign final target
             targetContentOffset.pointee.x = snappedOffsetX
             

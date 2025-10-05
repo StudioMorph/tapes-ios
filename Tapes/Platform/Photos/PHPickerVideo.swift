@@ -106,7 +106,7 @@ struct PHPickerVideo: UIViewControllerRepresentable {
                 try FileManager.default.copyItem(at: originalURL, to: outputURL)
                 return outputURL
             } catch {
-                print("Failed to copy video to temp directory: \(error)")
+                TapesLog.mediaPicker.error("Failed to copy video to temp directory: \(error.localizedDescription)")
                 return nil
             }
         }

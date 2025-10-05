@@ -6,9 +6,9 @@ struct TapesListView: View {
     @State private var showingPlayer = false
     @State private var showingPlayOptions = false
     @State private var showingQAChecklist = false
+    @State private var tapeToPreview: Tape?
     
     var body: some View {
-        let _ = print("📱 TapesListView: tapesStore has \(tapesStore.tapes.count) tapes")
         NavigationView {
             VStack {
                 headerView
@@ -58,7 +58,10 @@ struct TapesListView: View {
                     TapeCardView(
                         tape: $tape,
                         onSettings: { tapesStore.selectTape($tape.wrappedValue) },
-                        onPlay: { showingPlayOptions = true },
+                        onPlay: {
+                            tapeToPreview = $tape.wrappedValue
+                            showingPlayOptions = true
+                        },
                         onAirPlay: { },
                         onThumbnailDelete: { clip in
                             tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
@@ -96,7 +99,12 @@ struct TapesListView: View {
         ActionSheet(
             title: Text("Play Options"),
             buttons: [
-                .default(Text("Preview Tape")) { showingPlayer = true },
+                .default(Text("Preview Tape")) {
+                    if tapeToPreview == nil {
+                        tapeToPreview = tapesStore.tapes.first(where: { !$0.clips.isEmpty })
+                    }
+                    showingPlayer = tapeToPreview != nil
+                },
                 .default(Text("Merge & Save")) {
                     if let tape = tapesStore.tapes.first {
                         exportCoordinator.exportTape(tape)
@@ -108,8 +116,11 @@ struct TapesListView: View {
     }
     
     private var playerView: some View {
-        if let tape = tapesStore.tapes.first {
-            return AnyView(TapePlayerView(tape: tape, onDismiss: { showingPlayer = false }))
+        if let tape = tapeToPreview {
+            return AnyView(TapePlayerView(tape: tape, onDismiss: {
+                showingPlayer = false
+                tapeToPreview = nil
+            }))
         } else {
             return AnyView(EmptyView())
         }

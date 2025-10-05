@@ -98,10 +98,8 @@ class CameraCoordinator: NSObject, ObservableObject {
                         savedMedia.append(savedItem)
                     }
                 }) { success, error in
-                    if success {
-                        print("✅ Video saved to Photos library: \(url.lastPathComponent)")
-                    } else {
-                        print("❌ Failed to save video: \(error?.localizedDescription ?? "Unknown error")")
+                    if !success {
+                        TapesLog.camera.error("Failed to save video \(url.lastPathComponent): \(error?.localizedDescription ?? "Unknown error")")
                     }
                     group.leave()
                 }
@@ -115,10 +113,8 @@ class CameraCoordinator: NSObject, ObservableObject {
                     let savedItem = PickedMedia.photo(image)
                     savedMedia.append(savedItem)
                 }) { success, error in
-                    if success {
-                        print("✅ Photo saved to Photos library")
-                    } else {
-                        print("❌ Failed to save photo: \(error?.localizedDescription ?? "Unknown error")")
+                    if !success {
+                        TapesLog.camera.error("Failed to save photo: \(error?.localizedDescription ?? "Unknown error")")
                     }
                     group.leave()
                 }
