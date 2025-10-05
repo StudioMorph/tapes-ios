@@ -10,7 +10,7 @@ struct TapePlayerView: View {
     @State private var player: AVPlayer?
     @State private var currentClipIndex: Int = 0
     @State private var isPlaying: Bool = false
-    @State private var showingControls: Bool = true
+    @State private var showingControls: Bool = false
     @State private var controlsTimer: Timer?
     @State private var totalDuration: Double = 0
     @State private var currentTime: Double = 0
@@ -30,21 +30,26 @@ struct TapePlayerView: View {
     
     var body: some View {
         ZStack {
-            // Background
             Color.black
                 .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Header
-                headerView
-                
-                // Video Player
-                videoPlayerView
-                
-                // Controls
-                if showingControls {
+
+            videoPlayerView
+                .ignoresSafeArea()
+
+            if showingControls {
+                VStack {
+                    headerView
+                        .padding(.top, 20)
+                        .padding(.horizontal, 20)
+
+                    Spacer()
+
                     controlsView
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 32)
                 }
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: showingControls)
             }
         }
         .onAppear {
@@ -53,18 +58,18 @@ struct TapePlayerView: View {
                 setupControlsTimer()
             }
         }
-                .onDisappear {
-                    // Stop all audio and clean up
-                    player?.pause()
-                    player?.replaceCurrentItem(with: nil)
-                    player = nil
-                    resetImageState()
-                    controlsTimer?.invalidate()
-                    progressTimer?.invalidate()
-                    imageClipWorkItem?.cancel()
-                    // Clean up notification observers
-                    NotificationCenter.default.removeObserver(self)
-                }
+        .onDisappear {
+            // Stop all audio and clean up
+            player?.pause()
+            player?.replaceCurrentItem(with: nil)
+            player = nil
+            resetImageState()
+            controlsTimer?.invalidate()
+            progressTimer?.invalidate()
+            imageClipWorkItem?.cancel()
+            // Clean up notification observers
+            NotificationCenter.default.removeObserver(self)
+        }
         .onTapGesture {
             toggleControls()
         }
@@ -73,7 +78,7 @@ struct TapePlayerView: View {
     // MARK: - Header View
     
     private var headerView: some View {
-        HStack {
+        HStack(spacing: 16) {
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.title2)
@@ -85,6 +90,9 @@ struct TapePlayerView: View {
             Text("\(currentClipIndex + 1) of \(tape.clips.count)")
                 .font(.headline)
                 .foregroundColor(.white)
+            
+            AirPlayButton()
+                .frame(width: 28, height: 28)
         }
         .padding()
     }
