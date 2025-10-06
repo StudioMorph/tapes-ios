@@ -5,6 +5,8 @@ import PhotosUI
 import UniformTypeIdentifiers
 import AVFoundation
 
+private let tapeInsertionSpring = Animation.spring(response: 0.45, dampingFraction: 0.82, blendDuration: 0.12)
+
 
 // MARK: - TapesStore
 
@@ -61,7 +63,9 @@ public class TapesStore: ObservableObject {
     
     public func createNewTape() -> Tape {
         let newTape = Tape()
-        tapes.append(newTape)
+        withAnimation(tapeInsertionSpring) {
+            tapes.append(newTape)
+        }
         autoSave()
         return newTape
     }
@@ -231,7 +235,9 @@ public class TapesStore: ObservableObject {
             return newClip
         }
         
-        tapes.append(duplicatedTape)
+        withAnimation(tapeInsertionSpring) {
+            tapes.append(duplicatedTape)
+        }
         autoSave()
         return duplicatedTape
     }
@@ -280,7 +286,9 @@ extension TapesStore {
             transition: transition,
             transitionDuration: transitionDuration
         )
-        tapes.append(newTape)
+        withAnimation(tapeInsertionSpring) {
+            tapes.append(newTape)
+        }
         return newTape
     }
     
@@ -621,7 +629,9 @@ extension TapesStore {
             clips: [],
             hasReceivedFirstContent: false
         )
-        tapes.insert(newEmptyTape, at: 0)
+        withAnimation(tapeInsertionSpring) {
+            tapes.insert(newEmptyTape, at: 0)
+        }
         autoSave()
     }
     

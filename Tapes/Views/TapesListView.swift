@@ -7,7 +7,19 @@ struct TapesListView: View {
     @State private var showingPlayOptions = false
     @State private var showingQAChecklist = false
     @State private var tapeToPreview: Tape?
-    
+    private let tapeInsertionAnimation: Animation = .spring(response: 0.45, dampingFraction: 0.82, blendDuration: 0.12)
+    private let tapeInsertionDelay: Double = 0.18
+    private var tapeInsertionTransition: AnyTransition {
+        let delayedInsertion = AnyTransition
+            .scale(scale: 0.88, anchor: .center)
+            .combined(with: .opacity)
+            .animation(tapeInsertionAnimation.delay(tapeInsertionDelay))
+        return .asymmetric(
+            insertion: delayedInsertion,
+            removal: .opacity.animation(.easeOut(duration: 0.18))
+        )
+    }
+
     var body: some View {
         NavigationView {
             VStack {
@@ -77,8 +89,10 @@ struct TapesListView: View {
                         }
                     )
                     .padding(.horizontal, Tokens.Spacing.m)  // 16pt outer padding
+                    .transition(tapeInsertionTransition)
                 }
             }
+            .animation(tapeInsertionAnimation, value: tapesStore.tapes)
         }
     }
     
