@@ -281,8 +281,16 @@ struct TapeCardView: View {
         var clips: [Clip] = []
         for item in picked {
             switch item {
-            case .video(let url):
-                clips.append(Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil))
+            case let .video(url, duration, assetIdentifier):
+                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                if clip.duration <= 0 {
+                    let asset = AVURLAsset(url: url)
+                    let seconds = CMTimeGetSeconds(asset.duration)
+                    if seconds > 0 {
+                        clip.duration = seconds
+                    }
+                }
+                clips.append(clip)
             case .photo(let image):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
                     clips.append(Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image))
@@ -328,7 +336,7 @@ struct TapeCardView: View {
                 let thumbnail = await generateThumbnail(from: movie.url)
                 let duration = await getVideoDuration(url: movie.url)
                 
-                pickedMedia.append(.video(movie.url))
+                pickedMedia.append(.video(url: movie.url, duration: duration, assetIdentifier: result.assetIdentifier))
             } catch {
                 // Try to load as image
                 do {

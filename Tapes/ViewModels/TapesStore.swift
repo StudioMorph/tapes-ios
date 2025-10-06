@@ -43,6 +43,7 @@ public class TapesStore: ObservableObject {
         
         // Restore empty tape invariant after loading
         restoreEmptyTapeInvariant()
+        restoreMissingClipMetadata()
     }
     
     #if DEBUG
@@ -391,8 +392,16 @@ extension TapesStore {
         for item in items {
             let clip: Clip
             switch item {
-            case .video(let url):
-                clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+            case let .video(url, duration, assetIdentifier):
+                var videoClip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                if videoClip.duration <= 0 {
+                    let asset = AVURLAsset(url: url)
+                    let seconds = CMTimeGetSeconds(asset.duration)
+                    if seconds > 0 {
+                        videoClip.duration = seconds
+                    }
+                }
+                clip = videoClip
             case .photo(let image):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
                     clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
@@ -430,9 +439,15 @@ extension TapesStore {
         var newClips: [Clip] = []
         for m in picked {
             switch m {
-            case .video(let url):
-                // For now, create clip with default values - async processing can be added later
-                let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+            case let .video(url, duration, assetIdentifier):
+                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                if clip.duration <= 0 {
+                    let asset = AVURLAsset(url: url)
+                    let seconds = CMTimeGetSeconds(asset.duration)
+                    if seconds > 0 {
+                        clip.duration = seconds
+                    }
+                }
                 newClips.append(clip)
             case .photo(let image):
                 // Convert image to data and use default duration
@@ -478,8 +493,15 @@ extension TapesStore {
         var newClips: [Clip] = []
         for item in picked {
             switch item {
-            case .video(let url):
-                let clip = Clip.fromVideo(url: url, duration: 0.0, thumbnail: nil)
+            case let .video(url, duration, assetIdentifier):
+                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                if clip.duration <= 0 {
+                    let asset = AVURLAsset(url: url)
+                    let seconds = CMTimeGetSeconds(asset.duration)
+                    if seconds > 0 {
+                        clip.duration = seconds
+                    }
+                }
                 newClips.append(clip)
             case .photo(let image):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
@@ -561,16 +583,18 @@ extension TapesStore {
     
     /// Generate thumbnail and duration for a clip using robust async methods
     func generateThumbAndDuration(for url: URL, clipID: UUID, tapeID: UUID) {
+        let asset = AVURLAsset(url: url)
+        processAssetMetadata(asset, clipID: clipID, tapeID: tapeID)
+    }
+
+    private func processAssetMetadata(_ asset: AVAsset, clipID: UUID, tapeID: UUID) {
         Task.detached(priority: .utility) {
-            let asset = AVURLAsset(url: url)
             do {
-                // Async duration (iOS 16+)
                 let duration = try await asset.load(.duration)
                 await MainActor.run {
                     self.updateClip(clipID, transform: { $0.duration = duration.seconds }, in: tapeID)
                 }
 
-                // Async CGImage
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
                 let time = CMTime(seconds: 0.1, preferredTimescale: 600)
@@ -635,6 +659,92 @@ extension TapesStore {
         autoSave()
     }
     
+    /// Restore any missing metadata on clips (durations/thumbnails) after loading from disk
+    private func restoreMissingClipMetadata() {
+        var didMutate = false
+
+        for tIndex in tapes.indices {
+            var tape = tapes[tIndex]
+            var mutatedTape = false
+
+            for cIndex in tape.clips.indices {
+                var clip = tape.clips[cIndex]
+
+                if clip.clipType == .image && clip.duration <= 0 {
+                    clip.duration = Tokens.Timing.photoDefaultDuration
+                    clip.updatedAt = Date()
+                    mutatedTape = true
+                }
+
+                if clip.clipType == .video && clip.duration <= 0 {
+                    if let url = clip.localURL {
+                        generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tape.id)
+                    } else if let assetId = clip.assetLocalId {
+                        regenerateMetadataFromPhotoLibrary(assetLocalId: assetId, clipID: clip.id, tapeID: tape.id)
+                    }
+                }
+
+                tape.clips[cIndex] = clip
+            }
+
+            if mutatedTape {
+                tapes[tIndex] = tape
+                didMutate = true
+            }
+        }
+
+        if didMutate {
+            autoSave()
+        }
+    }
+
+    /// Attempt to recover duration/thumbnail for videos that only have a Photos asset identifier
+    private func regenerateMetadataFromPhotoLibrary(assetLocalId: String, clipID: UUID, tapeID: UUID) {
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
+        guard let asset = fetch.firstObject else { return }
+
+        if asset.mediaType == .image {
+            Task { @MainActor in
+                self.updateClip(clipID, transform: { clip in
+                    clip.duration = Tokens.Timing.photoDefaultDuration
+                    clip.updatedAt = Date()
+                }, in: tapeID)
+            }
+            return
+        }
+
+        let options = PHVideoRequestOptions()
+        options.deliveryMode = .automatic
+        options.isNetworkAccessAllowed = true
+
+        PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+            guard let avAsset else { return }
+            let durationSeconds = CMTimeGetSeconds(avAsset.duration)
+
+            Task { @MainActor in
+                self.updateClip(clipID, transform: { clip in
+                    clip.duration = durationSeconds
+                    clip.updatedAt = Date()
+                }, in: tapeID)
+            }
+
+            if let urlAsset = avAsset as? AVURLAsset {
+                self.generateThumbAndDuration(for: urlAsset.url, clipID: clipID, tapeID: tapeID)
+            } else {
+                let generator = AVAssetImageGenerator(asset: avAsset)
+                generator.appliesPreferredTrackTransform = true
+                let time = CMTime(seconds: 0.1, preferredTimescale: 600)
+                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cg, _, _, _ in
+                    guard let cg else { return }
+                    let ui = UIImage(cgImage: cg)
+                    Task { @MainActor in
+                        self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }, in: tapeID)
+                    }
+                }
+            }
+        }
+    }
+
     /// Restore invariant: ensure empty tape exists at top after loading
     public func restoreEmptyTapeInvariant() {
         // Check if first tape is empty

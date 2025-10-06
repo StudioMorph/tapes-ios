@@ -1,6 +1,7 @@
 import Foundation
 import PhotosUI
 import UniformTypeIdentifiers
+import AVFoundation
 import os
 
 enum MediaLoaderError: Error {
@@ -12,7 +13,7 @@ enum MediaLoaderError: Error {
 }
 
 public enum PickedMedia {
-    case video(URL)
+    case video(url: URL, duration: TimeInterval, assetIdentifier: String?)
     case photo(UIImage)
 }
 
@@ -147,7 +148,10 @@ func resolvePickedMediaOrdered(_ results: [PHPickerResult]) async -> [PickedMedi
                 do {
                     if r.itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
                         let url = try await loadMovieURL(from: r)
-                        return (idx, .video(url))
+                        let asset = AVURLAsset(url: url)
+                        let duration = try? await asset.load(.duration)
+                        let seconds = duration?.seconds ?? 0
+                        return (idx, .video(url: url, duration: seconds, assetIdentifier: r.assetIdentifier))
                     } else if r.itemProvider.canLoadObject(ofClass: UIImage.self) || r.itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                         let img = try await loadImage(from: r)
                         return (idx, .photo(img))

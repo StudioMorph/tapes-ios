@@ -88,22 +88,30 @@ class CameraCoordinator: NSObject, ObservableObject {
             group.enter()
             
             switch item {
-            case .video(let url):
-                // Save video to Photos library
+            case let .video(url, duration, assetIdentifier):
+                var placeholderId: String?
                 PHPhotoLibrary.shared().performChanges({
                     if let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url) {
-                        let _ = request.placeholderForCreatedAsset
-                        // Create a new PickedMedia with the saved asset
-                        let savedItem = PickedMedia.video(url)
-                        savedMedia.append(savedItem)
+                        placeholderId = request.placeholderForCreatedAsset?.localIdentifier
                     }
                 }) { success, error in
                     if !success {
                         TapesLog.camera.error("Failed to save video \(url.lastPathComponent): \(error?.localizedDescription ?? "Unknown error")")
+                    } else {
+                        let savedDuration: TimeInterval
+                        if duration > 0 {
+                            savedDuration = duration
+                        } else {
+                            let asset = AVURLAsset(url: url)
+                            let seconds = CMTimeGetSeconds(asset.duration)
+                            savedDuration = seconds > 0 ? seconds : 0
+                        }
+                        let savedItem = PickedMedia.video(url: url, duration: savedDuration, assetIdentifier: placeholderId ?? assetIdentifier)
+                        savedMedia.append(savedItem)
                     }
                     group.leave()
                 }
-                
+                continue
             case .photo(let image):
                 // Save photo to Photos library
                 PHPhotoLibrary.shared().performChanges({
@@ -164,7 +172,9 @@ struct CameraView: UIViewControllerRepresentable {
             
             if let videoURL = info[.mediaURL] as? URL {
                 // Handle video capture
-                mediaItems.append(.video(videoURL))
+                let asset = AVURLAsset(url: videoURL)
+                let seconds = CMTimeGetSeconds(asset.duration)
+                mediaItems.append(.video(url: videoURL, duration: seconds > 0 ? seconds : 0, assetIdentifier: nil))
             } else if let image = info[.originalImage] as? UIImage {
                 // Handle photo capture
                 mediaItems.append(.photo(image))

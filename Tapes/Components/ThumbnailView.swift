@@ -101,6 +101,7 @@ struct ClipThumbnailView: View {
                 HStack {
                     Spacer()
                     DurationBadge(duration: clip.duration)
+                        .opacity(clip.duration > 0 ? 1 : 0)
                 }
             }
             .padding(8)

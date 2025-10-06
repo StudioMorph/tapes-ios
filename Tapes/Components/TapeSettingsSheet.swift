@@ -21,17 +21,21 @@ struct TapeSettingsSheet: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: Tokens.Spacing.l) {
-                transitionSection
-                if transition != .none {
-                    transitionDurationSection
+            ScrollView {
+                VStack(spacing: Tokens.Spacing.l) {
+                    transitionSection
+                    if transition != .none {
+                        transitionDurationSection
+                    }
+                    orientationSection
+                    scaleModeSection
                 }
-                orientationSection
-                scaleModeSection
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Tokens.Spacing.l)
+                .padding(.top, Tokens.Spacing.l)
+                .padding(.bottom, Tokens.Spacing.l * 2)
             }
-            .padding(Tokens.Spacing.l)
-            .background(Tokens.Colors.bg)
+            .background(Tokens.Colors.bg.ignoresSafeArea())
             .navigationTitle("Tape Settings")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -51,6 +55,7 @@ struct TapeSettingsSheet: View {
                 }
             }
         }
+        .onChange(of: transitionDuration) { _ in hasChanges = true }
     }
     
     private var transitionSection: some View {

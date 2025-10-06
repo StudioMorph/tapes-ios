@@ -72,7 +72,7 @@ public struct PhotoImportCoordinator: View {
                     let thumbnail = await generateThumbnail(from: movie.url)
                     let duration = await getVideoDuration(url: movie.url)
                     
-                    pickedMedia.append(.video(movie.url))
+                    pickedMedia.append(.video(url: movie.url, duration: duration, assetIdentifier: nil))
                 } else if let image = try await item.loadTransferable(type: Data.self) {
                     // Load as image
                     if let uiImage = UIImage(data: image) {

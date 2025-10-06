@@ -90,9 +90,11 @@ public struct Clip: Identifiable, Codable, Equatable {
     public static func fromVideo(
         url: URL,
         duration: TimeInterval,
-        thumbnail: UIImage? = nil
+        thumbnail: UIImage? = nil,
+        assetLocalId: String? = nil
     ) -> Clip {
         return Clip(
+            assetLocalId: assetLocalId,
             localURL: url,
             clipType: .video,
             duration: duration,

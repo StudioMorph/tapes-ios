@@ -67,20 +67,13 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
         context.coordinator.hostingController = hosting
         context.coordinator.scrollView = scrollView
-        
-        // Ordering logic: Skip initial position if there's a pending target
-        if targetSnapIndex != nil {
-            // Skip initial position set when there's a pending target
-        } else {
-            // Set initial position immediately to avoid flash
-            DispatchQueue.main.async {
-                self.setInitialPosition(scrollView: scrollView)
+        context.coordinator.updateCurrentSnapIndex(currentSnapIndex)
+
+        DispatchQueue.main.async {
+            self.setInitialPosition(scrollView: scrollView)
+            if let targetIndex = self.targetSnapIndex {
+                self.performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: 0)
             }
-        }
-        
-        // Handle programmatic scrolling to target index
-        if let targetIndex = targetSnapIndex {
-            performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: 0)
         }
 
         return scrollView
