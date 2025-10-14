@@ -102,7 +102,11 @@ struct TapesListView: View {
                 tape: Binding(
                     get: { selectedTape },
                     set: { tapesStore.updateTape($0) }
-                )
+                ),
+                onDismiss: {
+                    tapesStore.showingSettingsSheet = false
+                    tapesStore.clearSelectedTape()
+                }
             ))
         } else {
             return AnyView(EmptyView())

@@ -41,6 +41,7 @@ struct TapeSettingsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
+                        resetToBindingValues()
                         onDismiss()
                     }
                     .foregroundColor(Tokens.Colors.onSurface)
@@ -49,6 +50,7 @@ struct TapeSettingsSheet: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
                         saveChanges()
+                        onDismiss()
                     }
                     .foregroundColor(hasChanges ? Tokens.Colors.red : Tokens.Colors.muted)
                     .disabled(!hasChanges)
@@ -56,6 +58,7 @@ struct TapeSettingsSheet: View {
             }
         }
         .onChange(of: transitionDuration) { _ in hasChanges = true }
+        .onChange(of: tape) { _ in resetToBindingValues() }
     }
     
     private var transitionSection: some View {
@@ -223,11 +226,21 @@ struct TapeSettingsSheet: View {
     }
     
     private func saveChanges() {
-        tape.orientation = orientation
-        tape.scaleMode = scaleMode
-        tape.transition = transition
-        tape.transitionDuration = transitionDuration
-        onDismiss()
+        var updated = tape
+        updated.orientation = orientation
+        updated.scaleMode = scaleMode
+        updated.transition = transition
+        updated.transitionDuration = transitionDuration
+        tape = updated
+        hasChanges = false
+    }
+
+    private func resetToBindingValues() {
+        orientation = tape.orientation
+        scaleMode = tape.scaleMode
+        transition = tape.transition
+        transitionDuration = tape.transitionDuration
+        hasChanges = false
     }
 }
 
