@@ -29,11 +29,12 @@ struct TapePlayerView: View {
             if let player {
                 VideoPlayer(player: player)
                     .disabled(true)
-                    .onTapGesture { toggleControls() }
                     .overlay(overlayContent)
+                    .overlay(tapCatcher)
                     .onDisappear { player.pause() }
             } else {
                 overlayContent
+                    .overlay(tapCatcher)
             }
 
             if showingControls {
@@ -53,6 +54,17 @@ struct TapePlayerView: View {
         .onDisappear {
             tearDown()
         }
+    }
+
+    private var tapCatcher: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .allowsHitTesting(!showingControls)
+            .onTapGesture {
+                if !showingControls {
+                    toggleControls()
+                }
+            }
     }
 
     // MARK: - Overlay
@@ -76,6 +88,7 @@ struct TapePlayerView: View {
                 .padding(24)
             }
         }
+        .allowsHitTesting(false)
     }
 
     // MARK: - Header View
@@ -254,13 +267,13 @@ struct TapePlayerView: View {
     }
 
     private func toggleControls() {
-        withAnimation {
-            showingControls.toggle()
-        }
         if showingControls {
-            setupControlsTimer()
-        } else {
+            withAnimation { showingControls = false }
             controlsTimer?.invalidate()
+            controlsTimer = nil
+        } else {
+            withAnimation { showingControls = true }
+            setupControlsTimer()
         }
     }
 

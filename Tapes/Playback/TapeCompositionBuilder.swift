@@ -519,8 +519,8 @@ struct TapeCompositionBuilder {
         direction: SlideDirection
     ) {
         let offset = direction == .leftToRight ? renderSize.width : -renderSize.width
-        let outgoingEndTransform = fromBaseTransform.translatedBy(x: -offset, y: 0)
-        let incomingStartTransform = toBaseTransform.translatedBy(x: offset, y: 0)
+        let outgoingEndTransform = fromBaseTransform.concatenating(CGAffineTransform(translationX: -offset, y: 0))
+        let incomingStartTransform = toBaseTransform.concatenating(CGAffineTransform(translationX: offset, y: 0))
 
         fromLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 1.0, timeRange: transitionRange)
         toLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 1.0, timeRange: transitionRange)

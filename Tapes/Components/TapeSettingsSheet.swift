@@ -227,10 +227,12 @@ struct TapeSettingsSheet: View {
     
     private func saveChanges() {
         var updated = tape
-        updated.orientation = orientation
-        updated.scaleMode = scaleMode
-        updated.transition = transition
-        updated.transitionDuration = transitionDuration
+        updated.updateSettings(
+            orientation: orientation,
+            scaleMode: scaleMode,
+            transition: transition,
+            transitionDuration: transitionDuration
+        )
         tape = updated
         hasChanges = false
     }
