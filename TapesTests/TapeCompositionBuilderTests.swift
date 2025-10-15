@@ -1,6 +1,7 @@
 import XCTest
 import AVFoundation
 import CoreGraphics
+import UIKit
 @testable import Tapes
 
 final class TapeCompositionBuilderTests: XCTestCase {
@@ -60,10 +61,130 @@ final class TapeCompositionBuilderTests: XCTestCase {
         XCTAssertEqual(firstSegment.outgoingTransition?.duration.seconds ?? 0, 0.4, accuracy: 0.05)
     }
 
+    func testImageClipProducesKenBurnsSegment() async throws {
+        let imageData = try makeTestImageData()
+        let clip = Clip.fromImage(imageData: imageData, duration: 0)
+        let tape = Tape(clips: [clip])
+
+        let builder = TapeCompositionBuilder()
+        let timeline = try await builder.prepareTimeline(for: tape)
+
+        XCTAssertEqual(timeline.segments.count, 1)
+        let segment = try XCTUnwrap(timeline.segments.first)
+
+        XCTAssertTrue(segment.assetContext.isTemporaryAsset)
+        XCTAssertFalse(segment.assetContext.hasAudio)
+        XCTAssertEqual(segment.assetContext.duration.seconds, 4.0, accuracy: 0.1)
+
+        let motion = try XCTUnwrap(segment.motionEffect)
+        XCTAssertEqual(motion.startScale, 1.05, accuracy: 0.001)
+        XCTAssertEqual(motion.endScale, 1.1, accuracy: 0.001)
+        XCTAssertEqual(motion.startOffset.x, 0.0, accuracy: 0.0001)
+        XCTAssertEqual(motion.endOffset.x, 0.05, accuracy: 0.0001)
+    }
+
+    func testTimelineHandlesImageAndVideoCrossfade() async throws {
+        let imageData = try makeTestImageData()
+        let imageClip = Clip.fromImage(imageData: imageData, duration: 0)
+
+        let videoDuration: Double = 1.5
+        let videoURLs = try makeTestVideos(count: 1, duration: videoDuration)
+        defer { try? cleanup(videoURLs) }
+        let videoClip = Clip.fromVideo(url: videoURLs[0], duration: videoDuration)
+
+        var tape = Tape(clips: [imageClip, videoClip])
+        tape.transition = .crossfade
+        tape.transitionDuration = 0.6
+
+        let builder = TapeCompositionBuilder()
+        let timeline = try await builder.prepareTimeline(for: tape)
+
+        XCTAssertEqual(timeline.segments.count, 2)
+        XCTAssertEqual(timeline.transitionSequence.count, 1)
+        XCTAssertEqual(timeline.transitionSequence[0]?.style, .crossfade)
+
+        let first = timeline.segments[0]
+        let second = timeline.segments[1]
+
+        XCTAssertNotNil(first.motionEffect)
+        XCTAssertNil(second.motionEffect)
+        XCTAssertTrue(first.assetContext.isTemporaryAsset)
+        XCTAssertFalse(second.assetContext.isTemporaryAsset)
+    }
+
+    func testImageClipRespectsExifOrientation() async throws {
+        let baseSize = CGSize(width: 40, height: 80)
+        let renderer = UIGraphicsImageRenderer(size: baseSize)
+        let baseImage = renderer.image { context in
+            let cgContext = context.cgContext
+            cgContext.setFillColor(UIColor.red.cgColor)
+            cgContext.fill(CGRect(origin: .zero, size: baseSize))
+        }
+        guard let baseCGImage = baseImage.cgImage else {
+            XCTFail("Failed to access base CGImage")
+            return
+        }
+        let rotated = UIImage(cgImage: baseCGImage, scale: 1, orientation: .right)
+        guard let data = rotated.jpegData(compressionQuality: 0.9) else {
+            XCTFail("Failed to encode rotated image")
+            return
+        }
+
+        let clip = Clip(imageData: data, clipType: .image, duration: 0)
+        let tape = Tape(clips: [clip])
+
+        let builder = TapeCompositionBuilder()
+        let timeline = try await builder.prepareTimeline(for: tape)
+
+        let segment = try XCTUnwrap(timeline.segments.first)
+        XCTAssertEqual(segment.assetContext.naturalSize.width, 80, accuracy: 0.5)
+        XCTAssertEqual(segment.assetContext.naturalSize.height, 40, accuracy: 0.5)
+    }
+
+    func testLargeImageClampsToRenderBounds() async throws {
+        let size = CGSize(width: 4000, height: 3000)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { context in
+            let cgContext = context.cgContext
+            cgContext.setFillColor(UIColor.green.cgColor)
+            cgContext.fill(CGRect(origin: .zero, size: size))
+        }
+        guard let data = image.jpegData(compressionQuality: 0.9) else {
+            XCTFail("Failed to encode large image")
+            return
+        }
+
+        let clip = Clip(imageData: data, clipType: .image, duration: 0)
+        let tape = Tape(clips: [clip])
+
+        let builder = TapeCompositionBuilder()
+        let timeline = try await builder.prepareTimeline(for: tape)
+        let segment = try XCTUnwrap(timeline.segments.first)
+
+        let sizeResult = segment.assetContext.naturalSize
+        let longSide = max(sizeResult.width, sizeResult.height)
+        let shortSide = min(sizeResult.width, sizeResult.height)
+        XCTAssertLessThanOrEqual(longSide, 1920)
+        XCTAssertLessThanOrEqual(shortSide, 1080)
+    }
+
     // MARK: - Helpers
 
     private func makeTestVideos(count: Int, duration: Double) throws -> [URL] {
         try (0..<count).map { _ in try VideoAssetFactory.makeSolidColorVideo(duration: duration) }
+    }
+
+    private func makeTestImageData(size: CGSize = CGSize(width: 640, height: 960)) throws -> Data {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { context in
+            let cgContext = context.cgContext
+            cgContext.setFillColor(UIColor.systemBlue.cgColor)
+            cgContext.fill(CGRect(origin: .zero, size: size))
+        }
+        guard let data = image.jpegData(compressionQuality: 0.9) else {
+            throw NSError(domain: "ImageEncoding", code: -1, userInfo: nil)
+        }
+        return data
     }
 
     private func cleanup(_ urls: [URL]) throws {

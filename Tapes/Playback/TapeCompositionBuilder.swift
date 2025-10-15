@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import Photos
 import CoreGraphics
+import UIKit
 
 /// Builds timeline metadata for tape playback using AVComposable assets.
 /// The builder does not mutate the UI; it prepares the information required to render transitions.
@@ -10,9 +11,14 @@ struct TapeCompositionBuilder {
     typealias AssetResolver = (Clip) async throws -> AVAsset
 
     private let assetResolver: AssetResolver
+    private let imageConfiguration: ImageClipConfiguration
 
-    init(assetResolver: @escaping AssetResolver = TapeCompositionBuilder.defaultAssetResolver) {
+    init(
+        assetResolver: @escaping AssetResolver = TapeCompositionBuilder.defaultAssetResolver,
+        imageConfiguration: ImageClipConfiguration = .default
+    ) {
         self.assetResolver = assetResolver
+        self.imageConfiguration = imageConfiguration
     }
 
     // MARK: - Nested Types
@@ -23,6 +29,7 @@ struct TapeCompositionBuilder {
         case photosAccessDenied
         case photosAssetMissing
         case missingVideoTrack
+        case imageEncodingFailed
 
         var errorDescription: String? {
             switch self {
@@ -36,6 +43,8 @@ struct TapeCompositionBuilder {
                 return "Requested Photos asset could not be found."
             case .missingVideoTrack:
                 return "Video track is missing from the resolved asset."
+            case .imageEncodingFailed:
+                return "Unable to encode still image into video."
             }
         }
     }
@@ -43,6 +52,32 @@ struct TapeCompositionBuilder {
     struct TransitionDescriptor {
         let style: TransitionType
         let duration: CMTime
+    }
+
+    struct MotionEffect {
+        let startScale: CGFloat
+        let endScale: CGFloat
+        let startOffset: CGPoint // fraction of render size (0-1)
+        let endOffset: CGPoint
+
+        static let defaultKenBurns = MotionEffect(
+            startScale: 1.05,
+            endScale: 1.1,
+            startOffset: CGPoint(x: 0.0, y: 0.0),
+            endOffset: CGPoint(x: 0.05, y: -0.05)
+        )
+    }
+
+    struct ImageClipConfiguration {
+        let defaultDuration: Double
+        let defaultMotionEffect: MotionEffect
+        let baseScaleMode: ScaleMode
+
+        static let `default` = ImageClipConfiguration(
+            defaultDuration: 4.0,
+            defaultMotionEffect: MotionEffect.defaultKenBurns,
+            baseScaleMode: .fill
+        )
     }
 
     struct ClipAssetContext {
@@ -55,6 +90,8 @@ struct TapeCompositionBuilder {
         let hasAudio: Bool
         let videoTrack: AVAssetTrack
         let audioTrack: AVAssetTrack?
+        let motionEffect: MotionEffect?
+        let isTemporaryAsset: Bool
     }
 
     struct Segment {
@@ -63,6 +100,7 @@ struct TapeCompositionBuilder {
         let timeRange: CMTimeRange
         let incomingTransition: TransitionDescriptor?
         let outgoingTransition: TransitionDescriptor?
+        let motionEffect: MotionEffect?
     }
 
     struct Timeline {
@@ -75,6 +113,12 @@ struct TapeCompositionBuilder {
     struct PlayerComposition {
         let playerItem: AVPlayerItem
         let timeline: Timeline
+    }
+
+    struct ResolvedAsset {
+        let asset: AVAsset
+        let isTemporary: Bool
+        let motionEffect: MotionEffect?
     }
 
     // MARK: - Public API
@@ -178,7 +222,8 @@ struct TapeCompositionBuilder {
         try await withThrowingTaskGroup(of: ClipAssetContext.self) { group in
             for (index, clip) in clips.enumerated() {
                 group.addTask {
-                    let asset = try await resolveAsset(for: clip)
+                    let resolved = try await resolveAsset(for: clip)
+                    let asset = resolved.asset
                     guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
                         throw BuilderError.missingVideoTrack
                     }
@@ -197,7 +242,9 @@ struct TapeCompositionBuilder {
                         preferredTransform: preferredTransform,
                         hasAudio: hasAudio,
                         videoTrack: videoTrack,
-                        audioTrack: audioTrack
+                        audioTrack: audioTrack,
+                        motionEffect: resolved.motionEffect,
+                        isTemporaryAsset: resolved.isTemporary
                     )
                 }
             }
@@ -211,8 +258,21 @@ struct TapeCompositionBuilder {
         }
     }
 
-    private func resolveAsset(for clip: Clip) async throws -> AVAsset {
-        try await assetResolver(clip)
+    private func resolveAsset(for clip: Clip) async throws -> ResolvedAsset {
+        switch clip.clipType {
+        case .video:
+            let asset = try await assetResolver(clip)
+            return ResolvedAsset(asset: asset, isTemporary: false, motionEffect: nil)
+        case .image:
+            let image = try await loadImage(for: clip)
+            let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
+            let asset = try createVideoAsset(from: image, clip: clip, duration: durationSeconds)
+            return ResolvedAsset(
+                asset: asset,
+                isTemporary: true,
+                motionEffect: imageConfiguration.defaultMotionEffect
+            )
+        }
     }
 
     private static func fetchAVAssetFromPhotos(localIdentifier: String) async throws -> AVAsset {
@@ -317,7 +377,8 @@ struct TapeCompositionBuilder {
                 assetContext: assetContext,
                 timeRange: timeRange,
                 incomingTransition: incomingTransition,
-                outgoingTransition: outgoingTransition
+                outgoingTransition: outgoingTransition,
+                motionEffect: assetContext.motionEffect
             )
             segments.append(segment)
 
@@ -371,6 +432,91 @@ struct TapeCompositionBuilder {
         return tracks
     }
 
+    private func transform(
+        for segment: Segment,
+        renderSize: CGSize,
+        scaleMode: ScaleMode,
+        at time: CMTime
+    ) -> CGAffineTransform {
+        let base = baseTransform(
+            for: segment.assetContext,
+            renderSize: renderSize,
+            scaleMode: scaleMode
+        )
+
+        guard let effect = segment.motionEffect,
+              CMTimeCompare(segment.timeRange.duration, .zero) > 0 else {
+            return base
+        }
+
+        let progress = normalizedProgress(for: segment, at: time)
+        return apply(effect: effect, to: base, renderSize: renderSize, progress: progress)
+    }
+
+    private func normalizedProgress(for segment: Segment, at time: CMTime) -> CGFloat {
+        let durationSeconds = CMTimeGetSeconds(segment.timeRange.duration)
+        guard durationSeconds.isFinite, durationSeconds > 0 else { return 0 }
+
+        let elapsed = CMTimeGetSeconds(CMTimeSubtract(time, segment.timeRange.start))
+        guard elapsed.isFinite else { return 0 }
+
+        let clamped = max(0, min(elapsed, durationSeconds))
+        return CGFloat(clamped / durationSeconds)
+    }
+
+    private func apply(
+        effect: MotionEffect,
+        to base: CGAffineTransform,
+        renderSize: CGSize,
+        progress: CGFloat
+    ) -> CGAffineTransform {
+        let scale = lerp(effect.startScale, effect.endScale, progress: progress)
+        let offsetX = lerp(effect.startOffset.x, effect.endOffset.x, progress: progress) * renderSize.width
+        let offsetY = lerp(effect.startOffset.y, effect.endOffset.y, progress: progress) * renderSize.height
+
+        var effectTransform = CGAffineTransform.identity
+        let renderCenter = CGPoint(x: renderSize.width * 0.5, y: renderSize.height * 0.5)
+        effectTransform = effectTransform.translatedBy(x: renderCenter.x, y: renderCenter.y)
+        effectTransform = effectTransform.scaledBy(x: scale, y: scale)
+        effectTransform = effectTransform.translatedBy(x: -renderCenter.x, y: -renderCenter.y)
+        effectTransform = effectTransform.translatedBy(x: offsetX, y: offsetY)
+
+        return base.concatenating(effectTransform)
+    }
+
+    private func applyTransformRampIfNeeded(
+        on instruction: AVMutableVideoCompositionLayerInstruction,
+        for segment: Segment,
+        renderSize: CGSize,
+        scaleMode: ScaleMode,
+        startTime: CMTime,
+        endTime: CMTime
+    ) {
+        guard CMTimeCompare(endTime, startTime) > 0 else { return }
+        let startTransform = transform(for: segment, renderSize: renderSize, scaleMode: scaleMode, at: startTime)
+        let endTransform = transform(for: segment, renderSize: renderSize, scaleMode: scaleMode, at: endTime)
+
+        guard startTransform != endTransform else { return }
+
+        let duration = CMTimeSubtract(endTime, startTime)
+        let timeRange = CMTimeRange(start: startTime, duration: duration)
+        instruction.setTransformRamp(fromStart: startTransform, toEnd: endTransform, timeRange: timeRange)
+    }
+
+    private func lerp(_ start: CGFloat, _ end: CGFloat, progress: CGFloat) -> CGFloat {
+        start + (end - start) * max(0, min(progress, 1))
+    }
+
+    private func effectiveScaleMode(for segment: Segment, tapeScaleMode: ScaleMode) -> ScaleMode {
+        if let override = segment.assetContext.clip.overrideScaleMode {
+            return override
+        }
+        if segment.motionEffect != nil {
+            return imageConfiguration.baseScaleMode
+        }
+        return tapeScaleMode
+    }
+
     private func buildVideoInstructions(
         for timeline: Timeline,
         videoTrackMap: [Int: AVMutableCompositionTrack],
@@ -381,6 +527,7 @@ struct TapeCompositionBuilder {
 
         for (index, segment) in timeline.segments.enumerated() {
             guard let track = videoTrackMap[segment.clipIndex] else { continue }
+            let segmentScaleMode = effectiveScaleMode(for: segment, tapeScaleMode: tapeScaleMode)
 
             let incomingDuration = segment.incomingTransition?.duration ?? .zero
             let outgoingDuration = segment.outgoingTransition?.duration ?? .zero
@@ -403,8 +550,17 @@ struct TapeCompositionBuilder {
                     for: segment,
                     track: track,
                     renderSize: renderSize,
-                    scaleMode: segment.assetContext.clip.overrideScaleMode ?? tapeScaleMode,
+                    scaleMode: segmentScaleMode,
                     at: passThroughStart
+                )
+                let passThroughEnd = CMTimeAdd(passThroughStart, passThroughDuration)
+                applyTransformRampIfNeeded(
+                    on: layerInstruction,
+                    for: segment,
+                    renderSize: renderSize,
+                    scaleMode: segmentScaleMode,
+                    startTime: passThroughStart,
+                    endTime: passThroughEnd
                 )
                 instruction.layerInstructions = [layerInstruction]
                 instructions.append(instruction)
@@ -421,34 +577,29 @@ struct TapeCompositionBuilder {
                     for: segment,
                     track: track,
                     renderSize: renderSize,
-                    scaleMode: segment.assetContext.clip.overrideScaleMode ?? tapeScaleMode,
+                    scaleMode: segmentScaleMode,
                     at: transitionRange.start
                 )
 
+                let nextScaleMode = effectiveScaleMode(for: nextSegment, tapeScaleMode: tapeScaleMode)
                 let toLayer = baseLayerInstruction(
                     for: nextSegment,
                     track: nextTrack,
                     renderSize: renderSize,
-                    scaleMode: nextSegment.assetContext.clip.overrideScaleMode ?? tapeScaleMode,
+                    scaleMode: nextScaleMode,
                     at: transitionRange.start
                 )
 
                 configureTransition(
                     transition,
+                    fromSegment: segment,
+                    toSegment: nextSegment,
                     fromLayer: fromLayer,
                     toLayer: toLayer,
-                    fromBaseTransform: baseTransform(
-                        for: segment.assetContext,
-                        renderSize: renderSize,
-                        scaleMode: segment.assetContext.clip.overrideScaleMode ?? tapeScaleMode
-                    ),
-                    toBaseTransform: baseTransform(
-                        for: nextSegment.assetContext,
-                        renderSize: renderSize,
-                        scaleMode: nextSegment.assetContext.clip.overrideScaleMode ?? tapeScaleMode
-                    ),
                     transitionRange: transitionRange,
-                    renderSize: renderSize
+                    renderSize: renderSize,
+                    fromScaleMode: segmentScaleMode,
+                    toScaleMode: nextScaleMode
                 )
 
                 let transitionInstruction = AVMutableVideoCompositionInstruction()
@@ -470,7 +621,7 @@ struct TapeCompositionBuilder {
         at time: CMTime
     ) -> AVMutableVideoCompositionLayerInstruction {
         let instruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        let transform = baseTransform(for: segment.assetContext, renderSize: renderSize, scaleMode: scaleMode)
+        let transform = transform(for: segment, renderSize: renderSize, scaleMode: scaleMode, at: time)
         instruction.setTransform(transform, at: time)
         instruction.setOpacity(1.0, at: time)
         return instruction
@@ -478,25 +629,42 @@ struct TapeCompositionBuilder {
 
     private func configureTransition(
         _ descriptor: TransitionDescriptor,
+        fromSegment: Segment,
+        toSegment: Segment,
         fromLayer: AVMutableVideoCompositionLayerInstruction,
         toLayer: AVMutableVideoCompositionLayerInstruction,
-        fromBaseTransform: CGAffineTransform,
-        toBaseTransform: CGAffineTransform,
         transitionRange: CMTimeRange,
-        renderSize: CGSize
+        renderSize: CGSize,
+        fromScaleMode: ScaleMode,
+        toScaleMode: ScaleMode
     ) {
+        let transitionEnd = CMTimeAdd(transitionRange.start, transitionRange.duration)
+        let fromStartTransform = transform(for: fromSegment, renderSize: renderSize, scaleMode: fromScaleMode, at: transitionRange.start)
+        let fromEndTransform = transform(for: fromSegment, renderSize: renderSize, scaleMode: fromScaleMode, at: transitionEnd)
+        let toStartTransform = transform(for: toSegment, renderSize: renderSize, scaleMode: toScaleMode, at: transitionRange.start)
+        let toEndTransform = transform(for: toSegment, renderSize: renderSize, scaleMode: toScaleMode, at: transitionEnd)
+
         switch descriptor.style {
         case .crossfade:
             fromLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: transitionRange)
             toLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: transitionRange)
-            fromLayer.setTransform(fromBaseTransform, at: transitionRange.start)
-            toLayer.setTransform(toBaseTransform, at: transitionRange.start)
+            fromLayer.setTransform(fromStartTransform, at: transitionRange.start)
+            toLayer.setTransform(toStartTransform, at: transitionRange.start)
+
+            if CMTimeCompare(transitionRange.duration, .zero) > 0 {
+                if fromStartTransform != fromEndTransform {
+                    fromLayer.setTransformRamp(fromStart: fromStartTransform, toEnd: fromEndTransform, timeRange: transitionRange)
+                }
+                if toStartTransform != toEndTransform {
+                    toLayer.setTransformRamp(fromStart: toStartTransform, toEnd: toEndTransform, timeRange: transitionRange)
+                }
+            }
         case .slideLR:
             applySlideTransition(
                 fromLayer: fromLayer,
                 toLayer: toLayer,
-                fromBaseTransform: fromBaseTransform,
-                toBaseTransform: toBaseTransform,
+                fromTransform: fromStartTransform,
+                toTransform: toStartTransform,
                 transitionRange: transitionRange,
                 renderSize: renderSize,
                 direction: .leftToRight
@@ -505,8 +673,8 @@ struct TapeCompositionBuilder {
             applySlideTransition(
                 fromLayer: fromLayer,
                 toLayer: toLayer,
-                fromBaseTransform: fromBaseTransform,
-                toBaseTransform: toBaseTransform,
+                fromTransform: fromStartTransform,
+                toTransform: toStartTransform,
                 transitionRange: transitionRange,
                 renderSize: renderSize,
                 direction: .rightToLeft
@@ -524,24 +692,26 @@ struct TapeCompositionBuilder {
     private func applySlideTransition(
         fromLayer: AVMutableVideoCompositionLayerInstruction,
         toLayer: AVMutableVideoCompositionLayerInstruction,
-        fromBaseTransform: CGAffineTransform,
-        toBaseTransform: CGAffineTransform,
+        fromTransform: CGAffineTransform,
+        toTransform: CGAffineTransform,
         transitionRange: CMTimeRange,
         renderSize: CGSize,
         direction: SlideDirection
     ) {
         let offset = direction == .leftToRight ? renderSize.width : -renderSize.width
-        let outgoingEndTransform = fromBaseTransform.concatenating(CGAffineTransform(translationX: -offset, y: 0))
-        let incomingStartTransform = toBaseTransform.concatenating(CGAffineTransform(translationX: offset, y: 0))
+        let outgoingEndTransform = prependTranslation(to: fromTransform, dx: -offset, dy: 0)
+        let incomingStartTransform = prependTranslation(to: toTransform, dx: offset, dy: 0)
 
         fromLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 1.0, timeRange: transitionRange)
         toLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 1.0, timeRange: transitionRange)
 
-        fromLayer.setTransform(fromBaseTransform, at: transitionRange.start)
+        fromLayer.setTransform(fromTransform, at: transitionRange.start)
         toLayer.setTransform(incomingStartTransform, at: transitionRange.start)
 
-        fromLayer.setTransformRamp(fromStart: fromBaseTransform, toEnd: outgoingEndTransform, timeRange: transitionRange)
-        toLayer.setTransformRamp(fromStart: incomingStartTransform, toEnd: toBaseTransform, timeRange: transitionRange)
+        if CMTimeCompare(transitionRange.duration, .zero) > 0 {
+            fromLayer.setTransformRamp(fromStart: fromTransform, toEnd: outgoingEndTransform, timeRange: transitionRange)
+            toLayer.setTransformRamp(fromStart: incomingStartTransform, toEnd: toTransform, timeRange: transitionRange)
+        }
     }
 
     private func baseTransform(
@@ -578,6 +748,13 @@ struct TapeCompositionBuilder {
         transform = transform.translatedBy(x: translatedX / scale, y: translatedY / scale)
         return transform
     }
+
+    private func prependTranslation(to transform: CGAffineTransform, dx: CGFloat, dy: CGFloat) -> CGAffineTransform {
+        var result = transform
+        result.tx += dx
+        result.ty += dy
+        return result
+    }
 }
 
 // MARK: - Deterministic RNG
@@ -600,5 +777,243 @@ private extension Array {
     subscript(safe index: Int) -> Element? {
         guard index >= 0, index < count else { return nil }
         return self[index]
+    }
+}
+
+private extension TapeCompositionBuilder {
+    func loadImage(for clip: Clip) async throws -> UIImage {
+        if let data = clip.imageData, let image = UIImage(data: data) {
+            return image
+        }
+        if let url = clip.localURL, let image = UIImage(contentsOfFile: url.path) {
+            return image
+        }
+        if let assetLocalId = clip.assetLocalId {
+            return try await fetchImageFromPhotos(localIdentifier: assetLocalId)
+        }
+        throw BuilderError.assetUnavailable(clipID: clip.id)
+    }
+
+    func fetchImageFromPhotos(localIdentifier: String) async throws -> UIImage {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            throw BuilderError.photosAccessDenied
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+            guard let asset = fetchResult.firstObject else {
+                continuation.resume(throwing: BuilderError.photosAssetMissing)
+                return
+            }
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                if let data = data, let image = UIImage(data: data) {
+                    continuation.resume(returning: image)
+                } else if let error = info?[PHImageErrorKey] as? Error {
+                    continuation.resume(throwing: error)
+                } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
+                    continuation.resume(throwing: BuilderError.photosAssetMissing)
+                } else {
+                    continuation.resume(throwing: BuilderError.photosAssetMissing)
+                }
+            }
+        }
+    }
+
+    func createVideoAsset(from image: UIImage, clip: Clip, duration: Double) throws -> AVAsset {
+        let cgImage = try normalizedCGImage(from: image, clip: clip)
+        let rotationTurns = ((clip.rotateQuarterTurns % 4) + 4) % 4
+        let targetSize = normalizedVideoSize(for: cgImage, rotationTurns: rotationTurns)
+        let targetWidth = Int(targetSize.width)
+        let targetHeight = Int(targetSize.height)
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mov")
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let settings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: targetWidth,
+            AVVideoHeightKey: targetHeight,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 2_000_000
+            ]
+        ]
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+        input.expectsMediaDataInRealTime = false
+
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: targetWidth,
+                kCVPixelBufferHeightKey as String: targetHeight,
+                kCVPixelBufferCGImageCompatibilityKey as String: true,
+                kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+            ]
+        )
+
+        writer.add(input)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+
+        let frameDuration = CMTime(value: 1, timescale: 30)
+        let totalFrames = max(1, Int(duration * 30))
+        guard let pixelBufferPool = adaptor.pixelBufferPool else {
+            throw BuilderError.imageEncodingFailed
+        }
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        for frameIndex in 0..<totalFrames {
+            let time = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
+            while !input.isReadyForMoreMediaData {
+                Thread.sleep(forTimeInterval: 0.001)
+            }
+
+            var pixelBuffer: CVPixelBuffer?
+            let status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+            guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+                continue
+            }
+
+            render(
+                cgImage: cgImage,
+                into: buffer,
+                targetSize: targetSize,
+                rotationTurns: rotationTurns,
+                colorSpace: colorSpace
+            )
+
+            adaptor.append(buffer, withPresentationTime: time)
+        }
+
+        input.markAsFinished()
+        let semaphore = DispatchSemaphore(value: 0)
+        writer.finishWriting {
+            semaphore.signal()
+        }
+        semaphore.wait()
+        return AVURLAsset(url: url)
+    }
+
+    func normalizedCGImage(from image: UIImage, clip: Clip) throws -> CGImage {
+        if image.imageOrientation == .up, let cgImage = image.cgImage {
+            return cgImage
+        }
+
+        let pixelSize = CGSize(
+            width: max(image.size.width * image.scale, 1),
+            height: max(image.size.height * image.scale, 1)
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        format.preferredRange = .standard
+
+        let renderer = UIGraphicsImageRenderer(size: pixelSize, format: format)
+        let rendered = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: pixelSize))
+        }
+
+        guard let cgImage = rendered.cgImage else {
+            throw BuilderError.assetUnavailable(clipID: clip.id)
+        }
+        return cgImage
+    }
+
+    func normalizedVideoSize(for cgImage: CGImage, rotationTurns: Int) -> CGSize {
+        let swapAxes = rotationTurns % 2 != 0
+        let baseWidth = CGFloat(cgImage.width)
+        let baseHeight = CGFloat(cgImage.height)
+
+        let rotatedWidth = swapAxes ? baseHeight : baseWidth
+        let rotatedHeight = swapAxes ? baseWidth : baseHeight
+
+        let maxLongSide: CGFloat = 1920
+        let maxShortSide: CGFloat = 1080
+        let longSide = max(rotatedWidth, rotatedHeight)
+        let shortSide = min(rotatedWidth, rotatedHeight)
+
+        let longScale = maxLongSide / longSide
+        let shortScale = maxShortSide / shortSide
+        let scale = min(min(longScale, shortScale), 1.0)
+
+        let scaledWidth = rotatedWidth * scale
+        let scaledHeight = rotatedHeight * scale
+
+        let width = makeEvenDimension(scaledWidth)
+        let height = makeEvenDimension(scaledHeight)
+        return CGSize(width: CGFloat(width), height: CGFloat(height))
+    }
+
+    func makeEvenDimension(_ value: CGFloat) -> Int {
+        var intValue = max(2, Int(round(value)))
+        if intValue % 2 != 0 {
+            intValue -= 1
+        }
+        if intValue < 2 {
+            intValue = 2
+        }
+        return intValue
+    }
+
+    func render(
+        cgImage: CGImage,
+        into pixelBuffer: CVPixelBuffer,
+        targetSize: CGSize,
+        rotationTurns: Int,
+        colorSpace: CGColorSpace
+    ) {
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+        }
+
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(pixelBuffer),
+            width: Int(targetSize.width),
+            height: Int(targetSize.height),
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else {
+            return
+        }
+
+        context.clear(CGRect(origin: .zero, size: targetSize))
+        context.interpolationQuality = .high
+
+        context.saveGState()
+        context.translateBy(x: targetSize.width / 2, y: targetSize.height / 2)
+        if rotationTurns != 0 {
+            let angle = CGFloat(rotationTurns) * (.pi / 2)
+            context.rotate(by: angle)
+        }
+
+        let sourceWidth = CGFloat(cgImage.width)
+        let sourceHeight = CGFloat(cgImage.height)
+        let rotatedWidth = rotationTurns % 2 == 0 ? sourceWidth : sourceHeight
+        let rotatedHeight = rotationTurns % 2 == 0 ? sourceHeight : sourceWidth
+        let scale = min(targetSize.width / rotatedWidth, targetSize.height / rotatedHeight)
+        context.scaleBy(x: scale, y: scale)
+
+        let drawRect = CGRect(
+            x: -sourceWidth / 2,
+            y: -sourceHeight / 2,
+            width: sourceWidth,
+            height: sourceHeight
+        )
+        context.draw(cgImage, in: drawRect)
+        context.restoreGState()
     }
 }

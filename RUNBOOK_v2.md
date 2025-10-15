@@ -147,6 +147,14 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - **Export Implementation**
   - iOS: AVMutableComposition + AVMutableAudioMix
   - Android: FFmpegKit filtergraph (xfade + acrossfade)
+- **Preview Composition (iOS)**
+  - `TapeCompositionBuilder` resolves `.image` clips by synthesising a 4 s H.264 asset and pairs it with the default Ken Burns `MotionEffect`.
+  - Motion transforms interpolate during pass-through and transitions so photos animate smoothly alongside crossfades and slides.
+  - Photo assets are normalised for EXIF orientation and colour space before encoding, and clip-level quarter-turn rotations are baked into the generated video.
+  - Photo segments default to `fill` scaling (unless a per-clip override is supplied) so the canvas never exposes background while the Ken Burns effect runs.
+  - Photo frames clamp to ≤1920px on the long side / ≤1080px on the short side to avoid oversized pixel buffers when generating temporary assets.
+  - Override duration/animation by passing a custom `ImageClipConfiguration` into the builder; the resulting `Timeline.Segment` exposes the chosen effect for UI/tests.
+  - Generated photo assets are marked temporary—hold them through playback/export and rely on the temp directory cleanup afterward.
 
 ---
 
