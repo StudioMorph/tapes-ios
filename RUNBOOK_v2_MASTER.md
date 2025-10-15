@@ -142,6 +142,26 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - iOS: AVMutableComposition + AVMutableAudioMix
   - Android: FFmpegKit filtergraph (xfade + acrossfade)
 
+- **Preview Player Composition (v3)**
+  - iOS preview uses `TapeCompositionBuilder` to assemble `AVMutableComposition` per tape.
+    - Two alternating video tracks + optional audio tracks.
+    - Transition strategies: hard cut, crossfade (opacity + audio ramps), slide L→R / R→L (horizontal transform ramps), randomise (seeded by tape UUID).
+    - Builder currently rejects `.image` clips (future enhancement required for Ken Burns/pan-zoom).
+  - Unit coverage lives in `TapesTests/TapeCompositionBuilderTests.swift`.
+    - Synthetic MP4 fixtures are generated on the fly for deterministic assertions.
+    - Verifies crossfade overlaps, slide transforms (horizontal delta ≈ render width) and deterministic random transitions.
+  - Run tests locally:
+    ```bash
+    xcodebuild -project Tapes.xcodeproj \
+               -scheme TapesTests \
+               -sdk iphonesimulator \
+               -configuration Debug test
+    ```
+  - Debugging tips:
+    - Enable `AVPlayerItem` logging: `player.currentItem?.videoComposition` to inspect instruction ranges.
+    - For audio ramps, dump `audioMix?.inputParameters` and ensure ramps align with video overlap.
+    - When investigating asset issues, inject a custom `assetResolver` to log clip IDs/URLs.
+
 - **Carousel Race Condition Fix (v2.1)**
   - **Problem**: Two competing position setters caused incorrect carousel positioning
   - **Solution**: Single source of truth with proper ordering and timing guarantees
@@ -207,6 +227,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Transition parity (preview vs export)
   - Export destinations
   - Casting visibility
+  - Run automated composition tests (`TapesTests/TapeCompositionBuilderTests.swift`) before release
 
 ---
 

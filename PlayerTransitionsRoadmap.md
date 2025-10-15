@@ -52,10 +52,11 @@ Build a composition-driven playback pipeline that delivers smooth, extensible tr
 
 ---
 
-## Phase 4 – Validation
+## Phase 4 – Validation *(in progress)*
 1. **Automated Checks**
-   - Add unit tests around transition builder (timeline math, instruction generation).
-   - Consider snapshot/video export tests for regression detection.
+   - ✅ Add unit tests around transition builder (timeline math, instruction generation).
+     - `TapeCompositionBuilderTests` now synthesise short sample assets to validate crossfade timelines and horizontal slide motion.
+   - ☐ Consider snapshot/video export tests for regression detection.
 2. **Manual QA**
    - Verify each transition type visually/audibly on a representative set of clips (short, long, mixed media).
    - Stress-test randomise mode for repeatability.

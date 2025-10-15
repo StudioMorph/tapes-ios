@@ -7,6 +7,14 @@ import CoreGraphics
 /// The builder does not mutate the UI; it prepares the information required to render transitions.
 struct TapeCompositionBuilder {
 
+    typealias AssetResolver = (Clip) async throws -> AVAsset
+
+    private let assetResolver: AssetResolver
+
+    init(assetResolver: @escaping AssetResolver = TapeCompositionBuilder.defaultAssetResolver) {
+        self.assetResolver = assetResolver
+    }
+
     // MARK: - Nested Types
 
     enum BuilderError: Error, LocalizedError {
@@ -204,21 +212,10 @@ struct TapeCompositionBuilder {
     }
 
     private func resolveAsset(for clip: Clip) async throws -> AVAsset {
-        switch clip.clipType {
-        case .video:
-            if let url = clip.localURL {
-                return AVURLAsset(url: url)
-            }
-            if let assetLocalId = clip.assetLocalId {
-                return try await fetchAVAssetFromPhotos(localIdentifier: assetLocalId)
-            }
-            throw BuilderError.assetUnavailable(clipID: clip.id)
-        case .image:
-            throw BuilderError.unsupportedClipType(.image)
-        }
+        try await assetResolver(clip)
     }
 
-    private func fetchAVAssetFromPhotos(localIdentifier: String) async throws -> AVAsset {
+    private static func fetchAVAssetFromPhotos(localIdentifier: String) async throws -> AVAsset {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard status == .authorized || status == .limited else {
             throw BuilderError.photosAccessDenied
@@ -242,6 +239,21 @@ struct TapeCompositionBuilder {
                     continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
                 }
             }
+        }
+    }
+
+    private static func defaultAssetResolver(_ clip: Clip) async throws -> AVAsset {
+        switch clip.clipType {
+        case .video:
+            if let url = clip.localURL {
+                return AVURLAsset(url: url)
+            }
+            if let assetLocalId = clip.assetLocalId {
+                return try await fetchAVAssetFromPhotos(localIdentifier: assetLocalId)
+            }
+            throw BuilderError.assetUnavailable(clipID: clip.id)
+        case .image:
+            throw BuilderError.unsupportedClipType(.image)
         }
     }
 
