@@ -32,6 +32,8 @@ struct TapeCardView: View {
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var importSource: ImportSource? = nil
+    @State private var titleDraft: String = ""
+    @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
     @State private var savedCarouselPosition: Int = 0 // Clip-space position (0 = start, N = end)
@@ -48,25 +50,69 @@ struct TapeCardView: View {
     private var initialCarouselPosition: Int {
         return tape.clips.count // Clip-space: 0 = start, N = end
     }
+
+    private var displayedTitle: String {
+        let source = isTitleFocused ? titleDraft : tape.title
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? " " : trimmed
+    }
     
     var body: some View {        VStack(alignment: .leading, spacing: 0) {
             // Title row
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 // Left group: Title (hug) + 4 + pencil
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(tape.title)
+                    Text(displayedTitle)
                         .font(Tokens.Typography.title)
                         .foregroundColor(Tokens.Colors.onSurface)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
-                    
+                        .opacity(isTitleFocused ? 0 : 1)
+                        .overlay(alignment: .leading) {
+                            GeometryReader { proxy in
+                                TextField("", text: $titleDraft)
+                                    .focused($isTitleFocused)
+                                    .textFieldStyle(.plain)
+                                    .font(Tokens.Typography.title)
+                                    .foregroundColor(Tokens.Colors.onSurface)
+                                    .disableAutocorrection(true)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .submitLabel(.done)
+                                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                                    .frame(width: proxy.size.width, alignment: .leading)
+                                    .clipped()
+                                    .opacity(isTitleFocused ? 1 : 0)
+                                    .allowsHitTesting(isTitleFocused)
+                                    .onSubmit {
+                                        commitTitle()
+                                        isTitleFocused = false
+                                    }
+                                    .onChange(of: tape.title) { _ in
+                                        syncTitleDraftIfNeeded()
+                                    }
+                                    .onChange(of: isTitleFocused) { focused in
+                                        if !focused {
+                                            commitTitle()
+                                        }
+                                    }
+                            }
+                        }
                     Image(systemName: "pencil")
                         .font(Tokens.Typography.title)
                         .foregroundColor(Tokens.Colors.onSurface)
                         .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                        .onTapGesture {
+                            beginEditingTitle()
+                        }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard !isTitleFocused else { return }
+                    beginEditingTitle()
+                }
                 .layoutPriority(1)
                 
                 // 32pt minimum gap
@@ -228,6 +274,9 @@ struct TapeCardView: View {
         .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {
             CameraView(coordinator: cameraCoordinator)
                 .ignoresSafeArea(.all, edges: .all)
+        }
+        .onAppear {
+            syncTitleDraftIfNeeded(force: true)
         }
     }
     
@@ -393,6 +442,34 @@ struct TapeCardView: View {
             tapeStore.insertEmptyTapeAtTop()
             
             }
+    }
+
+    private func beginEditingTitle() {
+        guard !isTitleFocused else { return }
+        titleDraft = tape.title
+        isTitleFocused = true
+    }
+
+    private func commitTitle() {
+        let trimmed = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            titleDraft = tape.title
+            return
+        }
+
+        if trimmed != tape.title {
+            tape.title = trimmed
+            tape.updatedAt = Date()
+            tapeStore.updateTape(tape)
+        }
+
+        titleDraft = tape.title
+    }
+
+    private func syncTitleDraftIfNeeded(force: Bool = false) {
+        if force || !isTitleFocused {
+            titleDraft = tape.title
+        }
     }
 }
 
