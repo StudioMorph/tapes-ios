@@ -55,27 +55,37 @@ struct TapesListView: View {
         ScrollView {
             LazyVStack(spacing: Tokens.Spacing.m) {  // 16pt vertical spacing between cards
                 ForEach($tapesStore.tapes) { $tape in
-                    TapeCardView(
-                        tape: $tape,
-                        onSettings: { tapesStore.selectTape($tape.wrappedValue) },
-                        onPlay: {
-                            tapeToPreview = $tape.wrappedValue
-                            showingPlayOptions = true
-                        },
-                        onAirPlay: { },
-                        onThumbnailDelete: { clip in
-                            tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
-                        },
-                        onClipInserted: { clip, index in
-                            tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
-                        },
-                        onClipInsertedAtPlaceholder: { clip, placeholder in
-                            tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
-                        },
-                        onMediaInserted: { pickedMedia, strategy in
-                            tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
+                    let tapeID = $tape.wrappedValue.id
+                    NewTapeRevealContainer(
+                        tapeID: tapeID,
+                        isNewlyInserted: tapesStore.latestInsertedTapeID == tapeID,
+                        isPendingReveal: tapesStore.pendingTapeRevealID == tapeID,
+                        onAnimationCompleted: {
+                            tapesStore.clearLatestInsertedTapeID(tapeID)
                         }
-                    )
+                    ) {
+                        TapeCardView(
+                            tape: $tape,
+                            onSettings: { tapesStore.selectTape($tape.wrappedValue) },
+                            onPlay: {
+                                tapeToPreview = $tape.wrappedValue
+                                showingPlayOptions = true
+                            },
+                            onAirPlay: { },
+                            onThumbnailDelete: { clip in
+                                tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
+                            },
+                            onClipInserted: { clip, index in
+                                tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
+                            },
+                            onClipInsertedAtPlaceholder: { clip, placeholder in
+                                tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
+                            },
+                            onMediaInserted: { pickedMedia, strategy in
+                                tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
+                            }
+                        )
+                    }
                     .padding(.horizontal, Tokens.Spacing.m)  // 16pt outer padding
                 }
             }
@@ -141,6 +151,95 @@ struct TapesListView: View {
             if exportCoordinator.exportError != nil {
                 ExportErrorAlert(coordinator: exportCoordinator)
             }
+        }
+    }
+}
+
+private struct NewTapeRevealContainer<Content: View>: View {
+    let tapeID: UUID
+    let isNewlyInserted: Bool
+    let isPendingReveal: Bool
+    let onAnimationCompleted: () -> Void
+    let content: () -> Content
+
+    @State private var hasAnimated = false
+    @State private var isVisible = false
+
+    private let listSlideDuration: Double = 0.42
+    private let animationDuration: Double = 0.32
+    private let revealAnimation = Animation.interactiveSpring(response: 0.36, dampingFraction: 0.85, blendDuration: 0.12)
+
+    init(
+        tapeID: UUID,
+        isNewlyInserted: Bool,
+        isPendingReveal: Bool,
+        onAnimationCompleted: @escaping () -> Void,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.tapeID = tapeID
+        self.isNewlyInserted = isNewlyInserted
+        self.isPendingReveal = isPendingReveal
+        self.onAnimationCompleted = onAnimationCompleted
+        self.content = content
+    }
+
+    var body: some View {
+        content()
+            .scaleEffect(targetScale, anchor: .center)
+            .opacity(targetOpacity)
+            .onAppear {
+                if isPendingReveal {
+                    isVisible = false
+                    hasAnimated = false
+                    return
+                }
+                guard isNewlyInserted else {
+                    isVisible = true
+                    return
+                }
+                guard !hasAnimated else { return }
+                hasAnimated = true
+                isVisible = false
+                reveal(after: listSlideDuration)
+            }
+            .onChange(of: isNewlyInserted) { newValue in
+                if newValue {
+                    guard !hasAnimated else { return }
+                    hasAnimated = true
+                    isVisible = false
+                    reveal(after: 0)
+                } else {
+                    isVisible = true
+                }
+            }
+            .onChange(of: isPendingReveal) { pending in
+                if pending {
+                    isVisible = false
+                    hasAnimated = false
+                }
+            }
+    }
+
+    private var targetScale: CGFloat {
+        if isPendingReveal { return 0.85 }
+        guard isNewlyInserted else { return 1.0 }
+        return isVisible ? 1.0 : 0.85
+    }
+
+    private var targetOpacity: Double {
+        if isPendingReveal { return 0.0 }
+        guard isNewlyInserted else { return 1.0 }
+        return isVisible ? 1.0 : 0.0
+    }
+
+    private func reveal(after delay: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            withAnimation(revealAnimation) {
+                isVisible = true
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + animationDuration) {
+            onAnimationCompleted()
         }
     }
 }

@@ -13,6 +13,8 @@ public class TapesStore: ObservableObject {
     @Published public var tapes: [Tape] = []
     @Published public var selectedTape: Tape?
     @Published public var showingSettingsSheet = false
+    @Published public var latestInsertedTapeID: UUID?
+    @Published public var pendingTapeRevealID: UUID?
     
     // MARK: - Persistence
     private let persistenceKey = "SavedTapes"
@@ -645,8 +647,26 @@ extension TapesStore {
             clips: [],
             hasReceivedFirstContent: false
         )
-        tapes.insert(newEmptyTape, at: 0)
+        withAnimation(Animation.interactiveSpring(response: 0.42, dampingFraction: 0.82, blendDuration: 0.12)) {
+            tapes.insert(newEmptyTape, at: 0)
+        }
+        pendingTapeRevealID = newEmptyTape.id
+        latestInsertedTapeID = nil
+        let revealDelay = 0.45
+        DispatchQueue.main.asyncAfter(deadline: .now() + revealDelay) { [weak self] in
+            guard let self else { return }
+            withAnimation {
+                self.latestInsertedTapeID = newEmptyTape.id
+                self.pendingTapeRevealID = nil
+            }
+        }
         autoSave()
+    }
+
+    public func clearLatestInsertedTapeID(_ identifier: UUID) {
+        if latestInsertedTapeID == identifier {
+            latestInsertedTapeID = nil
+        }
     }
     
     /// Restore any missing metadata on clips (durations/thumbnails) after loading from disk
