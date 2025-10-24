@@ -24,6 +24,7 @@ struct TapeCardView: View {
     let onClipInserted: (Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
     let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void
+    let onTitleFocusRequest: () -> Void
     
     @EnvironmentObject var tapeStore: TapesStore
     @StateObject private var castManager = CastManager.shared
@@ -55,6 +56,29 @@ struct TapeCardView: View {
         let source = isTitleFocused ? titleDraft : tape.title
         let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? " " : trimmed
+    }
+
+    init(
+        tape: Binding<Tape>,
+        onSettings: @escaping () -> Void,
+        onPlay: @escaping () -> Void,
+        onAirPlay: @escaping () -> Void,
+        onThumbnailDelete: @escaping (Clip) -> Void,
+        onClipInserted: @escaping (Clip, Int) -> Void,
+        onClipInsertedAtPlaceholder: @escaping (Clip, CarouselItem) -> Void,
+        onMediaInserted: @escaping ([PickedMedia], InsertionStrategy) -> Void,
+        onTitleFocusRequest: @escaping () -> Void = {}
+    ) {
+        self._tape = tape
+        self.onSettings = onSettings
+        self.onPlay = onPlay
+        self.onAirPlay = onAirPlay
+        self.onThumbnailDelete = onThumbnailDelete
+        self.onClipInserted = onClipInserted
+        self.onClipInsertedAtPlaceholder = onClipInsertedAtPlaceholder
+        self.onMediaInserted = onMediaInserted
+        self.onTitleFocusRequest = onTitleFocusRequest
+        self._titleDraft = State(initialValue: tape.wrappedValue.title)
     }
     
     var body: some View {        VStack(alignment: .leading, spacing: 0) {
@@ -454,8 +478,11 @@ struct TapeCardView: View {
 
     private func beginEditingTitle() {
         guard !isTitleFocused else { return }
+        onTitleFocusRequest()
         titleDraft = tape.title
-        isTitleFocused = true
+        DispatchQueue.main.async {
+            self.isTitleFocused = true
+        }
     }
 
     private func commitTitle() {
