@@ -11,7 +11,6 @@ struct TapesListView: View {
     @State private var keyboardHeight: CGFloat = 0
     @State private var activeTapeID: UUID?
     @State private var scrollToTape: ((UUID) -> Void)?
-    @State private var focusTape: ((UUID) -> Void)?
     
     var body: some View {
         NavigationView {
@@ -41,9 +40,6 @@ struct TapesListView: View {
             guard let activeTapeID else { return }
             DispatchQueue.main.async {
                 scrollToTape?(activeTapeID)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                focusTape?(activeTapeID)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
@@ -126,13 +122,9 @@ struct TapesListView: View {
                         proxy.scrollTo(id, anchor: .top)
                     }
                 }
-                focusTape = { id in
-                    NotificationCenter.default.post(name: .tapeShouldFocusTitle, object: id)
-                }
             }
             .onDisappear {
                 scrollToTape = nil
-                focusTape = nil
             }
         }
     }
@@ -202,7 +194,7 @@ struct TapesListView: View {
         }
     }
 
-private func keyboardHeight(from notification: Notification) -> CGFloat {
+    private func keyboardHeight(from notification: Notification) -> CGFloat {
         guard let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return 0 }
         return frameValue.cgRectValue.height
     }

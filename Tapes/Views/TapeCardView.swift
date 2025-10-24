@@ -52,8 +52,6 @@ struct TapeCardView: View {
         return tape.clips.count // Clip-space: 0 = start, N = end
     }
 
-    @State private var focusRequestID = UUID()
-
     private var displayedTitle: String {
         let source = isTitleFocused ? titleDraft : tape.title
         let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -83,8 +81,7 @@ struct TapeCardView: View {
         self._titleDraft = State(initialValue: tape.wrappedValue.title)
     }
     
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    var body: some View {        VStack(alignment: .leading, spacing: 0) {
             // Title row
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 // Left group: Title (hug) + 4 + pencil
@@ -306,12 +303,6 @@ struct TapeCardView: View {
             syncTitleDraftIfNeeded(force: true)
         }
     }
-        .onReceive(NotificationCenter.default.publisher(for: .tapeShouldFocusTitle)) { notification in
-            guard let targetID = notification.object as? UUID, targetID == tape.id else { return }
-            DispatchQueue.main.async {
-                isTitleFocused = true
-            }
-        }
     
     // MARK: - Helper Functions
     
@@ -489,6 +480,9 @@ struct TapeCardView: View {
         guard !isTitleFocused else { return }
         onTitleFocusRequest()
         titleDraft = tape.title
+        DispatchQueue.main.async {
+            self.isTitleFocused = true
+        }
     }
 
     private func commitTitle() {
