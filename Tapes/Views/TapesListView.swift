@@ -9,6 +9,8 @@ struct TapesListView: View {
     @State private var showingQAChecklist = false
     @State private var tapeToPreview: Tape?
     @State private var keyboardHeight: CGFloat = 0
+    @State private var activeTapeID: UUID?
+    @State private var scrollToTape: ((UUID) -> Void)?
     
     var body: some View {
         NavigationView {
@@ -34,10 +36,15 @@ struct TapesListView: View {
             QAChecklistView()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
-            adjustForKeyboard(notification: notification, showing: true)
+            keyboardHeight = keyboardHeight(from: notification)
+            guard let activeTapeID else { return }
+            DispatchQueue.main.async {
+                scrollToTape?(activeTapeID)
+            }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notification in
-            adjustForKeyboard(notification: notification, showing: false)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardHeight = 0
+            activeTapeID = nil
         }
     }
     
@@ -73,28 +80,31 @@ struct TapesListView: View {
                                 tapesStore.clearLatestInsertedTapeID(tapeID)
                             }
                         ) {
-                            TapeCardView(
-                                tape: $tape,
-                                onSettings: { tapesStore.selectTape($tape.wrappedValue) },
-                                onPlay: {
-                                    tapeToPreview = $tape.wrappedValue
-                                    showingPlayOptions = true
-                                },
-                                onAirPlay: { },
-                                onThumbnailDelete: { clip in
-                                    tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
-                                },
-                                onClipInserted: { clip, index in
-                                    tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
-                                },
-                                onClipInsertedAtPlaceholder: { clip, placeholder in
-                                    tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
-                                },
+                                TapeCardView(
+                                    tape: $tape,
+                                    onSettings: { tapesStore.selectTape($tape.wrappedValue) },
+                                    onPlay: {
+                                        tapeToPreview = $tape.wrappedValue
+                                        showingPlayOptions = true
+                                    },
+                                    onAirPlay: { },
+                                    onThumbnailDelete: { clip in
+                                        tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
+                                    },
+                                    onClipInserted: { clip, index in
+                                        tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
+                                    },
+                                    onClipInsertedAtPlaceholder: { clip, placeholder in
+                                        tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
+                                    },
                                 onMediaInserted: { pickedMedia, strategy in
                                     tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
                                 },
                                 onTitleFocusRequest: {
-                                    scrollTapeIntoView(proxy: proxy, tapeID: tapeID)
+                                    activeTapeID = tapeID
+                                    DispatchQueue.main.async {
+                                        scrollToTape?(tapeID)
+                                    }
                                 }
                             )
                         }
@@ -103,7 +113,19 @@ struct TapesListView: View {
                     }
                 }
             }
-            .padding(.bottom, keyboardHeight)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: keyboardHeight)
+            }
+            .onAppear {
+                scrollToTape = { id in
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        proxy.scrollTo(id, anchor: .top)
+                    }
+                }
+            }
+            .onDisappear {
+                scrollToTape = nil
+            }
         }
     }
     
@@ -172,27 +194,9 @@ struct TapesListView: View {
         }
     }
 
-    private func adjustForKeyboard(notification: Notification, showing: Bool) {
-        guard let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return }
-        let keyboardFrame = frameValue.cgRectValue
-        let height = showing ? keyboardFrame.height : 0
-        withAnimation(.easeInOut(duration: 0.25)) {
-            keyboardHeight = height
-        }
-    }
-
-    private func scrollTapeIntoView(proxy: ScrollViewProxy, tapeID: UUID) {
-        DispatchQueue.main.async {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                proxy.scrollTo(tapeID, anchor: .center)
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                proxy.scrollTo(tapeID, anchor: .center)
-            }
-        }
+    private func keyboardHeight(from notification: Notification) -> CGFloat {
+        guard let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return 0 }
+        return frameValue.cgRectValue.height
     }
 }
 
