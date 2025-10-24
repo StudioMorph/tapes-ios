@@ -43,7 +43,6 @@ public protocol TapeAlbumServicing {
 public final class TapeAlbumService: TapeAlbumServicing {
     private let photoLibrary: PhotoLibraryAccessing
     private let permissionManager: PhotosPermissionManaging
-    private let albumTitlePrefix = "Tapes – "
     
     public init(
         photoLibrary: PhotoLibraryAccessing = PhotoLibraryAccess(),
@@ -242,7 +241,7 @@ public final class TapeAlbumService: TapeAlbumServicing {
     private func albumTitle(forTitle title: String) -> String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let suffix = trimmed.isEmpty ? "New Reel" : trimmed
-        return albumTitlePrefix + suffix
+        return suffix
     }
     
     private func createAlbum(named title: String) async throws -> String {
