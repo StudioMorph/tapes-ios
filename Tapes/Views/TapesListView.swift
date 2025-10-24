@@ -109,10 +109,6 @@ struct TapesListView: View {
                                     DispatchQueue.main.async {
                                         scrollToTape?(tapeID)
                                     }
-                                    let delay = keyboardHeight > 0 ? 0.1 : 0.3
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                                        focusTape?(tapeID)
-                                    }
                                 }
                             )
                         }
