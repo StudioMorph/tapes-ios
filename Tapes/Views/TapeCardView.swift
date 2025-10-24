@@ -305,13 +305,13 @@ struct TapeCardView: View {
         .onAppear {
             syncTitleDraftIfNeeded(force: true)
         }
-    }
         .onReceive(NotificationCenter.default.publisher(for: .tapeShouldFocusTitle)) { notification in
             guard let targetID = notification.object as? UUID, targetID == tape.id else { return }
             DispatchQueue.main.async {
                 isTitleFocused = true
             }
         }
+    }
     
     // MARK: - Helper Functions
     
