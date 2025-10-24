@@ -75,12 +75,6 @@ public final class TapeAlbumService: TapeAlbumServicing {
             return TapeAlbumAssociation(albumLocalIdentifier: identifier, created: false)
         }
 
-        if let existing = fetchAlbum(named: albumTitle(for: tape)) {
-            TapesLog.photos.debug("Found album by title for tape \(tape.id.uuidString, privacy: .public)")
-            // Ensure the stored identifier gets updated on the tape so future lookups stay stable.
-            return TapeAlbumAssociation(albumLocalIdentifier: existing.localIdentifier, created: false)
-        }
-        
         let newIdentifier = try await createAlbum(named: albumTitle(for: tape))
         TapesLog.photos.info("Created Photos album \(newIdentifier, privacy: .public) for tape \(tape.id.uuidString, privacy: .public)")
         return TapeAlbumAssociation(albumLocalIdentifier: newIdentifier, created: true)
