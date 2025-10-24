@@ -105,9 +105,11 @@ public struct Clip: Identifiable, Codable, Equatable {
     public static func fromImage(
         imageData: Data,
         duration: TimeInterval = 3.0,
-        thumbnail: UIImage? = nil
+        thumbnail: UIImage? = nil,
+        assetLocalId: String? = nil
     ) -> Clip {
         return Clip(
+            assetLocalId: assetLocalId,
             imageData: imageData,
             clipType: .image,
             duration: duration,

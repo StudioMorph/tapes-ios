@@ -7,4 +7,5 @@ struct TapesLog {
     static let store = Logger(subsystem: "com.studiomorph.tapes", category: "Store")
     static let camera = Logger(subsystem: "com.studiomorph.tapes", category: "Camera")
     static let ui = Logger(subsystem: "com.studiomorph.tapes", category: "UI")
+    static let photos = Logger(subsystem: "com.studiomorph.tapes", category: "Photos")
 }

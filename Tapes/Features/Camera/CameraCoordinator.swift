@@ -112,16 +112,16 @@ class CameraCoordinator: NSObject, ObservableObject {
                     group.leave()
                 }
                 continue
-            case .photo(let image):
-                // Save photo to Photos library
+            case let .photo(image, assetIdentifier):
+                var placeholderId: String?
                 PHPhotoLibrary.shared().performChanges({
                     let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
-                    let _ = request.placeholderForCreatedAsset
-                    // Create a new PickedMedia with the saved asset
-                    let savedItem = PickedMedia.photo(image)
-                    savedMedia.append(savedItem)
+                    placeholderId = request.placeholderForCreatedAsset?.localIdentifier
                 }) { success, error in
-                    if !success {
+                    if success {
+                        let savedItem = PickedMedia.photo(image: image, assetIdentifier: placeholderId ?? assetIdentifier)
+                        savedMedia.append(savedItem)
+                    } else {
                         TapesLog.camera.error("Failed to save photo: \(error?.localizedDescription ?? "Unknown error")")
                     }
                     group.leave()
@@ -177,7 +177,7 @@ struct CameraView: UIViewControllerRepresentable {
                 mediaItems.append(.video(url: videoURL, duration: seconds > 0 ? seconds : 0, assetIdentifier: nil))
             } else if let image = info[.originalImage] as? UIImage {
                 // Handle photo capture
-                mediaItems.append(.photo(image))
+                mediaItems.append(.photo(image: image, assetIdentifier: nil))
             }
             
             picker.dismiss(animated: true) {

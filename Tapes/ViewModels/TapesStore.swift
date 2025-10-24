@@ -15,6 +15,9 @@ public class TapesStore: ObservableObject {
     @Published public var showingSettingsSheet = false
     @Published public var latestInsertedTapeID: UUID?
     @Published public var pendingTapeRevealID: UUID?
+    @Published public var albumAssociationError: String?
+    
+    private let albumService: TapeAlbumServicing
     
     // MARK: - Persistence
     private let persistenceKey = "SavedTapes"
@@ -23,7 +26,8 @@ public class TapesStore: ObservableObject {
         documentsDirectory.appendingPathComponent("tapes.json")
     }
     
-    public init() {
+    public init(albumService: TapeAlbumServicing = TapeAlbumService()) {
+        self.albumService = albumService
         loadTapesFromDisk()
         
         // Always ensure at least one empty tape exists
@@ -44,6 +48,7 @@ public class TapesStore: ObservableObject {
         // Restore empty tape invariant after loading
         restoreEmptyTapeInvariant()
         restoreMissingClipMetadata()
+        scheduleLegacyAlbumAssociation()
     }
     
     #if DEBUG
@@ -73,8 +78,9 @@ public class TapesStore: ObservableObject {
         return tapes.first { $0.id == id }
     }
     
-    public func updateTape(_ tape: Tape) {
+    public func updateTape(_ tape: Tape, previousTape explicitPreviousTape: Tape? = nil) {
         if let index = tapes.firstIndex(where: { $0.id == tape.id }) {
+            let previousTape = explicitPreviousTape ?? tapes[index]
             tapes[index] = tape
             
             // Update selected tape if it's the same tape
@@ -84,15 +90,20 @@ public class TapesStore: ObservableObject {
             
             // Auto-save changes
             autoSave()
+            handleAlbumRenameIfNeeded(previousTape: previousTape, updatedTape: tape)
         }
     }
     
     public func deleteTape(_ tape: Tape) {
+        scheduleAlbumDeletionIfNeeded(for: tape)
         tapes.removeAll { $0.id == tape.id }
         autoSave()
     }
-    
+
     public func deleteTape(by id: UUID) {
+        if let tape = getTape(by: id) {
+            scheduleAlbumDeletionIfNeeded(for: tape)
+        }
         tapes.removeAll { $0.id == id }
         autoSave()
     }
@@ -174,6 +185,17 @@ public class TapesStore: ObservableObject {
         guard var tape = getTape(by: tapeId) else { return }
         tape.reorderClips(from: source, to: destination)
         updateTape(tape)
+    }
+
+    @MainActor
+    public func associateClipsWithAlbum(tapeID: UUID, clips: [Clip]) {
+        let assetIdentifiers = clips.compactMap { $0.assetLocalId }.filter { !$0.isEmpty }
+        guard !assetIdentifiers.isEmpty else { return }
+        guard let tape = getTape(by: tapeID) else { return }
+        let tapeSnapshot = tape
+        Task.detached(priority: .utility) { [weak self] in
+            await self?.processAlbumAssociation(tapeID: tapeID, tape: tapeSnapshot, assetIdentifiers: assetIdentifiers)
+        }
     }
     
     // MARK: - Tape Settings Operations
@@ -321,6 +343,7 @@ extension TapesStore {
         let insertIndex = min(index, tape.clips.count)
         tape.addClip(clip, at: insertIndex)
         updateTape(tape)
+        associateClipsWithAlbum(tapeID: tapeId, clips: [clip])
         
         // Provide haptic feedback
         #if os(iOS)
@@ -361,6 +384,7 @@ extension TapesStore {
         
         tape.addClip(clip, at: insertIndex)
         updateTape(tape)
+        associateClipsWithAlbum(tapeID: tapeId, clips: [clip])
         
         // Provide haptic feedback
         #if os(iOS)
@@ -396,9 +420,14 @@ extension TapesStore {
                     }
                 }
                 clip = videoClip
-            case .photo(let image):
+            case let .photo(image, assetIdentifier):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                    clip = Clip.fromImage(
+                        imageData: imageData,
+                        duration: Tokens.Timing.photoDefaultDuration,
+                        thumbnail: image,
+                        assetLocalId: assetIdentifier
+                    )
                 } else {
                     continue // Skip invalid image
                 }
@@ -413,6 +442,7 @@ extension TapesStore {
         }
         
         updateTape(tape)
+        associateClipsWithAlbum(tapeID: tapeID, clips: newClips)
         
         // Provide haptic feedback
         #if os(iOS)
@@ -443,10 +473,15 @@ extension TapesStore {
                     }
                 }
                 newClips.append(clip)
-            case .photo(let image):
+            case let .photo(image, assetIdentifier):
                 // Convert image to data and use default duration
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                    let clip = Clip.fromImage(
+                        imageData: imageData,
+                        duration: Tokens.Timing.photoDefaultDuration,
+                        thumbnail: image,
+                        assetLocalId: assetIdentifier
+                    )
                     newClips.append(clip)
                 } else {
                     TapesLog.store.warning("Could not build clip from UIImage data")
@@ -470,6 +505,7 @@ extension TapesStore {
 
         // Auto-save changes
         autoSave()
+        associateClipsWithAlbum(tapeID: tapeID, clips: newClips)
         
         // Generate thumbnails and duration for video clips asynchronously
         for clip in newClips {
@@ -497,9 +533,14 @@ extension TapesStore {
                     }
                 }
                 newClips.append(clip)
-            case .photo(let image):
+            case let .photo(image, assetIdentifier):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    let clip = Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image)
+                    let clip = Clip.fromImage(
+                        imageData: imageData,
+                        duration: Tokens.Timing.photoDefaultDuration,
+                        thumbnail: image,
+                        assetLocalId: assetIdentifier
+                    )
                     newClips.append(clip)
                 }
             }
@@ -513,6 +554,7 @@ extension TapesStore {
         objectWillChange.send()
         
         autoSave()
+        associateClipsWithAlbum(tapeID: tape.wrappedValue.id, clips: newClips)
         
         for clip in newClips {
             if clip.clipType == .video, let url = clip.localURL {
@@ -708,6 +750,13 @@ extension TapesStore {
         }
     }
 
+    @MainActor
+    private func scheduleLegacyAlbumAssociation() {
+        for tape in tapes where !tape.clips.isEmpty && !tape.hasAssociatedAlbum {
+            associateClipsWithAlbum(tapeID: tape.id, clips: tape.clips)
+        }
+    }
+
     /// Attempt to recover duration/thumbnail for videos that only have a Photos asset identifier
     private func regenerateMetadataFromPhotoLibrary(assetLocalId: String, clipID: UUID, tapeID: UUID) {
         let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
@@ -750,6 +799,94 @@ extension TapesStore {
                     Task { @MainActor in
                         self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }, in: tapeID)
                     }
+                }
+            }
+        }
+    }
+
+    private func processAlbumAssociation(tapeID: UUID, tape: Tape, assetIdentifiers: [String]) async {
+        guard !assetIdentifiers.isEmpty else { return }
+        do {
+            let association = try await albumService.ensureAlbum(for: tape)
+            let albumIdentifier = association.albumLocalIdentifier
+            if tape.albumLocalIdentifier != albumIdentifier {
+                await MainActor.run {
+                    self.updateTapeAlbumIdentifier(albumIdentifier, for: tapeID)
+                }
+            }
+            try await albumService.addAssets(withIdentifiers: assetIdentifiers, to: albumIdentifier)
+            await MainActor.run {
+                self.albumAssociationError = nil
+            }
+        } catch {
+            TapesLog.photos.error("Album association failed for tape \(tapeID.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            await MainActor.run {
+                self.albumAssociationError = error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
+    func updateTapeAlbumIdentifier(_ identifier: String, for tapeID: UUID) {
+        guard let index = tapes.firstIndex(where: { $0.id == tapeID }) else { return }
+        var tape = tapes[index]
+        TapesLog.photos.info("Updating tape \(tapeID.uuidString, privacy: .public) with album identifier \(identifier, privacy: .public).")
+        tape.albumLocalIdentifier = identifier
+        tapes[index] = tape
+        autoSave()
+    }
+
+    private func scheduleAlbumDeletionIfNeeded(for tape: Tape) {
+        guard FeatureFlags.deleteAssociatedPhotoAlbum,
+              let albumId = tape.albumLocalIdentifier,
+              !albumId.isEmpty else { return }
+        Task.detached(priority: .utility) { [weak self] in
+            do {
+                try await self?.albumService.deleteAlbum(withLocalIdentifier: albumId)
+            } catch {
+                TapesLog.photos.error("Failed to delete Photos album \(albumId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func handleAlbumRenameIfNeeded(previousTape: Tape, updatedTape: Tape) {
+        let previousTitle = previousTape.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newTitle = updatedTape.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard previousTitle != newTitle else { return }
+        guard let albumId = updatedTape.albumLocalIdentifier, !albumId.isEmpty else {
+            TapesLog.photos.warning("Skipping album rename; tape \(updatedTape.id.uuidString, privacy: .public) has no stored album identifier.")
+            return
+        }
+        
+        TapesLog.photos.info("Scheduling Photos album rename for tape \(updatedTape.id.uuidString, privacy: .public) (albumId: \(albumId, privacy: .public)).")
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            do {
+                TapesLog.photos.info("Attempting Photos album rename for tape \(updatedTape.id.uuidString, privacy: .public).")
+                if let newIdentifier = try await self.albumService.renameAlbum(withLocalIdentifier: albumId, toMatch: updatedTape), newIdentifier != albumId {
+                    await MainActor.run {
+                        self.updateTapeAlbumIdentifier(newIdentifier, for: updatedTape.id)
+                        self.albumAssociationError = nil
+                    }
+                } else {
+                    await MainActor.run {
+                        self.albumAssociationError = nil
+                    }
+                }
+            } catch let error as TapeAlbumServiceError {
+                TapesLog.photos.error("Failed to rename Photos album for tape \(updatedTape.id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                await MainActor.run {
+                    switch error {
+                    case .insufficientPermissions:
+                        self.albumAssociationError = "Give Tapes 'All Photos' access (Settings > Privacy & Security > Photos > Tapes) so album titles stay in sync."
+                    default:
+                        self.albumAssociationError = error.localizedDescription
+                    }
+                }
+            } catch {
+                TapesLog.photos.error("Failed to rename Photos album for tape \(updatedTape.id.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                await MainActor.run {
+                    self.albumAssociationError = error.localizedDescription
                 }
             }
         }

@@ -340,9 +340,16 @@ struct TapeCardView: View {
                     }
                 }
                 clips.append(clip)
-            case .photo(let image):
+            case let .photo(image, assetIdentifier):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    clips.append(Clip.fromImage(imageData: imageData, duration: Tokens.Timing.photoDefaultDuration, thumbnail: image))
+                    clips.append(
+                        Clip.fromImage(
+                            imageData: imageData,
+                            duration: Tokens.Timing.photoDefaultDuration,
+                            thumbnail: image,
+                            assetLocalId: assetIdentifier
+                        )
+                    )
                 }
             }
         }
@@ -361,6 +368,7 @@ struct TapeCardView: View {
         updatedTape.updatedAt = Date()
         tape.wrappedValue = updatedTape
         tapeStore.updateTape(updatedTape)        
+        tapeStore.associateClipsWithAlbum(tapeID: updatedTape.id, clips: newClips)
         // Generate thumbnails and duration for video clips asynchronously
         for clip in newClips {
             if clip.clipType == .video, let url = clip.localURL {
@@ -399,7 +407,7 @@ struct TapeCardView: View {
                         let thumbnail = uiImage
                         let duration = Tokens.Timing.photoDefaultDuration
                         
-                        pickedMedia.append(.photo(uiImage))
+                        pickedMedia.append(.photo(image: uiImage, assetIdentifier: result.assetIdentifier))
                     }
                 } catch {
                     TapesLog.mediaPicker.error("Failed to load media item: \(error.localizedDescription)")
@@ -458,9 +466,10 @@ struct TapeCardView: View {
         }
 
         if trimmed != tape.title {
+            let previousTape = tape
             tape.title = trimmed
             tape.updatedAt = Date()
-            tapeStore.updateTape(tape)
+            tapeStore.updateTape(tape, previousTape: previousTape)
         }
 
         titleDraft = tape.title

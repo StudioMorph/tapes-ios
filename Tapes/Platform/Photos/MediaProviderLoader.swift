@@ -14,7 +14,7 @@ enum MediaLoaderError: Error {
 
 public enum PickedMedia {
     case video(url: URL, duration: TimeInterval, assetIdentifier: String?)
-    case photo(UIImage)
+    case photo(image: UIImage, assetIdentifier: String?)
 }
 
 private let log = Logger(subsystem: "com.studiomorph.tapes", category: "MediaPicker")
@@ -154,7 +154,7 @@ func resolvePickedMediaOrdered(_ results: [PHPickerResult]) async -> [PickedMedi
                         return (idx, .video(url: url, duration: seconds, assetIdentifier: r.assetIdentifier))
                     } else if r.itemProvider.canLoadObject(ofClass: UIImage.self) || r.itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                         let img = try await loadImage(from: r)
-                        return (idx, .photo(img))
+                        return (idx, .photo(image: img, assetIdentifier: r.assetIdentifier))
                     } else {
                         log.error("❌ Unsupported media type at index \(idx)")
                         return (idx, nil)

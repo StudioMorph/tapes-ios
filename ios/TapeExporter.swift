@@ -5,14 +5,14 @@ import CoreGraphics
 
 /// TapeExporter with seeded per-boundary transitions and AUDIO fades.
 enum TapeExporter {
-    static func export(tape: Tape, completion: @escaping (URL?) -> Void) {
+    static func export(tape: Tape, completion: @escaping (URL?, String?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let comp = AVMutableComposition()
             guard let videoTrackA = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
                   let videoTrackB = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
                   let audioTrackA = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
                   let audioTrackB = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
-                DispatchQueue.main.async { completion(nil) }
+                DispatchQueue.main.async { completion(nil, nil) }
                 return
             }
             let renderSize: CGSize = (tape.orientation == .portrait) ? CGSize(width: 1080, height: 1920) : CGSize(width: 1920, height: 1080)
@@ -142,11 +142,13 @@ enum TapeExporter {
             exporter.exportAsynchronously {
                 switch exporter.status {
                 case .completed:
-                    saveToPhotos(url: outURL) { success in
-                        DispatchQueue.main.async { completion(success ? outURL : nil) }
+                    saveToPhotos(url: outURL) { success, assetIdentifier in
+                        DispatchQueue.main.async {
+                            completion(success ? outURL : nil, success ? assetIdentifier : nil)
+                        }
                     }
                 default:
-                    DispatchQueue.main.async { completion(nil) }
+                    DispatchQueue.main.async { completion(nil, nil) }
                 }
             }
         }
@@ -166,30 +168,20 @@ enum TapeExporter {
         return result
     }
 
-    private static func saveToPhotos(url: URL, completion: @escaping (Bool)->Void) {
+    private static func saveToPhotos(url: URL, completion: @escaping (Bool, String?) -> Void) {
+        var placeholderIdentifier: String?
         PHPhotoLibrary.shared().performChanges({
-            let req = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
-            let collection = ensureAlbum(named: "Tapes")
-            if let albumChange = PHAssetCollectionChangeRequest(for: collection), let placeholder = req?.placeholderForCreatedAsset {
-                let fastEnum: NSArray = [placeholder]
-                albumChange.addAssets(fastEnum)
+            let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+            placeholderIdentifier = request?.placeholderForCreatedAsset?.localIdentifier
+        }) { success, error in
+            if !success {
+                if let error {
+                    TapesLog.photos.error("Failed to save exported video: \(error.localizedDescription, privacy: .public)")
+                }
+                completion(false, nil)
+            } else {
+                completion(true, placeholderIdentifier)
             }
-        }) { success, _ in completion(success) }
-    }
-
-    private static func ensureAlbum(named: String) -> PHAssetCollection {
-        let fetch = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: nil)
-        var collection: PHAssetCollection? = nil
-        fetch.enumerateObjects { col, _, stop in
-            if col.localizedTitle == named { collection = col; stop.pointee = true }
         }
-        if let c = collection { return c }
-        var placeholder: PHObjectPlaceholder?
-        PHPhotoLibrary.shared().performChangesAndWait {
-            let req = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: named)
-            placeholder = req.placeholderForCreatedAssetCollection
-        }
-        let result = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [placeholder!.localIdentifier], options: nil)
-        return result.firstObject!
     }
 }

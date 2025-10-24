@@ -23,12 +23,15 @@ public class ExportCoordinator: ObservableObject {
     @Published public var exportError: String?
     
     private var exportSession: AVAssetExportSession?
+    private let albumService: TapeAlbumServicing
     
-    public init() {}
+    init(albumService: TapeAlbumServicing = TapeAlbumService()) {
+        self.albumService = albumService
+    }
     
     // MARK: - Export Methods
     
-    public func exportTape(_ tape: Tape) {
+    public func exportTape(_ tape: Tape, albumUpdateHandler: @escaping (String) -> Void = { _ in }) {
         guard !isExporting else { return }
         
         isExporting = true
@@ -46,19 +49,21 @@ public class ExportCoordinator: ObservableObject {
             }
             
             // Start export
-            self?.startExport(tape)
+            self?.startExport(tape, albumUpdateHandler: albumUpdateHandler)
         }
     }
     
-    private func startExport(_ tape: Tape) {
+    private func startExport(_ tape: Tape, albumUpdateHandler: @escaping (String) -> Void) {
         // Use the iOS TapeExporter via bridge
-        iOSExporterBridge.export(tape: tape) { [weak self] url in
+        iOSExporterBridge.export(tape: tape) { [weak self] url, assetIdentifier in
             DispatchQueue.main.async {
                 self?.isExporting = false
                 
                 if let url = url {
                     self?.exportProgress = 1.0
                     self?.showCompletionToast = true
+                    
+                    self?.associateExportedAsset(tape: tape, assetIdentifier: assetIdentifier, albumUpdateHandler: albumUpdateHandler)
                     
                     // Clean up temporary file
                     try? FileManager.default.removeItem(at: url)
@@ -92,6 +97,27 @@ public class ExportCoordinator: ObservableObject {
     
     public func clearError() {
         exportError = nil
+    }
+    
+    private func associateExportedAsset(tape: Tape, assetIdentifier: String?, albumUpdateHandler: @escaping (String) -> Void) {
+        guard let assetIdentifier, !assetIdentifier.isEmpty else {
+            TapesLog.photos.warning("Export succeeded but no asset identifier was returned for tape \(tape.id.uuidString, privacy: .public)")
+            return
+        }
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            do {
+                let association = try await self.albumService.ensureAlbum(for: tape)
+                if tape.albumLocalIdentifier != association.albumLocalIdentifier {
+                    await MainActor.run {
+                        albumUpdateHandler(association.albumLocalIdentifier)
+                    }
+                }
+                try await self.albumService.addAssets(withIdentifiers: [assetIdentifier], to: association.albumLocalIdentifier)
+            } catch {
+                TapesLog.photos.error("Failed to associate exported asset with album: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 }
 

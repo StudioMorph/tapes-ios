@@ -6,8 +6,7 @@ import AVFoundation
 /// Bridge to the iOS TapeExporter for use within the Tapes module
 public class iOSExporterBridge {
     
-    public static func export(tape: Tape, completion: @escaping (URL?) -> Void) {
-        // Use the local TapeExporter
+    public static func export(tape: Tape, completion: @escaping (URL?, String?) -> Void) {
         TapeExporter.export(tape: tape, completion: completion)
     }
 }

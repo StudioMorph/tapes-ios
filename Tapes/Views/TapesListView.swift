@@ -121,7 +121,9 @@ struct TapesListView: View {
                 },
                 .default(Text("Merge & Save")) {
                     if let tape = tapesStore.tapes.first {
-                        exportCoordinator.exportTape(tape)
+                        exportCoordinator.exportTape(tape) { newIdentifier in
+                            tapesStore.updateTapeAlbumIdentifier(newIdentifier, for: tape.id)
+                        }
                     }
                 },
                 .cancel()
@@ -151,6 +153,7 @@ struct TapesListView: View {
             if exportCoordinator.exportError != nil {
                 ExportErrorAlert(coordinator: exportCoordinator)
             }
+            AlbumAssociationAlert()
         }
     }
 }
@@ -241,6 +244,34 @@ private struct NewTapeRevealContainer<Content: View>: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay + animationDuration) {
             onAnimationCompleted()
         }
+    }
+}
+
+private struct AlbumAssociationAlert: View {
+    @EnvironmentObject var tapesStore: TapesStore
+
+    var body: some View {
+        EmptyView()
+            .alert("Photos Album", isPresented: binding) {
+                Button("OK") {
+                    tapesStore.albumAssociationError = nil
+                }
+            } message: {
+                if let message = tapesStore.albumAssociationError {
+                    Text(message)
+                }
+            }
+    }
+
+    private var binding: Binding<Bool> {
+        Binding(
+            get: { tapesStore.albumAssociationError != nil },
+            set: { newValue in
+                if !newValue {
+                    tapesStore.albumAssociationError = nil
+                }
+            }
+        )
     }
 }
 

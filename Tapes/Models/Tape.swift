@@ -88,6 +88,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var createdAt: Date
     public var updatedAt: Date
     public var hasReceivedFirstContent: Bool
+    public var albumLocalIdentifier: String?
     
     public init(
         id: UUID = UUID(),
@@ -99,7 +100,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         clips: [Clip] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        hasReceivedFirstContent: Bool = false
+        hasReceivedFirstContent: Bool = false,
+        albumLocalIdentifier: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -111,13 +113,14 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.hasReceivedFirstContent = hasReceivedFirstContent
+        self.albumLocalIdentifier = albumLocalIdentifier
     }
     
     // MARK: - Coding Keys
     
     private enum CodingKeys: String, CodingKey {
         case id, title, orientation, scaleMode, transition, transitionDuration
-        case clips, createdAt, updatedAt, hasReceivedFirstContent
+        case clips, createdAt, updatedAt, hasReceivedFirstContent, albumLocalIdentifier
     }
     
     // MARK: - Custom Decoder for Backward Compatibility
@@ -137,6 +140,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         
         // Backward compatibility: default to false if key is missing
         hasReceivedFirstContent = try container.decodeIfPresent(Bool.self, forKey: .hasReceivedFirstContent) ?? false
+        albumLocalIdentifier = try container.decodeIfPresent(String.self, forKey: .albumLocalIdentifier)
     }
     
     // MARK: - Computed Properties
@@ -156,6 +160,10 @@ public struct Tape: Identifiable, Codable, Equatable {
     
     public var clipCount: Int {
         return clips.count
+    }
+
+    public var hasAssociatedAlbum: Bool {
+        return !(albumLocalIdentifier?.isEmpty ?? true)
     }
     
     // MARK: - Mutating Methods
