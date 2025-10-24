@@ -24,6 +24,8 @@ struct TapeCardView: View {
     let onClipInserted: (Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
     let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void
+    let onTitleFocusRequest: () -> Void
+    let isDimmed: Bool
     
     @EnvironmentObject var tapeStore: TapesStore
     @StateObject private var castManager = CastManager.shared
@@ -32,8 +34,6 @@ struct TapeCardView: View {
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var importSource: ImportSource? = nil
-    @State private var titleDraft: String = ""
-    @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
     @State private var savedCarouselPosition: Int = 0 // Clip-space position (0 = start, N = end)
@@ -52,12 +52,36 @@ struct TapeCardView: View {
     }
 
     private var displayedTitle: String {
-        let source = isTitleFocused ? titleDraft : tape.title
-        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = tape.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? " " : trimmed
     }
     
-    var body: some View {        VStack(alignment: .leading, spacing: 0) {
+    init(
+        tape: Binding<Tape>,
+        onSettings: @escaping () -> Void,
+        onPlay: @escaping () -> Void,
+        onAirPlay: @escaping () -> Void,
+        onThumbnailDelete: @escaping (Clip) -> Void,
+        onClipInserted: @escaping (Clip, Int) -> Void,
+        onClipInsertedAtPlaceholder: @escaping (Clip, CarouselItem) -> Void,
+        onMediaInserted: @escaping ([PickedMedia], InsertionStrategy) -> Void,
+        onTitleFocusRequest: @escaping () -> Void = {},
+        isDimmed: Bool = false
+    ) {
+        self._tape = tape
+        self.onSettings = onSettings
+        self.onPlay = onPlay
+        self.onAirPlay = onAirPlay
+        self.onThumbnailDelete = onThumbnailDelete
+        self.onClipInserted = onClipInserted
+        self.onClipInsertedAtPlaceholder = onClipInsertedAtPlaceholder
+        self.onMediaInserted = onMediaInserted
+        self.onTitleFocusRequest = onTitleFocusRequest
+        self.isDimmed = isDimmed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
             // Title row
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 // Left group: Title (hug) + 4 + pencil
@@ -68,37 +92,6 @@ struct TapeCardView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
-                        .opacity(isTitleFocused ? 0 : 1)
-                        .overlay(alignment: .leading) {
-                            GeometryReader { proxy in
-                                TextField("", text: $titleDraft)
-                                    .focused($isTitleFocused)
-                                    .textFieldStyle(.plain)
-                                    .font(Tokens.Typography.title)
-                                    .foregroundColor(Tokens.Colors.onSurface)
-                                    .disableAutocorrection(true)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                    .submitLabel(.done)
-                                    .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
-                                    .frame(width: proxy.size.width, alignment: .leading)
-                                    .clipped()
-                                    .opacity(isTitleFocused ? 1 : 0)
-                                    .allowsHitTesting(isTitleFocused)
-                                    .onSubmit {
-                                        commitTitle()
-                                        isTitleFocused = false
-                                    }
-                                    .onChange(of: tape.title) { _ in
-                                        syncTitleDraftIfNeeded()
-                                    }
-                                    .onChange(of: isTitleFocused) { focused in
-                                        if !focused {
-                                            commitTitle()
-                                        }
-                                    }
-                            }
-                        }
                     Image(systemName: "pencil")
                         .font(Tokens.Typography.title)
                         .foregroundColor(Tokens.Colors.onSurface)
@@ -110,7 +103,6 @@ struct TapeCardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    guard !isTitleFocused else { return }
                     beginEditingTitle()
                 }
                 .layoutPriority(1)
@@ -275,9 +267,10 @@ struct TapeCardView: View {
             CameraView(coordinator: cameraCoordinator)
                 .ignoresSafeArea(.all, edges: .all)
         }
-        .onAppear {
-            syncTitleDraftIfNeeded(force: true)
-        }
+        .opacity(isDimmed ? 0.2 : 1)
+        .allowsHitTesting(!isDimmed)
+        .opacity(isDimmed ? 0.2 : 1)
+        .allowsHitTesting(!isDimmed)
     }
     
     // MARK: - Helper Functions
@@ -453,33 +446,9 @@ struct TapeCardView: View {
     }
 
     private func beginEditingTitle() {
-        guard !isTitleFocused else { return }
-        titleDraft = tape.title
-        isTitleFocused = true
+        onTitleFocusRequest()
     }
 
-    private func commitTitle() {
-        let trimmed = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            titleDraft = tape.title
-            return
-        }
-
-        if trimmed != tape.title {
-            let previousTape = tape
-            tape.title = trimmed
-            tape.updatedAt = Date()
-            tapeStore.updateTape(tape, previousTape: previousTape)
-        }
-
-        titleDraft = tape.title
-    }
-
-    private func syncTitleDraftIfNeeded(force: Bool = false) {
-        if force || !isTitleFocused {
-            titleDraft = tape.title
-        }
-    }
 }
 
 #Preview("Dark Mode") {

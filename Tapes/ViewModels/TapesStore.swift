@@ -368,6 +368,18 @@ extension TapesStore {
     }
     
     /// Inserts a clip at a specific placeholder position
+    public func renameTapeTitle(_ tapeID: UUID, to newTitle: String) {
+        guard var tape = getTape(by: tapeID) else { return }
+        let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let previousTape = tape
+        if trimmed != tape.title {
+            tape.title = trimmed
+            tape.updatedAt = Date()
+            updateTape(tape, previousTape: previousTape)
+        }
+    }
+
     public func insertClipAtPlaceholder(_ clip: Clip, in tapeId: UUID, placeholder: CarouselItem) {
         guard var tape = getTape(by: tapeId) else { return }
         

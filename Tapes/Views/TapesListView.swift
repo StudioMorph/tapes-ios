@@ -7,15 +7,36 @@ struct TapesListView: View {
     @State private var showingPlayOptions = false
     @State private var showingQAChecklist = false
     @State private var tapeToPreview: Tape?
-    
+    @State private var overlayState: TapeEditOverlayState?
+    @State private var tapeFrames: TapeFrameMap = [:]
+    @State private var keyboardHeight: CGFloat = 0
+    @State private var scrollToTape: ((UUID) -> Void)?
+
     var body: some View {
         NavigationView {
-            VStack {
-                headerView
-                tapesList
-                Spacer()
+            ZStack(alignment: .top) {
+                VStack {
+                    headerView
+                    tapesList
+                    Spacer()
+                }
+                .navigationBarHidden(true)
+
+                if let overlayState {
+                    TapeTitleEditOverlay(
+                        state: overlayState,
+                        keyboardHeight: keyboardHeight,
+                        onCommit: { newTitle in
+                            tapesStore.renameTapeTitle(overlayState.tape.id, to: newTitle)
+                            self.overlayState = nil
+                        },
+                        onCancel: {
+                            self.overlayState = nil
+                        }
+                    )
+                    .transition(.opacity)
+                }
             }
-            .navigationBarHidden(true)
         }
         .background(Tokens.Colors.bg)
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
@@ -31,16 +52,22 @@ struct TapesListView: View {
         .sheet(isPresented: $showingQAChecklist) {
             QAChecklistView()
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+            keyboardHeight = keyboardHeight(from: notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardHeight = 0
+        }
     }
-    
+
     private var headerView: some View {
         HStack {
             Text("TAPES")
                 .font(.system(size: 24, weight: .bold))
                 .foregroundColor(Tokens.Colors.red)
-            
+
             Spacer()
-            
+
             Button(action: { showingQAChecklist = true }) {
                 Image(systemName: "checklist")
                     .font(.title2)
@@ -50,48 +77,96 @@ struct TapesListView: View {
         .padding(.horizontal, Tokens.Spacing.m)
         .padding(.top, Tokens.Spacing.s)
     }
-    
+
     private var tapesList: some View {
-        ScrollView {
-            LazyVStack(spacing: Tokens.Spacing.m) {  // 16pt vertical spacing between cards
-                ForEach($tapesStore.tapes) { $tape in
-                    let tapeID = $tape.wrappedValue.id
-                    NewTapeRevealContainer(
-                        tapeID: tapeID,
-                        isNewlyInserted: tapesStore.latestInsertedTapeID == tapeID,
-                        isPendingReveal: tapesStore.pendingTapeRevealID == tapeID,
-                        onAnimationCompleted: {
-                            tapesStore.clearLatestInsertedTapeID(tapeID)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: Tokens.Spacing.m) {
+                    ForEach($tapesStore.tapes) { $tape in
+                        let tapeID = $tape.wrappedValue.id
+                        let onSettings = { tapesStore.selectTape($tape.wrappedValue) }
+                        let onPlay: () -> Void = {
+                            tapeToPreview = $tape.wrappedValue
+                            showingPlayOptions = true
                         }
-                    ) {
-                        TapeCardView(
-                            tape: $tape,
-                            onSettings: { tapesStore.selectTape($tape.wrappedValue) },
-                            onPlay: {
-                                tapeToPreview = $tape.wrappedValue
-                                showingPlayOptions = true
-                            },
-                            onAirPlay: { },
-                            onThumbnailDelete: { clip in
-                                tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
-                            },
-                            onClipInserted: { clip, index in
-                                tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
-                            },
-                            onClipInsertedAtPlaceholder: { clip, placeholder in
-                                tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
-                            },
-                            onMediaInserted: { pickedMedia, strategy in
-                                tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
+                        let onAirPlay: () -> Void = { }
+                        let onThumbnailDelete: (Clip) -> Void = { clip in
+                            tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
+                        }
+                        let onClipInserted: (Clip, Int) -> Void = { clip, index in
+                            tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
+                        }
+                        let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void = { clip, placeholder in
+                            tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
+                        }
+                        let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void = { pickedMedia, strategy in
+                            tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
+                        }
+                        let actions = TapeEditOverlayState.Actions(
+                            onSettings: onSettings,
+                            onPlay: onPlay,
+                            onAirPlay: onAirPlay,
+                            onThumbnailDelete: onThumbnailDelete,
+                            onClipInserted: onClipInserted,
+                            onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
+                            onMediaInserted: onMediaInserted
+                        )
+                        NewTapeRevealContainer(
+                            tapeID: tapeID,
+                            isNewlyInserted: tapesStore.latestInsertedTapeID == tapeID,
+                            isPendingReveal: tapesStore.pendingTapeRevealID == tapeID,
+                            onAnimationCompleted: {
+                                tapesStore.clearLatestInsertedTapeID(tapeID)
+                            }
+                        ) {
+                            TapeCardView(
+                                tape: $tape,
+                                onSettings: onSettings,
+                                onPlay: onPlay,
+                                onAirPlay: onAirPlay,
+                                onThumbnailDelete: onThumbnailDelete,
+                                onClipInserted: onClipInserted,
+                                onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
+                                onMediaInserted: onMediaInserted,
+                                onTitleFocusRequest: {
+                                    guard let frame = tapeFrames[tapeID] else { return }
+                                    scrollToTape?(tapeID)
+                                    overlayState = TapeEditOverlayState(
+                                        tapeID: tapeID,
+                                        binding: $tape,
+                                        frame: frame,
+                                        actions: actions
+                                    )
+                                },
+                                isDimmed: overlayState?.tapeID == tapeID
+                            )
+                        }
+                        .padding(.horizontal, Tokens.Spacing.m)
+                        .id(tapeID)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(key: TapeFramePreferenceKey.self, value: [tapeID: geo.frame(in: .global)])
                             }
                         )
                     }
-                    .padding(.horizontal, Tokens.Spacing.m)  // 16pt outer padding
                 }
+                .onPreferenceChange(TapeFramePreferenceKey.self) { value in
+                    tapeFrames.merge(value) { _, new in new }
+                }
+            }
+            .onAppear {
+                scrollToTape = { id in
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        proxy.scrollTo(id, anchor: .top)
+                    }
+                }
+            }
+            .onDisappear {
+                scrollToTape = nil
             }
         }
     }
-    
+
     private var settingsSheet: some View {
         if let selectedTape = tapesStore.selectedTape {
             return AnyView(TapeSettingsSheet(
@@ -108,7 +183,7 @@ struct TapesListView: View {
             return AnyView(EmptyView())
         }
     }
-    
+
     private var playOptionsSheet: ActionSheet {
         ActionSheet(
             title: Text("Play Options"),
@@ -130,7 +205,7 @@ struct TapesListView: View {
             ]
         )
     }
-    
+
     private var playerView: some View {
         if let tape = tapeToPreview {
             return AnyView(TapePlayerView(tape: tape, onDismiss: {
@@ -141,9 +216,9 @@ struct TapesListView: View {
             return AnyView(EmptyView())
         }
     }
-    
+
     private var exportOverlay: some View {
-        return ZStack {
+        ZStack {
             if exportCoordinator.isExporting {
                 ExportProgressOverlay(coordinator: exportCoordinator)
             }
@@ -155,6 +230,11 @@ struct TapesListView: View {
             }
             AlbumAssociationAlert()
         }
+    }
+
+private func keyboardHeight(from notification: Notification) -> CGFloat {
+        guard let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return 0 }
+        return frameValue.cgRectValue.height
     }
 }
 
