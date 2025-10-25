@@ -70,22 +70,35 @@ struct EndPlusView: View {
 }
 
 struct ClipThumbnailView: View {
+    @EnvironmentObject private var tapeStore: TapesStore
+    let clip: Clip
+    
+    var body: some View {
+        Group {
+            if clip.isPlaceholder {
+                PlaceholderClipView(state: tapeStore.clipLoadingStates[clip.id])
+            } else {
+                ResolvedClipThumbnail(clip: clip)
+            }
+        }
+        .id("clip-\(clip.id)-\(clip.thumbnail != nil)-\(clip.isPlaceholder)")
+    }
+}
+
+private struct ResolvedClipThumbnail: View {
     let clip: Clip
     
     var body: some View {
         ZStack {
-            // Thumbnail background - square corners
             Rectangle()
                 .fill(Tokens.Colors.elevated)
             
-            // Actual thumbnail or placeholder
             if let thumbnail = clip.thumbnailImage {
                 Image(uiImage: thumbnail)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .clipped()
             } else {
-                // Non-intrusive skeleton (colors from tokens)
                 RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
                     .fill(Tokens.Colors.elevated)
                     .overlay {
@@ -95,7 +108,6 @@ struct ClipThumbnailView: View {
                     }
             }
             
-            // Duration badge in bottom-right corner
             VStack {
                 Spacer()
                 HStack {
@@ -109,9 +121,63 @@ struct ClipThumbnailView: View {
         .overlay(alignment: .topTrailing) {
             Text(clip.thumbnail == nil ? "no thumb" : "thumb")
                 .font(.caption2)
-                .opacity(0.001) // keep essentially invisible; remove later
+                .opacity(0.001)
         }
-        .id("clip-\(clip.id)-\(clip.thumbnail != nil)") // Force re-render when thumbnail changes
+    }
+}
+
+private struct PlaceholderClipView: View {
+    let state: ClipLoadingState?
+    
+    private var statusText: String {
+        guard let state else { return "Queued" }
+        switch state.phase {
+        case .queued:
+            return "Queued"
+        case .transferring:
+            return "Loading…"
+        case .processing:
+            return "Processing…"
+        case .ready:
+            return "Ready"
+        case .error(let message):
+            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Failed" : trimmed
+        }
+    }
+    
+    private var isError: Bool {
+        guard let state else { return false }
+        if case .error = state.phase {
+            return true
+        }
+        return false
+    }
+    
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
+                .fill(Tokens.Colors.elevated)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
+                        .strokeBorder(isError ? Color.red : Tokens.Colors.onSurface.opacity(0.1), lineWidth: 1)
+                )
+            VStack(spacing: 8) {
+                if isError {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(.yellow)
+                } else {
+                    ProgressView()
+                        .controlSize(.regular)
+                        .tint(Tokens.Colors.onSurface)
+                }
+                Text(statusText)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Tokens.Colors.onSurface)
+            }
+            .padding(12)
+        }
     }
 }
 
@@ -165,4 +231,5 @@ struct DurationBadge: View {
             .frame(width: 150, height: 84)
     }
     .background(Tokens.Colors.bg)
+    .environmentObject(TapesStore())
 }

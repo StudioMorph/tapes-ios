@@ -215,6 +215,12 @@ public struct Tape: Identifiable, Codable, Equatable {
         updatedAt = Date()
     }
     
+    public func removingPlaceholders() -> Tape {
+        var copy = self
+        copy.clips.removeAll { $0.isPlaceholder }
+        return copy
+    }
+    
     // MARK: - Sample Data
     
     public static var sampleTapes: [Tape] {

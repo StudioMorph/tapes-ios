@@ -203,6 +203,14 @@ struct TapeCardView: View {
                 .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
                 .zIndex(2) // on top of everything
             }
+            .overlay(alignment: .topLeading) {
+                if let progress = tapeStore.batchProgress(for: tape.id),
+                   progress.inProgress > 0 || progress.failed > 0 {
+                    BatchProgressChip(progress: progress)
+                        .padding(.leading, Tokens.Spacing.m)
+                        .padding(.top, Tokens.Spacing.s)
+                }
+            }
             .frame(height: thumbH)
             .padding(.vertical, Tokens.Spacing.m)
         }
@@ -225,40 +233,35 @@ struct TapeCardView: View {
                 guard !results.isEmpty else { return }
 
                 Task {
-                    let picked = await resolvePickedMediaOrdered(results)
-                    TapesLog.mediaPicker.info("📦 converted count=\(picked.count, privacy: .public)")
-                    guard !picked.isEmpty else { return }
-
+                    let tapeID = tape.id
+                    var placeholderIDs: [UUID] = []
                     await MainActor.run {
-                        // Capture current position in clip-space before insertion
                         let pSnapshot = savedCarouselPosition
-                        let k = picked.count
-                        
-                        // Route insertion through the boundary currently under the FAB
+                        let insertionIndex: Int
                         switch importSource {
                         case .leftPlaceholder:
-                            insertClipsAtPosition(picked: picked, at: 0, into: $tape)
+                            insertionIndex = 0
                         case .rightPlaceholder:
-                            insertClipsAtPosition(picked: picked, at: tape.clips.count, into: $tape)
+                            insertionIndex = tape.clips.count
                         case .centerFAB, .none:
-                            let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
-                            insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
+                            insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
                         }
-                        
-                        // Calculate target position in clip-space after insertion
+                        placeholderIDs = tapeStore.insertPlaceholderClips(
+                            count: results.count,
+                            into: tapeID,
+                            at: insertionIndex
+                        )
+                        let k = results.count
                         let pAfter = pSnapshot + k
-                        let targetItemIndex = pAfter + 1 // Convert to item-space (+1 for start-plus)
-                        
-                        // Generate monotonic token for this operation
+                        let targetItemIndex = pAfter + 1
                         let token = UUID()
                         pendingToken = token
                         pendingTargetItemIndex = targetItemIndex
-                        
-                        // First-content side effect: create new empty tape if this was the first content
                         checkAndCreateEmptyTapeIfNeeded()
-                        
-                        // Reset import source
                         importSource = nil
+                    }
+                    if !placeholderIDs.isEmpty {
+                        tapeStore.processPickerResults(results, placeholderIDs: placeholderIDs, tapeID: tapeID)
                     }
                 }
             }
@@ -371,67 +374,6 @@ struct TapeCardView: View {
     }
     
 
-    private func processPickerResults(_ results: [PHPickerResult]) async -> [PickedMedia] {
-        var pickedMedia: [PickedMedia] = []
-        
-        for result in results {
-            do {
-                // Try to load as video first
-                let movie = try await withCheckedThrowingContinuation { continuation in
-                    result.itemProvider.loadTransferable(type: Movie.self) { result in
-                        continuation.resume(with: result)
-                    }
-                }
-                
-                let thumbnail = await generateThumbnail(from: movie.url)
-                let duration = await getVideoDuration(url: movie.url)
-                
-                pickedMedia.append(.video(url: movie.url, duration: duration, assetIdentifier: result.assetIdentifier))
-            } catch {
-                // Try to load as image
-                do {
-                    let imageData = try await withCheckedThrowingContinuation { continuation in
-                        result.itemProvider.loadTransferable(type: Data.self) { result in
-                            continuation.resume(with: result)
-                        }
-                    }
-                    
-                    if let uiImage = UIImage(data: imageData) {
-                        let thumbnail = uiImage
-                        let duration = Tokens.Timing.photoDefaultDuration
-                        
-                        pickedMedia.append(.photo(image: uiImage, assetIdentifier: result.assetIdentifier))
-                    }
-                } catch {
-                    TapesLog.mediaPicker.error("Failed to load media item: \(error.localizedDescription)")
-                }
-            }
-        }
-        
-        return pickedMedia
-    }
-    
-    private func generateThumbnail(from url: URL) async -> UIImage? {
-        let asset = AVAsset(url: url)
-        let imageGenerator = AVAssetImageGenerator(asset: asset)
-        imageGenerator.appliesPreferredTrackTransform = true
-        imageGenerator.maximumSize = CGSize(width: 320, height: 320)
-        
-        do {
-            let cgImage = try await imageGenerator.image(at: .zero).image
-            return UIImage(cgImage: cgImage)
-        } catch {
-            TapesLog.mediaPicker.error("Thumbnail generation failed: \(error.localizedDescription)")
-            return nil
-        }
-    }
-    
-    private func getVideoDuration(url: URL) async -> TimeInterval {
-        let asset = AVAsset(url: url)
-        let duration = try? await asset.load(.duration)
-        return CMTimeGetSeconds(duration ?? .zero)
-    }
-    
     /// Check if this tape just received its first content and create new empty tape if needed
     private func checkAndCreateEmptyTapeIfNeeded() {
         // Check if tape just transitioned from 0 → >0 clips and hasReceivedFirstContent == false
@@ -449,6 +391,57 @@ struct TapeCardView: View {
         onTitleFocusRequest()
     }
 
+}
+
+private struct BatchProgressChip: View {
+    let progress: ClipBatchProgress
+    
+    private var label: String {
+        if progress.failed > 0 && progress.inProgress > 0 {
+            return "\(progress.ready)/\(progress.total) ready • \(progress.failed) failed"
+        } else if progress.failed > 0 {
+            return "\(progress.failed) failed"
+        } else {
+            return "Importing \(progress.ready)/\(progress.total)"
+        }
+    }
+    
+    private var backgroundColor: Color {
+        Tokens.Colors.card.opacity(0.94)
+    }
+    
+    @ViewBuilder
+    private var leadingIcon: some View {
+        if progress.failed > 0 {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.yellow)
+                .font(.system(size: 14, weight: .semibold))
+        } else if progress.inProgress > 0 {
+            ProgressView()
+                .controlSize(.small)
+                .tint(Tokens.Colors.onSurface)
+        } else {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(.green)
+                .font(.system(size: 14, weight: .semibold))
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            leadingIcon
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Tokens.Colors.onSurface)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(backgroundColor)
+                .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 2)
+        )
+    }
 }
 
 #Preview("Dark Mode") {

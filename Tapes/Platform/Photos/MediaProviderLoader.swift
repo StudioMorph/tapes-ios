@@ -137,6 +137,24 @@ func loadImage(from result: PHPickerResult) async throws -> UIImage {
     }
 }
 
+func resolvePickedMedia(from result: PHPickerResult) async throws -> PickedMedia {
+    if result.itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+        let url = try await loadMovieURL(from: result)
+        let asset = AVURLAsset(url: url)
+        let duration = try? await asset.load(.duration)
+        let seconds = duration?.seconds ?? 0
+        return .video(url: url, duration: seconds, assetIdentifier: result.assetIdentifier)
+    }
+
+    if result.itemProvider.canLoadObject(ofClass: UIImage.self) ||
+        result.itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+        let image = try await loadImage(from: result)
+        return .photo(image: image, assetIdentifier: result.assetIdentifier)
+    }
+
+    throw MediaLoaderError.loadFailed(nil)
+}
+
 /// Preserve selection order, loading items concurrently but returning in-order.
 func resolvePickedMediaOrdered(_ results: [PHPickerResult]) async -> [PickedMedia] {
     if results.isEmpty { return [] }
@@ -146,19 +164,8 @@ func resolvePickedMediaOrdered(_ results: [PHPickerResult]) async -> [PickedMedi
         for (idx, r) in results.enumerated() {
             group.addTask {
                 do {
-                    if r.itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-                        let url = try await loadMovieURL(from: r)
-                        let asset = AVURLAsset(url: url)
-                        let duration = try? await asset.load(.duration)
-                        let seconds = duration?.seconds ?? 0
-                        return (idx, .video(url: url, duration: seconds, assetIdentifier: r.assetIdentifier))
-                    } else if r.itemProvider.canLoadObject(ofClass: UIImage.self) || r.itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                        let img = try await loadImage(from: r)
-                        return (idx, .photo(image: img, assetIdentifier: r.assetIdentifier))
-                    } else {
-                        log.error("❌ Unsupported media type at index \(idx)")
-                        return (idx, nil)
-                    }
+                    let media = try await resolvePickedMedia(from: r)
+                    return (idx, media)
                 } catch {
                     log.error("❌ Resolving item failed at index \(idx): \(String(describing: error), privacy: .public)")
                     return (idx, nil)

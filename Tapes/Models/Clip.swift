@@ -21,6 +21,22 @@ public struct Clip: Identifiable, Codable, Equatable {
     public var overrideScaleMode: ScaleMode?
     public var createdAt: Date
     public var updatedAt: Date
+    public var isPlaceholder: Bool
+    
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case assetLocalId
+        case localURL
+        case imageData
+        case clipType
+        case duration
+        case thumbnail
+        case rotateQuarterTurns
+        case overrideScaleMode
+        case createdAt
+        case updatedAt
+        case isPlaceholder
+    }
     
     public init(
         id: UUID = UUID(),
@@ -33,7 +49,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         rotateQuarterTurns: Int = 0,
         overrideScaleMode: ScaleMode? = nil,
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        isPlaceholder: Bool = false
     ) {
         self.id = id
         self.assetLocalId = assetLocalId
@@ -46,6 +63,41 @@ public struct Clip: Identifiable, Codable, Equatable {
         self.overrideScaleMode = overrideScaleMode
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.isPlaceholder = isPlaceholder
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        assetLocalId = try container.decodeIfPresent(String.self, forKey: .assetLocalId)
+        localURL = try container.decodeIfPresent(URL.self, forKey: .localURL)
+        imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
+        clipType = try container.decode(ClipType.self, forKey: .clipType)
+        duration = try container.decode(TimeInterval.self, forKey: .duration)
+        thumbnail = try container.decodeIfPresent(Data.self, forKey: .thumbnail)
+        rotateQuarterTurns = try container.decode(Int.self, forKey: .rotateQuarterTurns)
+        overrideScaleMode = try container.decodeIfPresent(ScaleMode.self, forKey: .overrideScaleMode)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        isPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .isPlaceholder) ?? false
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(assetLocalId, forKey: .assetLocalId)
+        try container.encodeIfPresent(localURL, forKey: .localURL)
+        try container.encodeIfPresent(imageData, forKey: .imageData)
+        try container.encode(clipType, forKey: .clipType)
+        try container.encode(duration, forKey: .duration)
+        try container.encodeIfPresent(thumbnail, forKey: .thumbnail)
+        try container.encode(rotateQuarterTurns, forKey: .rotateQuarterTurns)
+        try container.encodeIfPresent(overrideScaleMode, forKey: .overrideScaleMode)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        if isPlaceholder {
+            try container.encode(true, forKey: .isPlaceholder)
+        }
     }
     
     // MARK: - Computed Properties
@@ -132,6 +184,17 @@ public struct Clip: Identifiable, Codable, Equatable {
             assetLocalId: asset.localIdentifier,
             rotateQuarterTurns: rotateQuarterTurns,
             overrideScaleMode: overrideScaleMode
+        )
+    }
+
+    public static func placeholder(id: UUID = UUID()) -> Clip {
+        Clip(
+            id: id,
+            clipType: .video,
+            duration: 0,
+            createdAt: Date(),
+            updatedAt: Date(),
+            isPlaceholder: true
         )
     }
     

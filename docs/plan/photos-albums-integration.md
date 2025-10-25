@@ -1,5 +1,10 @@
 # iOS Photos Album Integration Plan
 
+## Current Behaviour Snapshot
+- Creating or ensuring the album now happens automatically the moment a user drops the first asset into an otherwise empty tape; the new collection uses the tape’s current title and the resulting identifier is stored on the tape (`Tapes/ViewModels/TapesStore.swift:807`, `Tapes/Platform/Photos/TapeAlbumService.swift:55-79`).
+- Any later assets added to that same tape reuse the persisted album identifier and are appended to the existing Photos album without creating duplicates (`Tapes/ViewModels/TapesStore.swift:190-198`, `Tapes/Platform/Photos/TapeAlbumService.swift:82-116`).
+- When a tape title changes, the album service renames the Photos album (or recreates it if necessary) so the titles continue to match; the tape’s stored identifier is updated whenever Photos provides a replacement collection (`Tapes/ViewModels/TapesStore.swift:852-891`, `Tapes/Platform/Photos/TapeAlbumService.swift:134-199`).
+
 ## Context & Current Findings
 - The app already persists `Tape` (JSON on disk) with clip metadata, carousel logic, export, and AirPlay flows fully functional. Media insertion lives in `TapesStore` (`insertMedia`, `insertClip…`) while `TapeCardView` drives UX side-effects (first content sentinel, empty tape creation).
 - Capture goes through `CameraCoordinator` (UIKit camera). Videos get a placeholder `localIdentifier`, but photos are returned as raw `UIImage` with no identifier. Saving uses `PHPhotoLibrary.performChanges` with default auth, logging via `TapesLog.camera`.
@@ -90,4 +95,3 @@ This approach keeps album management confined to platform/Photos infrastructure 
 - Captured photos currently discard asset identifiers → adjust `CameraCoordinator` to capture placeholders; fallback to guidance toast if unavailable.
 - PHPicker images may lack identifiers under limited access → continue without album association but queue a retry once identifiers become available.
 - Duplicate album names may confuse users → rely on stored identifier and document behaviour; consider adding debug menu to inspect associations.
-
