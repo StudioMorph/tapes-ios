@@ -15,6 +15,13 @@ enum ImportSource {
 
 
 struct TapeCardView: View {
+    struct TitleEditingConfig {
+        let text: Binding<String>
+        let focusSessionID: UUID
+        let onCommit: () -> Void
+        let onCancel: () -> Void
+    }
+
     @Binding var tape: Tape
     let onSettings: () -> Void
     let onPlay: () -> Void
@@ -26,7 +33,8 @@ struct TapeCardView: View {
     let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void
     let onTitleFocusRequest: () -> Void
     let isDimmed: Bool
-    
+    let titleEditingConfig: TitleEditingConfig?
+
     @EnvironmentObject var tapeStore: TapesStore
     @StateObject private var castManager = CastManager.shared
     @StateObject private var cameraCoordinator = CameraCoordinator()
@@ -45,7 +53,10 @@ struct TapeCardView: View {
     // Pending target for programmatic scroll (scoped by tape ID)
     @State private var pendingTargetItemIndex: Int? = nil
     @State private var pendingToken: UUID? = nil
-    
+    @FocusState private var isTitleFocused: Bool
+    @State private var lastFocusSessionID: UUID?
+    @State private var isEndingTitleEditing = false
+
     // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
         return tape.clips.count // Clip-space: 0 = start, N = end
@@ -55,7 +66,44 @@ struct TapeCardView: View {
         let trimmed = tape.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? " " : trimmed
     }
-    
+
+    @ViewBuilder
+    private var titleTextView: some View {
+        if let config = titleEditingConfig {
+            TextField("", text: config.text)
+                .focused($isTitleFocused)
+                .textFieldStyle(.plain)
+                .font(Tokens.Typography.title)
+                .foregroundColor(Tokens.Colors.onSurface)
+                .disableAutocorrection(true)
+                .submitLabel(.done)
+                .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                .onAppear {
+                    focusIfNeeded(for: config)
+                }
+                .onChange(of: config.focusSessionID) { _ in
+                    focusIfNeeded(for: config)
+                }
+                .onSubmit {
+                    finishTitleEditing(commit: true, config: config)
+                }
+                .onChange(of: isTitleFocused) { focused in
+                    guard titleEditingConfig != nil else { return }
+                    guard !isEndingTitleEditing else { return }
+                    if !focused {
+                        finishTitleEditing(commit: false, config: config)
+                    }
+                }
+        } else {
+            Text(displayedTitle)
+                .font(Tokens.Typography.title)
+                .foregroundColor(Tokens.Colors.onSurface)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+        }
+    }
+
     init(
         tape: Binding<Tape>,
         onSettings: @escaping () -> Void,
@@ -66,7 +114,8 @@ struct TapeCardView: View {
         onClipInsertedAtPlaceholder: @escaping (Clip, CarouselItem) -> Void,
         onMediaInserted: @escaping ([PickedMedia], InsertionStrategy) -> Void,
         onTitleFocusRequest: @escaping () -> Void = {},
-        isDimmed: Bool = false
+        isDimmed: Bool = false,
+        titleEditingConfig: TitleEditingConfig? = nil
     ) {
         self._tape = tape
         self.onSettings = onSettings
@@ -78,6 +127,7 @@ struct TapeCardView: View {
         self.onMediaInserted = onMediaInserted
         self.onTitleFocusRequest = onTitleFocusRequest
         self.isDimmed = isDimmed
+        self.titleEditingConfig = titleEditingConfig
     }
 
     var body: some View {
@@ -86,23 +136,20 @@ struct TapeCardView: View {
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 // Left group: Title (hug) + 4 + pencil
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(displayedTitle)
-                        .font(Tokens.Typography.title)
-                        .foregroundColor(Tokens.Colors.onSurface)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                    titleTextView
                     Image(systemName: "pencil")
                         .font(Tokens.Typography.title)
                         .foregroundColor(Tokens.Colors.onSurface)
                         .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                         .onTapGesture {
+                            guard titleEditingConfig == nil else { return }
                             beginEditingTitle()
                         }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    guard titleEditingConfig == nil else { return }
                     beginEditingTitle()
                 }
                 .layoutPriority(1)
@@ -387,7 +434,28 @@ struct TapeCardView: View {
             }
     }
 
+    private func focusIfNeeded(for config: TitleEditingConfig) {
+        guard lastFocusSessionID != config.focusSessionID else { return }
+        lastFocusSessionID = config.focusSessionID
+        DispatchQueue.main.async {
+            isTitleFocused = true
+        }
+    }
+
+    private func finishTitleEditing(commit: Bool, config: TitleEditingConfig) {
+        guard !isEndingTitleEditing else { return }
+        isEndingTitleEditing = true
+        isTitleFocused = false
+        let action = commit ? config.onCommit : config.onCancel
+        DispatchQueue.main.async {
+            action()
+            lastFocusSessionID = nil
+            isEndingTitleEditing = false
+        }
+    }
+
     private func beginEditingTitle() {
+        guard titleEditingConfig == nil else { return }
         onTitleFocusRequest()
     }
 

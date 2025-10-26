@@ -7,10 +7,12 @@ struct TapesListView: View {
     @State private var showingPlayOptions = false
     @State private var showingQAChecklist = false
     @State private var tapeToPreview: Tape?
-    @State private var overlayState: TapeEditOverlayState?
     @State private var tapeFrames: TapeFrameMap = [:]
     @State private var keyboardHeight: CGFloat = 0
-    @State private var scrollToTape: ((UUID) -> Void)?
+    @State private var scrollToTape: ((UUID, UnitPoint) -> Void)?
+    @State private var editingTapeID: UUID?
+    @State private var editingSessionID: UUID?
+    @State private var draftTitle: String = ""
 
     var body: some View {
         NavigationView {
@@ -21,21 +23,6 @@ struct TapesListView: View {
                     Spacer()
                 }
                 .navigationBarHidden(true)
-
-                if let overlayState {
-                    TapeTitleEditOverlay(
-                        state: overlayState,
-                        keyboardHeight: keyboardHeight,
-                        onCommit: { newTitle in
-                            tapesStore.renameTapeTitle(overlayState.tape.id, to: newTitle)
-                            self.overlayState = nil
-                        },
-                        onCancel: {
-                            self.overlayState = nil
-                        }
-                    )
-                    .transition(.opacity)
-                }
             }
         }
         .background(Tokens.Colors.bg)
@@ -54,9 +41,17 @@ struct TapesListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
             keyboardHeight = keyboardHeight(from: notification)
+            if let editingTapeID {
+                ensureTapeVisible(tapeID: editingTapeID)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboardHeight = 0
+        }
+        .onChange(of: keyboardHeight) { _ in
+            if let editingTapeID {
+                ensureTapeVisible(tapeID: editingTapeID)
+            }
         }
     }
 
@@ -102,15 +97,19 @@ struct TapesListView: View {
                         let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void = { pickedMedia, strategy in
                             tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
                         }
-                        let actions = TapeEditOverlayState.Actions(
-                            onSettings: onSettings,
-                            onPlay: onPlay,
-                            onAirPlay: onAirPlay,
-                            onThumbnailDelete: onThumbnailDelete,
-                            onClipInserted: onClipInserted,
-                            onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
-                            onMediaInserted: onMediaInserted
-                        )
+                        let isEditingTitle = editingTapeID == tapeID
+                        let titleEditingConfig: TapeCardView.TitleEditingConfig? = {
+                            guard isEditingTitle, let focusID = editingSessionID else { return nil }
+                            return TapeCardView.TitleEditingConfig(
+                                text: Binding(
+                                    get: { draftTitle },
+                                    set: { draftTitle = $0 }
+                                ),
+                                focusSessionID: focusID,
+                                onCommit: commitTitleEditing,
+                                onCancel: cancelTitleEditing
+                            )
+                        }()
                         NewTapeRevealContainer(
                             tapeID: tapeID,
                             isNewlyInserted: tapesStore.latestInsertedTapeID == tapeID,
@@ -129,16 +128,10 @@ struct TapesListView: View {
                                 onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
                                 onMediaInserted: onMediaInserted,
                                 onTitleFocusRequest: {
-                                    guard let frame = tapeFrames[tapeID] else { return }
-                                    scrollToTape?(tapeID)
-                                    overlayState = TapeEditOverlayState(
-                                        tapeID: tapeID,
-                                        binding: $tape,
-                                        frame: frame,
-                                        actions: actions
-                                    )
+                                    startTitleEditing(tapeID: tapeID, currentTitle: $tape.wrappedValue.title)
                                 },
-                                isDimmed: overlayState?.tapeID == tapeID
+                                isDimmed: editingTapeID != nil && editingTapeID != tapeID,
+                                titleEditingConfig: titleEditingConfig
                             )
                         }
                         .padding(.horizontal, Tokens.Spacing.m)
@@ -150,14 +143,15 @@ struct TapesListView: View {
                         )
                     }
                 }
+                .padding(.bottom, keyboardHeight + Tokens.Spacing.l)
                 .onPreferenceChange(TapeFramePreferenceKey.self) { value in
                     tapeFrames.merge(value) { _, new in new }
                 }
             }
             .onAppear {
-                scrollToTape = { id in
+                scrollToTape = { id, anchor in
                     withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo(id, anchor: .top)
+                        proxy.scrollTo(id, anchor: anchor)
                     }
                 }
             }
@@ -235,6 +229,39 @@ struct TapesListView: View {
 private func keyboardHeight(from notification: Notification) -> CGFloat {
         guard let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return 0 }
         return frameValue.cgRectValue.height
+    }
+
+    private func startTitleEditing(tapeID: UUID, currentTitle: String) {
+        if editingTapeID != nil {
+            cancelTitleEditing()
+        }
+        editingTapeID = tapeID
+        draftTitle = currentTitle
+        editingSessionID = UUID()
+        ensureTapeVisible(tapeID: tapeID)
+    }
+
+    private func commitTitleEditing() {
+        guard let editingTapeID else { return }
+        let trimmed = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        tapesStore.renameTapeTitle(editingTapeID, to: trimmed)
+        resetTitleEditingState()
+    }
+
+    private func cancelTitleEditing() {
+        resetTitleEditingState()
+    }
+
+    private func resetTitleEditingState() {
+        editingTapeID = nil
+        editingSessionID = nil
+        draftTitle = ""
+    }
+
+    private func ensureTapeVisible(tapeID: UUID) {
+        guard let scrollToTape else { return }
+        guard editingTapeID == tapeID else { return }
+        scrollToTape(tapeID, .top)
     }
 }
 
