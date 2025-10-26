@@ -13,6 +13,9 @@ struct TapesListView: View {
     @State private var editingTapeID: UUID?
     @State private var editingSessionID: UUID?
     @State private var draftTitle: String = ""
+    @State private var viewportFrame: CGRect = .zero
+    @State private var additionalScrollInset: CGFloat = 0
+    private let fallbackKeyboardHeight: CGFloat = 320
 
     var body: some View {
         NavigationView {
@@ -47,6 +50,7 @@ struct TapesListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboardHeight = 0
+            setAdditionalScrollInset(0, animate: true)
         }
         .onChange(of: keyboardHeight) { _ in
             if let editingTapeID {
@@ -143,10 +147,18 @@ struct TapesListView: View {
                         )
                     }
                 }
-                .padding(.bottom, keyboardHeight + Tokens.Spacing.l)
+                .padding(.bottom, max(0, keyboardHeight) + additionalScrollInset + Tokens.Spacing.l)
                 .onPreferenceChange(TapeFramePreferenceKey.self) { value in
                     tapeFrames.merge(value) { _, new in new }
                 }
+            }
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: ViewportFramePreferenceKey.self, value: geo.frame(in: .global))
+                }
+            )
+            .onPreferenceChange(ViewportFramePreferenceKey.self) { frame in
+                viewportFrame = frame
             }
             .onAppear {
                 scrollToTape = { id, anchor in
@@ -238,7 +250,14 @@ private func keyboardHeight(from notification: Notification) -> CGFloat {
         editingTapeID = tapeID
         draftTitle = currentTitle
         editingSessionID = UUID()
-        ensureTapeVisible(tapeID: tapeID)
+        ensureTapeVisible(
+            tapeID: tapeID,
+            keyboardHeightOverride: keyboardHeight > 0 ? keyboardHeight : fallbackKeyboardHeight,
+            animateInset: false
+        )
+        DispatchQueue.main.async {
+            ensureTapeVisible(tapeID: tapeID, keyboardHeightOverride: self.keyboardHeight > 0 ? self.keyboardHeight : self.fallbackKeyboardHeight)
+        }
     }
 
     private func commitTitleEditing() {
@@ -256,12 +275,77 @@ private func keyboardHeight(from notification: Notification) -> CGFloat {
         editingTapeID = nil
         editingSessionID = nil
         draftTitle = ""
+        setAdditionalScrollInset(0, animate: true)
     }
 
-    private func ensureTapeVisible(tapeID: UUID) {
-        guard let scrollToTape else { return }
+    private func ensureTapeVisible(
+        tapeID: UUID,
+        keyboardHeightOverride: CGFloat? = nil,
+        animateInset: Bool = true
+    ) {
         guard editingTapeID == tapeID else { return }
-        scrollToTape(tapeID, .top)
+        let effectiveHeight = max(keyboardHeightOverride ?? keyboardHeight, 0)
+        if effectiveHeight > 0 {
+            updateScrollInset(for: tapeID, keyboardHeight: effectiveHeight, animate: animateInset)
+            scrollCardIfNeeded(tapeID: tapeID, keyboardHeight: effectiveHeight)
+            DispatchQueue.main.async {
+                guard self.editingTapeID == tapeID else { return }
+                self.updateScrollInset(for: tapeID, keyboardHeight: effectiveHeight, animate: animateInset)
+                self.scrollCardIfNeeded(tapeID: tapeID, keyboardHeight: effectiveHeight)
+                DispatchQueue.main.async {
+                    guard self.editingTapeID == tapeID else { return }
+                    self.scrollCardIfNeeded(tapeID: tapeID, keyboardHeight: effectiveHeight)
+                }
+            }
+        } else {
+            scrollCardIfNeeded(tapeID: tapeID, keyboardHeight: 0)
+        }
+    }
+
+    private func updateScrollInset(for tapeID: UUID, keyboardHeight: CGFloat, animate: Bool) {
+        guard keyboardHeight > 0 else {
+            setAdditionalScrollInset(0, animate: animate)
+            return
+        }
+        guard let frame = tapeFrames[tapeID], viewportFrame != .zero else {
+            let fallback = min(max(keyboardHeight * 0.45, 0), 180)
+            setAdditionalScrollInset(max(additionalScrollInset, fallback), animate: animate)
+            return
+        }
+        let padding: CGFloat = 16
+        let keyboardTop = viewportFrame.maxY - keyboardHeight
+        let overlap = frame.maxY + padding - keyboardTop
+        let newInset = max(0, overlap)
+        let clamped = max(newInset, min(max(keyboardHeight * 0.35, 0), 140))
+        setAdditionalScrollInset(clamped, animate: animate)
+    }
+
+    private func setAdditionalScrollInset(_ inset: CGFloat, animate: Bool) {
+        let clamped = max(0, inset)
+        guard abs(clamped - additionalScrollInset) > 0.1 else { return }
+        if animate {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                additionalScrollInset = clamped
+            }
+        } else {
+            additionalScrollInset = clamped
+        }
+    }
+
+    private func scrollCardIfNeeded(tapeID: UUID, keyboardHeight: CGFloat) {
+        guard let scrollToTape else { return }
+        guard let frame = tapeFrames[tapeID], viewportFrame != .zero else {
+            scrollToTape(tapeID, .bottom)
+            return
+        }
+        let padding: CGFloat = 16
+        let visibleTop = viewportFrame.minY + padding
+        let keyboardTop = viewportFrame.maxY - keyboardHeight
+        if keyboardHeight > 0, frame.maxY > keyboardTop - padding {
+            scrollToTape(tapeID, .bottom)
+        } else if frame.minY < visibleTop {
+            scrollToTape(tapeID, .top)
+        }
     }
 }
 

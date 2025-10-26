@@ -56,6 +56,7 @@ struct TapeCardView: View {
     @FocusState private var isTitleFocused: Bool
     @State private var lastFocusSessionID: UUID?
     @State private var isEndingTitleEditing = false
+    @State private var hasActiveTitleFocus = false
 
     // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
@@ -79,9 +80,11 @@ struct TapeCardView: View {
                 .submitLabel(.done)
                 .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                 .onAppear {
+                    hasActiveTitleFocus = false
                     focusIfNeeded(for: config)
                 }
                 .onChange(of: config.focusSessionID) { _ in
+                    hasActiveTitleFocus = false
                     focusIfNeeded(for: config)
                 }
                 .onSubmit {
@@ -90,8 +93,11 @@ struct TapeCardView: View {
                 .onChange(of: isTitleFocused) { focused in
                     guard titleEditingConfig != nil else { return }
                     guard !isEndingTitleEditing else { return }
-                    if !focused {
+                    if focused {
+                        hasActiveTitleFocus = true
+                    } else if hasActiveTitleFocus {
                         finishTitleEditing(commit: false, config: config)
+                        hasActiveTitleFocus = false
                     }
                 }
         } else {
@@ -451,6 +457,7 @@ struct TapeCardView: View {
             action()
             lastFocusSessionID = nil
             isEndingTitleEditing = false
+            hasActiveTitleFocus = false
         }
     }
 

@@ -8,3 +8,13 @@ struct TapeFramePreferenceKey: PreferenceKey {
         value.merge(nextValue()) { _, new in new }
     }
 }
+
+struct ViewportFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero {
+            value = next
+        }
+    }
+}
