@@ -2,6 +2,10 @@ import SwiftUI
 import AVFoundation
 import AVKit
 
+private final class PlaybackCoordinatorHolder: ObservableObject {
+    let coordinator = PlaybackPreparationCoordinator()
+}
+
 // MARK: - Unified Tape Player View
 
 struct TapePlayerView: View {
@@ -18,6 +22,15 @@ struct TapePlayerView: View {
     @State private var loadError: String?
     @State private var timeObserverToken: Any?
     @State private var playerEndObserver: NSObjectProtocol?
+    @StateObject private var coordinatorHolder = PlaybackCoordinatorHolder()
+    @State private var isUsingFullComposition = false
+    @State private var playbackIntent: Bool = false
+    @State private var pendingComposition: TapeCompositionBuilder.PlayerComposition?
+    @State private var pendingAutoplay: Bool = false
+    @State private var pendingCompositionIsFinal: Bool = false
+    @State private var skippedClipCount: Int = 0
+    @State private var showSkipToast: Bool = false
+    @State private var skipToastWorkItem: DispatchWorkItem?
 
     let tape: Tape
     let onDismiss: () -> Void
@@ -46,6 +59,10 @@ struct TapePlayerView: View {
                 .transition(.opacity)
                 .animation(.easeInOut(duration: 0.2), value: showingControls)
             }
+
+            if showSkipToast {
+                skipToastOverlay
+            }
         }
         .onAppear {
             Task { await preparePlayer() }
@@ -72,7 +89,7 @@ struct TapePlayerView: View {
     private var overlayContent: some View {
         VStack {
             if isLoading {
-                ProgressView("Preparing tape…")
+                ProgressView("Getting tape ready…")
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .foregroundColor(.white)
             } else if let loadError {
@@ -193,29 +210,86 @@ struct TapePlayerView: View {
 
         isLoading = true
         loadError = nil
+        isUsingFullComposition = false
+        skippedClipCount = 0
+        showSkipToast = false
+        skipToastWorkItem?.cancel()
+        skipToastWorkItem = nil
+        playbackIntent = false
+        pendingComposition = nil
+        pendingAutoplay = false
+        pendingCompositionIsFinal = false
 
-        do {
-            let builder = TapeCompositionBuilder()
-            let result = try await builder.buildPlayerItem(for: tape)
-            timeline = result.timeline
-            totalDuration = CMTimeGetSeconds(result.timeline.totalDuration)
+        let coordinator = coordinatorHolder.coordinator
+        coordinator.cancel()
 
-            let player = AVPlayer(playerItem: result.playerItem)
-            player.actionAtItemEnd = .pause
-            installEndObserver(for: result.playerItem)
-            installTimeObserver(on: player)
-            self.player = player
-            isFinished = false
-            currentClipIndex = 0
-            seekToClip(index: 0, autoplay: true)
-        } catch {
-            loadError = error.localizedDescription
-            player?.pause()
-            player = nil
-            timeline = nil
+        coordinator.prepare(
+            tape: tape,
+            onWarmupReady: { result in
+                Task { @MainActor in
+                    handlePreparedResult(result, isFinal: false)
+                }
+            },
+            onProgress: { result in
+                Task { @MainActor in
+                    handlePreparedResult(result, isFinal: false)
+                }
+            },
+            onCompletion: { result in
+                Task { @MainActor in
+            handlePreparedResult(result, isFinal: true)
+                }
+            },
+            onSkip: { reason, index in
+                Task { @MainActor in
+                    recordSkip(reason: reason, index: index)
+                }
+            },
+            onError: { error in
+                Task { @MainActor in
+                    handlePreparationError(error)
+                }
+            }
+        )
+    }
+
+    @MainActor
+    private func handlePreparedResult(_ result: PlaybackPreparationCoordinator.PreparedResult, isFinal: Bool) {
+        let composition = result.composition
+        loadError = nil
+        isLoading = false
+        isFinished = false
+        if player == nil {
+            installInitialPlayer(with: composition)
+            isUsingFullComposition = isFinal
+            return
         }
 
-        isLoading = false
+        guard let player else { return }
+
+        let isCurrentlyPlaying = player.rate != 0 || player.timeControlStatus == .playing
+
+        if !isCurrentlyPlaying {
+            pendingComposition = nil
+            pendingAutoplay = false
+            pendingCompositionIsFinal = false
+            let shouldAutoplay = playbackIntent || isPlaying
+            let current = player.currentTime()
+            swapPlayerItem(
+                with: composition,
+                preserveTime: current,
+                autoplay: shouldAutoplay,
+                isFinal: isFinal
+            )
+        } else {
+            pendingComposition = composition
+            pendingAutoplay = playbackIntent || isPlaying
+            pendingCompositionIsFinal = pendingCompositionIsFinal || isFinal
+
+            // Update UI timeline immediately so controls reflect latest duration.
+            timeline = composition.timeline
+            totalDuration = CMTimeGetSeconds(composition.timeline.totalDuration)
+        }
     }
 
     // MARK: - Playback Helpers
@@ -223,6 +297,7 @@ struct TapePlayerView: View {
     @MainActor
     private func seekToClip(index: Int, autoplay: Bool) {
         guard let player, let timeline, index >= 0, index < timeline.segments.count else { return }
+        applyPendingComposition(force: true, resumeOverride: autoplay)
         let start = timeline.segments[index].timeRange.start
         player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero)
         currentClipIndex = index
@@ -231,11 +306,13 @@ struct TapePlayerView: View {
             player.play()
             isPlaying = true
         }
+        playbackIntent = autoplay
     }
 
     @MainActor
     private func seek(to seconds: Double, autoplay: Bool) {
         guard let player, let timeline else { return }
+        applyPendingComposition(force: true, resumeOverride: autoplay)
         let clamped = max(0, min(seconds, totalDuration))
         let time = CMTime(seconds: clamped, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
@@ -244,7 +321,46 @@ struct TapePlayerView: View {
                 isPlaying = true
             }
         }
+        playbackIntent = autoplay
         updateClipIndex(for: time)
+    }
+
+    @MainActor
+    @discardableResult
+    private func applyPendingComposition(force: Bool = false, resumeOverride: Bool? = nil) -> Bool {
+        guard let pending = pendingComposition, let player else { return false }
+        let isCurrentlyPlaying = player.rate != 0 || player.timeControlStatus == .playing
+        if isCurrentlyPlaying && !force {
+            return false
+        }
+
+        let resume = resumeOverride ?? pendingAutoplay
+        let pendingWasFinal = pendingCompositionIsFinal
+
+        pendingComposition = nil
+        pendingAutoplay = false
+        pendingCompositionIsFinal = false
+
+        let current = player.currentTime()
+
+        if isCurrentlyPlaying {
+            player.pause()
+            isPlaying = false
+        }
+
+        swapPlayerItem(
+            with: pending,
+            preserveTime: current,
+            autoplay: resume,
+            isFinal: pendingWasFinal
+        )
+        playbackIntent = resume
+
+        if pendingWasFinal {
+            isUsingFullComposition = true
+        }
+
+        return true
     }
 
     private func togglePlayPause() {
@@ -252,9 +368,61 @@ struct TapePlayerView: View {
         if isPlaying {
             player.pause()
             isPlaying = false
+            playbackIntent = false
+            _ = applyPendingComposition(force: false, resumeOverride: false)
         } else {
-            player.play()
-            isPlaying = true
+            playbackIntent = true
+            if !applyPendingComposition(force: false, resumeOverride: true) {
+                player.play()
+                isPlaying = true
+            }
+        }
+    }
+
+    @MainActor
+    private func swapPlayerItem(
+        with composition: TapeCompositionBuilder.PlayerComposition,
+        preserveTime: CMTime?,
+        autoplay: Bool,
+        isFinal: Bool
+    ) {
+        guard let player else {
+            installInitialPlayer(with: composition)
+            isUsingFullComposition = isFinal
+            return
+        }
+
+        removeTimeObserver()
+        player.pause()
+        player.replaceCurrentItem(with: composition.playerItem)
+        installEndObserver(for: composition.playerItem)
+        installTimeObserver(on: player)
+
+        timeline = composition.timeline
+        totalDuration = CMTimeGetSeconds(composition.timeline.totalDuration)
+        isUsingFullComposition = isFinal
+        playbackIntent = autoplay
+
+        let targetSeconds: Double
+        if let preserveTime {
+            targetSeconds = min(
+                max(0, CMTimeGetSeconds(preserveTime)),
+                totalDuration.isFinite && totalDuration > 0 ? totalDuration : CMTimeGetSeconds(preserveTime)
+            )
+        } else {
+            targetSeconds = 0
+        }
+
+        let targetTime = CMTime(seconds: targetSeconds, preferredTimescale: 600)
+        player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            if autoplay {
+                player.play()
+                isPlaying = true
+            } else {
+                isPlaying = false
+            }
+            updateClipIndex(for: targetTime)
+            isFinished = false
         }
     }
 
@@ -286,6 +454,42 @@ struct TapePlayerView: View {
         }
     }
 
+    @MainActor
+    private func installInitialPlayer(with composition: TapeCompositionBuilder.PlayerComposition) {
+        timeline = composition.timeline
+        totalDuration = CMTimeGetSeconds(composition.timeline.totalDuration)
+        let player = AVPlayer(playerItem: composition.playerItem)
+        player.actionAtItemEnd = .pause
+        installEndObserver(for: composition.playerItem)
+        installTimeObserver(on: player)
+        self.player = player
+        isFinished = false
+        currentClipIndex = 0
+        seekToClip(index: 0, autoplay: true)
+    }
+
+    @MainActor
+    private func handlePreparationError(_ error: Error) {
+        if let coordinatorError = error as? PlaybackPreparationCoordinator.CoordinatorError {
+            loadError = coordinatorError.localizedDescription
+        } else {
+            loadError = error.localizedDescription
+        }
+        isLoading = false
+        isUsingFullComposition = false
+        skipToastWorkItem?.cancel()
+        skipToastWorkItem = nil
+        showSkipToast = false
+        skippedClipCount = 0
+        playbackIntent = false
+        pendingComposition = nil
+        pendingAutoplay = false
+        pendingCompositionIsFinal = false
+        player?.pause()
+        player = nil
+        timeline = nil
+    }
+
     // MARK: - Observers
 
     private func installEndObserver(for item: AVPlayerItem) {
@@ -297,8 +501,27 @@ struct TapePlayerView: View {
             object: item,
             queue: .main
         ) { _ in
+            let resumeIntent = self.pendingAutoplay || self.playbackIntent
+            if self.applyPendingComposition(force: true, resumeOverride: resumeIntent) {
+                self.isFinished = false
+                self.playbackIntent = resumeIntent
+                if resumeIntent {
+                    withAnimation {
+                        self.showingControls = false
+                    }
+                } else {
+                    self.showingControls = true
+                }
+                return
+            }
+
+            if self.isUsingFullComposition {
+                self.playbackIntent = false
+                self.isFinished = true
+            } else {
+                self.isFinished = false
+            }
             self.isPlaying = false
-            self.isFinished = true
             self.showingControls = true
         }
     }
@@ -319,6 +542,7 @@ struct TapePlayerView: View {
     }
 
     private func tearDown() {
+        coordinatorHolder.coordinator.cancel()
         controlsTimer?.invalidate()
         controlsTimer = nil
         removeTimeObserver()
@@ -326,6 +550,14 @@ struct TapePlayerView: View {
             NotificationCenter.default.removeObserver(token)
         }
         playerEndObserver = nil
+        skipToastWorkItem?.cancel()
+        skipToastWorkItem = nil
+        showSkipToast = false
+        skippedClipCount = 0
+        playbackIntent = false
+        pendingComposition = nil
+        pendingAutoplay = false
+        pendingCompositionIsFinal = false
         player?.pause()
         player = nil
     }
@@ -339,10 +571,13 @@ struct TapePlayerView: View {
 
         updateClipIndex(for: time)
 
-        if let timeline, seconds >= CMTimeGetSeconds(timeline.totalDuration) - 0.05 {
-            isFinished = true
-            isPlaying = false
-            showingControls = true
+        if let timeline,
+           seconds >= CMTimeGetSeconds(timeline.totalDuration) - 0.05 {
+            if isUsingFullComposition {
+                isFinished = true
+                isPlaying = false
+                showingControls = true
+            }
         }
     }
 
@@ -371,5 +606,50 @@ struct TapePlayerView: View {
         let minutes = Int(clamped) / 60
         let seconds = Int(clamped) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+// MARK: - Skip Handling & Toasts
+
+extension TapePlayerView {
+    @MainActor
+    private func recordSkip(
+        reason: PlaybackPreparationCoordinator.SkipReason,
+        index: Int,
+        showToast: Bool = true
+    ) {
+        skippedClipCount += 1
+        TapesLog.player.warning("PlaybackPrep: skipped clip \(index) due to \(reason.rawValue)")
+
+        guard showToast else { return }
+
+        skipToastWorkItem?.cancel()
+        withAnimation {
+            showSkipToast = true
+        }
+
+        let workItem = DispatchWorkItem {
+            withAnimation {
+                showSkipToast = false
+                skippedClipCount = 0
+            }
+        }
+        skipToastWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: workItem)
+    }
+
+    private var skipToastOverlay: some View {
+        VStack {
+            Spacer()
+            Text("Skipped \(skippedClipCount) clip\(skippedClipCount == 1 ? "" : "s")")
+                .font(.footnote)
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.7))
+                .clipShape(Capsule())
+                .padding(.bottom, 48)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 }

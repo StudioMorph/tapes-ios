@@ -133,10 +133,22 @@ struct TapeCompositionBuilder {
             )
         }
 
-        let assetContexts = try await loadAssets(for: tape.clips)
-        let transitionDescriptors = buildTransitionDescriptors(for: tape, assets: assetContexts)
-        let segments = buildSegments(for: assetContexts, transitions: transitionDescriptors)
+        let contexts = try await loadAssets(for: tape.clips, startIndex: 0)
+        return makeTimeline(for: tape, contexts: contexts)
+    }
 
+    func makeTimeline(for tape: Tape, contexts: [ClipAssetContext]) -> Timeline {
+        guard !contexts.isEmpty else {
+            return Timeline(
+                segments: [],
+                renderSize: renderSize(for: tape.orientation),
+                totalDuration: .zero,
+                transitionSequence: []
+            )
+        }
+
+        let transitionDescriptors = buildTransitionDescriptors(for: tape, assets: contexts)
+        let segments = buildSegments(for: contexts, transitions: transitionDescriptors)
         let totalDuration = segments.last.map { CMTimeAdd($0.timeRange.start, $0.timeRange.duration) } ?? .zero
 
         return Timeline(
@@ -149,28 +161,52 @@ struct TapeCompositionBuilder {
 
     @MainActor
     func buildPlayerItem(for tape: Tape) async throws -> PlayerComposition {
-        let timeline = try await prepareTimeline(for: tape)
-        let composition = AVMutableComposition()
+        let contexts = try await loadAssets(for: tape.clips, startIndex: 0)
+        let timeline = makeTimeline(for: tape, contexts: contexts)
+        return try buildPlayerComposition(for: tape, timeline: timeline)
+    }
 
+    @MainActor
+    func buildPlayerItem(for tape: Tape, contexts: [ClipAssetContext]) throws -> PlayerComposition {
+        let timeline = makeTimeline(for: tape, contexts: contexts)
+        return try buildPlayerComposition(for: tape, timeline: timeline)
+    }
+
+    func resolveClipContext(for clip: Clip, index: Int) async throws -> ClipAssetContext {
+        let contexts = try await loadAssets(for: [clip], startIndex: index)
+        guard let context = contexts.first else {
+            throw BuilderError.assetUnavailable(clipID: clip.id)
+        }
+        return context
+    }
+
+    @MainActor
+    private func buildPlayerComposition(
+        for tape: Tape,
+        timeline: Timeline
+    ) throws -> PlayerComposition {
+        let composition = AVMutableComposition()
         let videoTracks = try createCompositionTracks(for: composition, mediaType: .video)
         let audioTracks = try createCompositionTracks(for: composition, mediaType: .audio)
 
         var videoTrackMap: [Int: AVMutableCompositionTrack] = [:]
         var audioTrackMap: [Int: AVMutableCompositionTrack] = [:]
-
         var audioMixParameters: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
 
         for segment in timeline.segments {
-            let trackIndex = segment.clipIndex % videoTracks.count
-            let videoTrack = videoTracks[trackIndex]
-            let sourceRange = CMTimeRange(start: .zero, duration: segment.assetContext.duration)
-            try videoTrack.insertTimeRange(sourceRange, of: segment.assetContext.videoTrack, at: segment.timeRange.start)
-            videoTrackMap[segment.clipIndex] = videoTrack
+            let trackIndex = videoTracks.isEmpty ? 0 : segment.clipIndex % videoTracks.count
+            if trackIndex < videoTracks.count {
+                let videoTrack = videoTracks[trackIndex]
+                let sourceRange = CMTimeRange(start: .zero, duration: segment.assetContext.duration)
+                try videoTrack.insertTimeRange(sourceRange, of: segment.assetContext.videoTrack, at: segment.timeRange.start)
+                videoTrackMap[segment.clipIndex] = videoTrack
+            }
 
             if segment.assetContext.hasAudio,
                let sourceAudioTrack = segment.assetContext.audioTrack,
                trackIndex < audioTracks.count {
                 let audioTrack = audioTracks[trackIndex]
+                let sourceRange = CMTimeRange(start: .zero, duration: segment.assetContext.duration)
                 try audioTrack.insertTimeRange(sourceRange, of: sourceAudioTrack, at: segment.timeRange.start)
                 audioTrackMap[segment.clipIndex] = audioTrack
 
@@ -219,8 +255,13 @@ struct TapeCompositionBuilder {
     // MARK: - Asset Loading
 
     private func loadAssets(for clips: [Clip]) async throws -> [ClipAssetContext] {
+        try await loadAssets(for: clips, startIndex: 0)
+    }
+
+    private func loadAssets(for clips: [Clip], startIndex: Int) async throws -> [ClipAssetContext] {
         try await withThrowingTaskGroup(of: ClipAssetContext.self) { group in
-            for (index, clip) in clips.enumerated() {
+            for (offset, clip) in clips.enumerated() {
+                let index = startIndex + offset
                 group.addTask {
                     let resolved = try await resolveAsset(for: clip)
                     let asset = resolved.asset
@@ -261,7 +302,7 @@ struct TapeCompositionBuilder {
     private func resolveAsset(for clip: Clip) async throws -> ResolvedAsset {
         switch clip.clipType {
         case .video:
-            let asset = try await assetResolver(clip)
+            let asset = try await resolveVideoAsset(for: clip)
             return ResolvedAsset(asset: asset, isTemporary: false, motionEffect: nil)
         case .image:
             let image = try await loadImage(for: clip)
@@ -306,7 +347,8 @@ struct TapeCompositionBuilder {
         switch clip.clipType {
         case .video:
             if let url = clip.localURL {
-                return AVURLAsset(url: url)
+                let accessibleURL = try accessibleURL(for: clip, url: url)
+                return AVURLAsset(url: accessibleURL)
             }
             if let assetLocalId = clip.assetLocalId {
                 return try await fetchAVAssetFromPhotos(localIdentifier: assetLocalId)
@@ -315,6 +357,72 @@ struct TapeCompositionBuilder {
         case .image:
             throw BuilderError.unsupportedClipType(.image)
         }
+    }
+
+    private func resolveVideoAsset(for clip: Clip) async throws -> AVAsset {
+        let fileManager = FileManager.default
+
+        if let localURL = clip.localURL {
+            if fileManager.fileExists(atPath: localURL.path) {
+                let accessibleURL = try Self.accessibleURL(for: clip, url: localURL)
+                return AVURLAsset(url: accessibleURL)
+            } else {
+                let cachedURL = Self.cachedURL(for: clip, originalURL: localURL)
+                if fileManager.fileExists(atPath: cachedURL.path) {
+                    return AVURLAsset(url: cachedURL)
+                }
+            }
+        }
+
+        if let assetLocalId = clip.assetLocalId {
+            return try await Self.fetchAVAssetFromPhotos(localIdentifier: assetLocalId)
+        }
+
+        throw BuilderError.assetUnavailable(clipID: clip.id)
+    }
+
+    private static func accessibleURL(for clip: Clip, url: URL) throws -> URL {
+        var didAccessSecurityScope = false
+        if url.startAccessingSecurityScopedResource() {
+            didAccessSecurityScope = true
+        }
+        defer {
+            if didAccessSecurityScope {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let fileManager = FileManager.default
+        let cacheDirectory = fileManager.temporaryDirectory.appendingPathComponent("PlaybackCache", isDirectory: true)
+        if !fileManager.fileExists(atPath: cacheDirectory.path) {
+            try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true, attributes: nil)
+        }
+
+        let destinationURL = cachedURL(for: clip, originalURL: url)
+
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            return destinationURL
+        }
+
+        try fileManager.copyItem(at: url, to: destinationURL)
+        return destinationURL
+    }
+
+    private static func cachedURL(for clip: Clip, originalURL: URL) -> URL {
+        let fileManager = FileManager.default
+        let cacheDirectory = fileManager.temporaryDirectory.appendingPathComponent("PlaybackCache", isDirectory: true)
+        if !fileManager.fileExists(atPath: cacheDirectory.path) {
+            try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true, attributes: nil)
+        }
+        let fileExtension = originalURL.pathExtension.isEmpty ? "mov" : originalURL.pathExtension
+        let updatedAt = clip.updatedAt ?? Date.distantPast
+        let timestamp = Int((updatedAt.timeIntervalSince1970 * 1_000).rounded())
+        let versionComponent = "\(clip.id.uuidString)-\(timestamp)"
+        return cacheDirectory.appendingPathComponent(versionComponent).appendingPathExtension(fileExtension)
+    }
+
+    private func makeAccessibleCopyIfNeeded(for clip: Clip, sourceURL: URL) throws -> URL {
+        return try Self.accessibleURL(for: clip, url: sourceURL)
     }
 
     // MARK: - Transition Handling

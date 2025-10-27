@@ -7,15 +7,8 @@ struct TapesListView: View {
     @State private var showingPlayOptions = false
     @State private var showingQAChecklist = false
     @State private var tapeToPreview: Tape?
-    @State private var tapeFrames: TapeFrameMap = [:]
-    @State private var keyboardHeight: CGFloat = 0
-    @State private var scrollToTape: ((UUID, UnitPoint) -> Void)?
     @State private var editingTapeID: UUID?
-    @State private var editingSessionID: UUID?
     @State private var draftTitle: String = ""
-    @State private var viewportFrame: CGRect = .zero
-    @State private var additionalScrollInset: CGFloat = 0
-    private let fallbackKeyboardHeight: CGFloat = 320
 
     var body: some View {
         NavigationView {
@@ -42,21 +35,6 @@ struct TapesListView: View {
         .sheet(isPresented: $showingQAChecklist) {
             QAChecklistView()
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
-            keyboardHeight = keyboardHeight(from: notification)
-            if let editingTapeID {
-                ensureTapeVisible(tapeID: editingTapeID)
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            keyboardHeight = 0
-            setAdditionalScrollInset(0, animate: true)
-        }
-        .onChange(of: keyboardHeight) { _ in
-            if let editingTapeID {
-                ensureTapeVisible(tapeID: editingTapeID)
-            }
-        }
     }
 
     private var headerView: some View {
@@ -78,99 +56,71 @@ struct TapesListView: View {
     }
 
     private var tapesList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: Tokens.Spacing.m) {
-                    ForEach($tapesStore.tapes) { $tape in
-                        let tapeID = $tape.wrappedValue.id
-                        let onSettings = { tapesStore.selectTape($tape.wrappedValue) }
-                        let onPlay: () -> Void = {
-                            tapeToPreview = $tape.wrappedValue
-                            showingPlayOptions = true
-                        }
-                        let onAirPlay: () -> Void = { }
-                        let onThumbnailDelete: (Clip) -> Void = { clip in
-                            tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
-                        }
-                        let onClipInserted: (Clip, Int) -> Void = { clip, index in
-                            tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
-                        }
-                        let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void = { clip, placeholder in
-                            tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
-                        }
-                        let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void = { pickedMedia, strategy in
-                            tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
-                        }
-                        let isEditingTitle = editingTapeID == tapeID
-                        let titleEditingConfig: TapeCardView.TitleEditingConfig? = {
-                            guard isEditingTitle, let focusID = editingSessionID else { return nil }
-                            return TapeCardView.TitleEditingConfig(
-                                text: Binding(
-                                    get: { draftTitle },
-                                    set: { draftTitle = $0 }
-                                ),
-                                focusSessionID: focusID,
-                                onCommit: commitTitleEditing,
-                                onCancel: cancelTitleEditing
-                            )
-                        }()
-                        NewTapeRevealContainer(
-                            tapeID: tapeID,
-                            isNewlyInserted: tapesStore.latestInsertedTapeID == tapeID,
-                            isPendingReveal: tapesStore.pendingTapeRevealID == tapeID,
-                            onAnimationCompleted: {
-                                tapesStore.clearLatestInsertedTapeID(tapeID)
-                            }
-                        ) {
-                            TapeCardView(
-                                tape: $tape,
-                                onSettings: onSettings,
-                                onPlay: onPlay,
-                                onAirPlay: onAirPlay,
-                                onThumbnailDelete: onThumbnailDelete,
-                                onClipInserted: onClipInserted,
-                                onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
-                                onMediaInserted: onMediaInserted,
-                                onTitleFocusRequest: {
-                                    startTitleEditing(tapeID: tapeID, currentTitle: $tape.wrappedValue.title)
-                                },
-                                isDimmed: editingTapeID != nil && editingTapeID != tapeID,
-                                titleEditingConfig: titleEditingConfig
-                            )
-                        }
-                        .padding(.horizontal, Tokens.Spacing.m)
-                        .id(tapeID)
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear.preference(key: TapeFramePreferenceKey.self, value: [tapeID: geo.frame(in: .global)])
-                            }
-                        )
+        List {
+            ForEach($tapesStore.tapes) { $tape in
+                let tapeID = $tape.wrappedValue.id
+                let onSettings = { tapesStore.selectTape($tape.wrappedValue) }
+                let onPlay: () -> Void = {
+                    tapeToPreview = $tape.wrappedValue
+                    showingPlayOptions = true
+                }
+                let onAirPlay: () -> Void = { }
+                let onThumbnailDelete: (Clip) -> Void = { clip in
+                    tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
+                }
+                let onClipInserted: (Clip, Int) -> Void = { clip, index in
+                    tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
+                }
+                let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void = { clip, placeholder in
+                    tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
+                }
+                let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void = { pickedMedia, strategy in
+                    tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
+                }
+
+                let titleEditingConfig: TapeCardView.TitleEditingConfig? = {
+                    guard editingTapeID == tapeID else { return nil }
+                    return TapeCardView.TitleEditingConfig(
+                        text: Binding(
+                            get: { draftTitle },
+                            set: { draftTitle = $0 }
+                        ),
+                        tapeID: tapeID,
+                        onCommit: commitTitleEditing
+                    )
+                }()
+
+                NewTapeRevealContainer(
+                    tapeID: tapeID,
+                    isNewlyInserted: tapesStore.latestInsertedTapeID == tapeID,
+                    isPendingReveal: tapesStore.pendingTapeRevealID == tapeID,
+                    onAnimationCompleted: {
+                        tapesStore.clearLatestInsertedTapeID(tapeID)
                     }
+                ) {
+                    TapeCardView(
+                        tape: $tape,
+                        tapeID: tapeID,
+                        onSettings: onSettings,
+                        onPlay: onPlay,
+                        onAirPlay: onAirPlay,
+                        onThumbnailDelete: onThumbnailDelete,
+                        onClipInserted: onClipInserted,
+                        onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
+                        onMediaInserted: onMediaInserted,
+                        onTitleFocusRequest: {
+                            startTitleEditing(tapeID: tapeID, currentTitle: $tape.wrappedValue.title)
+                        },
+                        titleEditingConfig: titleEditingConfig
+                    )
                 }
-                .padding(.bottom, max(0, keyboardHeight) + additionalScrollInset + Tokens.Spacing.l)
-                .onPreferenceChange(TapeFramePreferenceKey.self) { value in
-                    tapeFrames.merge(value) { _, new in new }
-                }
-            }
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(key: ViewportFramePreferenceKey.self, value: geo.frame(in: .global))
-                }
-            )
-            .onPreferenceChange(ViewportFramePreferenceKey.self) { frame in
-                viewportFrame = frame
-            }
-            .onAppear {
-                scrollToTape = { id, anchor in
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo(id, anchor: anchor)
-                    }
-                }
-            }
-            .onDisappear {
-                scrollToTape = nil
+                .listRowInsets(EdgeInsets(top: 8, leading: Tokens.Spacing.m, bottom: 8, trailing: Tokens.Spacing.m))
+                .listRowSeparator(.hidden)
+                .id(tapeID)
             }
         }
+        .listStyle(.plain)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var settingsSheet: some View {
@@ -238,114 +188,26 @@ struct TapesListView: View {
         }
     }
 
-private func keyboardHeight(from notification: Notification) -> CGFloat {
-        guard let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else { return 0 }
-        return frameValue.cgRectValue.height
-    }
-
     private func startTitleEditing(tapeID: UUID, currentTitle: String) {
-        if editingTapeID != nil {
+        if editingTapeID != tapeID {
             cancelTitleEditing()
         }
         editingTapeID = tapeID
         draftTitle = currentTitle
-        editingSessionID = UUID()
-        ensureTapeVisible(
-            tapeID: tapeID,
-            keyboardHeightOverride: keyboardHeight > 0 ? keyboardHeight : fallbackKeyboardHeight,
-            animateInset: false
-        )
-        DispatchQueue.main.async {
-            ensureTapeVisible(tapeID: tapeID, keyboardHeightOverride: self.keyboardHeight > 0 ? self.keyboardHeight : self.fallbackKeyboardHeight)
-        }
     }
 
     private func commitTitleEditing() {
-        guard let editingTapeID else { return }
+        guard let currentEditing = editingTapeID else { return }
         let trimmed = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        tapesStore.renameTapeTitle(editingTapeID, to: trimmed)
-        resetTitleEditingState()
+        tapesStore.renameTapeTitle(currentEditing, to: trimmed)
+        editingTapeID = nil
+        draftTitle = ""
     }
 
     private func cancelTitleEditing() {
-        resetTitleEditingState()
-    }
-
-    private func resetTitleEditingState() {
+        guard editingTapeID != nil else { return }
         editingTapeID = nil
-        editingSessionID = nil
         draftTitle = ""
-        setAdditionalScrollInset(0, animate: true)
-    }
-
-    private func ensureTapeVisible(
-        tapeID: UUID,
-        keyboardHeightOverride: CGFloat? = nil,
-        animateInset: Bool = true
-    ) {
-        guard editingTapeID == tapeID else { return }
-        let effectiveHeight = max(keyboardHeightOverride ?? keyboardHeight, 0)
-        if effectiveHeight > 0 {
-            updateScrollInset(for: tapeID, keyboardHeight: effectiveHeight, animate: animateInset)
-            scrollCardIfNeeded(tapeID: tapeID, keyboardHeight: effectiveHeight)
-            DispatchQueue.main.async {
-                guard self.editingTapeID == tapeID else { return }
-                self.updateScrollInset(for: tapeID, keyboardHeight: effectiveHeight, animate: animateInset)
-                self.scrollCardIfNeeded(tapeID: tapeID, keyboardHeight: effectiveHeight)
-                DispatchQueue.main.async {
-                    guard self.editingTapeID == tapeID else { return }
-                    self.scrollCardIfNeeded(tapeID: tapeID, keyboardHeight: effectiveHeight)
-                }
-            }
-        } else {
-            scrollCardIfNeeded(tapeID: tapeID, keyboardHeight: 0)
-        }
-    }
-
-    private func updateScrollInset(for tapeID: UUID, keyboardHeight: CGFloat, animate: Bool) {
-        guard keyboardHeight > 0 else {
-            setAdditionalScrollInset(0, animate: animate)
-            return
-        }
-        guard let frame = tapeFrames[tapeID], viewportFrame != .zero else {
-            let fallback = min(max(keyboardHeight * 0.45, 0), 180)
-            setAdditionalScrollInset(max(additionalScrollInset, fallback), animate: animate)
-            return
-        }
-        let padding: CGFloat = 16
-        let keyboardTop = viewportFrame.maxY - keyboardHeight
-        let overlap = frame.maxY + padding - keyboardTop
-        let newInset = max(0, overlap)
-        let clamped = max(newInset, min(max(keyboardHeight * 0.35, 0), 140))
-        setAdditionalScrollInset(clamped, animate: animate)
-    }
-
-    private func setAdditionalScrollInset(_ inset: CGFloat, animate: Bool) {
-        let clamped = max(0, inset)
-        guard abs(clamped - additionalScrollInset) > 0.1 else { return }
-        if animate {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                additionalScrollInset = clamped
-            }
-        } else {
-            additionalScrollInset = clamped
-        }
-    }
-
-    private func scrollCardIfNeeded(tapeID: UUID, keyboardHeight: CGFloat) {
-        guard let scrollToTape else { return }
-        guard let frame = tapeFrames[tapeID], viewportFrame != .zero else {
-            scrollToTape(tapeID, .bottom)
-            return
-        }
-        let padding: CGFloat = 16
-        let visibleTop = viewportFrame.minY + padding
-        let keyboardTop = viewportFrame.maxY - keyboardHeight
-        if keyboardHeight > 0, frame.maxY > keyboardTop - padding {
-            scrollToTape(tapeID, .bottom)
-        } else if frame.minY < visibleTop {
-            scrollToTape(tapeID, .top)
-        }
     }
 }
 

@@ -17,12 +17,12 @@ enum ImportSource {
 struct TapeCardView: View {
     struct TitleEditingConfig {
         let text: Binding<String>
-        let focusSessionID: UUID
+        let tapeID: UUID
         let onCommit: () -> Void
-        let onCancel: () -> Void
     }
 
     @Binding var tape: Tape
+    let tapeID: UUID
     let onSettings: () -> Void
     let onPlay: () -> Void
     let onAirPlay: () -> Void
@@ -32,7 +32,6 @@ struct TapeCardView: View {
     let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
     let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void
     let onTitleFocusRequest: () -> Void
-    let isDimmed: Bool
     let titleEditingConfig: TitleEditingConfig?
 
     @EnvironmentObject var tapeStore: TapesStore
@@ -42,6 +41,7 @@ struct TapeCardView: View {
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var importSource: ImportSource? = nil
+    @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
     @State private var savedCarouselPosition: Int = 0 // Clip-space position (0 = start, N = end)
@@ -53,11 +53,6 @@ struct TapeCardView: View {
     // Pending target for programmatic scroll (scoped by tape ID)
     @State private var pendingTargetItemIndex: Int? = nil
     @State private var pendingToken: UUID? = nil
-    @FocusState private var isTitleFocused: Bool
-    @State private var lastFocusSessionID: UUID?
-    @State private var isEndingTitleEditing = false
-    @State private var hasActiveTitleFocus = false
-
     // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
         return tape.clips.count // Clip-space: 0 = start, N = end
@@ -79,25 +74,11 @@ struct TapeCardView: View {
                 .disableAutocorrection(true)
                 .submitLabel(.done)
                 .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
+                .onSubmit { config.onCommit() }
                 .onAppear {
-                    hasActiveTitleFocus = false
-                    focusIfNeeded(for: config)
-                }
-                .onChange(of: config.focusSessionID) { _ in
-                    hasActiveTitleFocus = false
-                    focusIfNeeded(for: config)
-                }
-                .onSubmit {
-                    finishTitleEditing(commit: true, config: config)
-                }
-                .onChange(of: isTitleFocused) { focused in
-                    guard titleEditingConfig != nil else { return }
-                    guard !isEndingTitleEditing else { return }
-                    if focused {
-                        hasActiveTitleFocus = true
-                    } else if hasActiveTitleFocus {
-                        finishTitleEditing(commit: false, config: config)
-                        hasActiveTitleFocus = false
+                    // Focus the field when editing starts
+                    DispatchQueue.main.async {
+                        isTitleFocused = true
                     }
                 }
         } else {
@@ -112,6 +93,7 @@ struct TapeCardView: View {
 
     init(
         tape: Binding<Tape>,
+        tapeID: UUID,
         onSettings: @escaping () -> Void,
         onPlay: @escaping () -> Void,
         onAirPlay: @escaping () -> Void,
@@ -120,10 +102,10 @@ struct TapeCardView: View {
         onClipInsertedAtPlaceholder: @escaping (Clip, CarouselItem) -> Void,
         onMediaInserted: @escaping ([PickedMedia], InsertionStrategy) -> Void,
         onTitleFocusRequest: @escaping () -> Void = {},
-        isDimmed: Bool = false,
         titleEditingConfig: TitleEditingConfig? = nil
     ) {
         self._tape = tape
+        self.tapeID = tapeID
         self.onSettings = onSettings
         self.onPlay = onPlay
         self.onAirPlay = onAirPlay
@@ -132,7 +114,6 @@ struct TapeCardView: View {
         self.onClipInsertedAtPlaceholder = onClipInsertedAtPlaceholder
         self.onMediaInserted = onMediaInserted
         self.onTitleFocusRequest = onTitleFocusRequest
-        self.isDimmed = isDimmed
         self.titleEditingConfig = titleEditingConfig
     }
 
@@ -323,10 +304,6 @@ struct TapeCardView: View {
             CameraView(coordinator: cameraCoordinator)
                 .ignoresSafeArea(.all, edges: .all)
         }
-        .opacity(isDimmed ? 0.2 : 1)
-        .allowsHitTesting(!isDimmed)
-        .opacity(isDimmed ? 0.2 : 1)
-        .allowsHitTesting(!isDimmed)
     }
     
     // MARK: - Helper Functions
@@ -440,27 +417,6 @@ struct TapeCardView: View {
             }
     }
 
-    private func focusIfNeeded(for config: TitleEditingConfig) {
-        guard lastFocusSessionID != config.focusSessionID else { return }
-        lastFocusSessionID = config.focusSessionID
-        DispatchQueue.main.async {
-            isTitleFocused = true
-        }
-    }
-
-    private func finishTitleEditing(commit: Bool, config: TitleEditingConfig) {
-        guard !isEndingTitleEditing else { return }
-        isEndingTitleEditing = true
-        isTitleFocused = false
-        let action = commit ? config.onCommit : config.onCancel
-        DispatchQueue.main.async {
-            action()
-            lastFocusSessionID = nil
-            isEndingTitleEditing = false
-            hasActiveTitleFocus = false
-        }
-    }
-
     private func beginEditingTitle() {
         guard titleEditingConfig == nil else { return }
         onTitleFocusRequest()
@@ -522,6 +478,7 @@ private struct BatchProgressChip: View {
 #Preview("Dark Mode") {
     TapeCardView(
         tape: Binding.constant(Tape.sampleTapes[0]),
+        tapeID: Tape.sampleTapes[0].id,
         onSettings: {},
         onPlay: {},
         onAirPlay: {},
@@ -539,6 +496,7 @@ private struct BatchProgressChip: View {
 #Preview("Light Mode") {
     TapeCardView(
         tape: Binding.constant(Tape.sampleTapes[0]),
+        tapeID: Tape.sampleTapes[0].id,
         onSettings: {},
         onPlay: {},
         onAirPlay: {},

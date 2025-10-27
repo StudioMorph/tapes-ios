@@ -1,0 +1,316 @@
+2025-10-27 13:57:11.461 xcodebuild[20637:717238]  DVTFilePathFSEvents: Failed to start fs event stream.
+2025-10-27 13:57:11.608 xcodebuild[20637:717204] [MT] DVTDeveloperPaths: Failed to get length of DARWIN_USER_CACHE_DIR from confstr(3), error = Error Domain=NSPOSIXErrorDomain Code=5 "Input/output error". Using NSCachesDirectory instead.
+2025-10-27 13:57:11.870 xcodebuild[20637:717237] CoreSimulatorService connection became invalid.  Simulator services will no longer be available.
+2025-10-27 13:57:11.871 xcodebuild[20637:717237] Logging connecton invalid: <OS_xpc_error: <dictionary: 0x2055d2bf0> { count = 1, transaction: 0, voucher = 0x0, contents =
+	"XPCErrorDescription" => <string: 0x2055d2d38> { length = 18, contents = "Connection invalid" }
+}>
+2025-10-27 13:57:11.871 xcodebuild[20637:717237] Error opening log file (/Users/hq/Library/Logs/CoreSimulator/CoreSimulator.com.apple.dt.xcodebuild.log): Operation not permitted
+[-[SimServiceContext sendRequest:]:1743] ERROR : Unable to deliver request ({
+    "developer_dir" = "/Applications/Xcode.app/Contents/Developer";
+    request = "set_developer_dir";
+}) because we are not connected to CoreSimulatorService.
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme Tapes -destination "generic/platform=iOS Simulator" -derivedDataPath DerivedData build
+
+2025-10-27 13:57:11.933 xcodebuild[20637:717204] [MT] DVTAssertions: Warning in DVTFrameworks/DVTFoundation/FileTypes/DVTFileDataTypeDetection.m:79
+Details:  detectedTypeIdentifier (com.apple.binary-property-list) does not conform to matchedTypeIdentifier in MagicFileDataTypeDetector extenson com.apple.property-list. When both are specified, this conformance is required unless overridden by setting allowNonInheritance. extension.identifier:Xcode.MagicFileDataTypeDetector.BinaryPlist
+Object:   <DVTFileDataTypeDetectionMagicCache: 0x143a7f7c0>
+Method:   -initWithExtension:
+Thread:   <_NSMainThread: 0x14260f140>{number = 1, name = main}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+2025-10-27 13:57:11.933 xcodebuild[20637:717204] [MT] DVTAssertions: Warning in DVTFrameworks/DVTFoundation/FileTypes/DVTFileDataTypeDetection.m:79
+Details:  detectedTypeIdentifier (com.apple.xml-property-list) does not conform to matchedTypeIdentifier in MagicFileDataTypeDetector extenson com.apple.property-list. When both are specified, this conformance is required unless overridden by setting allowNonInheritance. extension.identifier:Xcode.MagicFileDataTypeDetector.XMLPlist
+Object:   <DVTFileDataTypeDetectionMagicCache: 0x116cb50f0>
+Method:   -initWithExtension:
+Thread:   <_NSMainThread: 0x14260f140>{number = 1, name = main}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+[-[SimServiceContext initWithDeveloperDir:connectionType:error:]:450] WARN  : Unable to discover any Simulator runtimes. Developer Directory is /Applications/Xcode.app/Contents/Developer.
+[-[SimDiskImageManager init]:175] ERROR : Could not kickstart simdiskimaged; SimDiskImageManager services will not be available: Error Domain=NSPOSIXErrorDomain Code=53 "Software caused connection abort" UserInfo={NSLocalizedDescription=Error returned in reply from CoreSimulatorService: Connection invalid}
+[-[SimDiskImageManager _onQueue_checkConnection:]:239] ERROR : simdiskimaged returned error (invalid), marking disconnected.
+[-[SimDiskImageManager _onQueue_checkConnection:]:239] ERROR : simdiskimaged returned error (invalid), marking disconnected.
+[-[SimServiceContext initWithDeveloperDir:connectionType:error:]_block_invoke:486] ERROR : Could not get list of trusted mount directories: Error Domain=com.apple.CoreSimulator.SimError Code=410 "The service used to manage runtime disk images (simdiskimaged) crashed or is not responding" UserInfo={NSLocalizedDescription=The service used to manage runtime disk images (simdiskimaged) crashed or is not responding}
+[-[SimServiceContext sendRequest:reply:error:]:1763] ERROR : Unable to deliver request ({
+    request = "notification_subscription";
+    "set_path" = "/Users/hq/Library/Developer/CoreSimulator/Devices";
+}) because we are not connected to CoreSimulatorService.
+2025-10-27 13:57:11.991 xcodebuild[20637:717238] Error Domain=NSPOSIXErrorDomain Code=61 "Connection refused" UserInfo={NSLocalizedDescription=CoreSimulatorService connection became invalid.  Simulator services will no longer be available.}
+[-[SimServiceContext sendRequest:reply:error:]:1763] ERROR : Unable to deliver request ({
+    request = "notification_subscription";
+    "set_path" = "/Users/hq/Library/Developer/CoreSimulator/Devices";
+}) because we are not connected to CoreSimulatorService.
+2025-10-27 13:57:11.992 xcodebuild[20637:717238]  IDESimulatorAvailability: startObservingSimulatorUpdates() FAILED to register SimDeviceSet observer
+2025-10-27 13:57:11.992 xcodebuild[20637:717237] Error Domain=NSPOSIXErrorDomain Code=61 "Connection refused" UserInfo={NSLocalizedDescription=CoreSimulatorService connection became invalid.  Simulator services will no longer be available.}
+2025-10-27 13:57:11.992 xcodebuild[20637:717237]  iOSSimulator: [SimServiceContext defaultDeviceSetWithError:] returned nil (Error Domain=NSPOSIXErrorDomain Code=61 "Connection refused" UserInfo={NSLocalizedFailureReason=Failed to subscribe to notifications from CoreSimulatorService., NSLocalizedDescription=Failed to initialize simulator device set., NSUnderlyingError=0x116cf2010 {Error Domain=NSPOSIXErrorDomain Code=61 "Connection refused" UserInfo={NSLocalizedDescription=CoreSimulatorService connection became invalid.  Simulator services will no longer be available.}}}). Simulator device support disabled.
+2025-10-27 13:57:12.000 xcodebuild[20637:717237]  DVTProvisioningProfileManager: Failed to load profile "/Users/hq/Library/Developer/Xcode/UserData/Provisioning Profiles/f90f699f-d539-4364-821b-5f2c795b3413.mobileprovision" (Error Domain=DVTProvisioningProfileProviderErrorDomain Code=1 "Failed to load profile." UserInfo={NSLocalizedDescription=Failed to load profile., NSLocalizedRecoverySuggestion=Profile is missing the required UUID property.})
+2025-10-27 13:57:12.137 xcodebuild[20637:717204] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2025-10-27 13:57:12.171 xcodebuild[20637:717237] XPC error for connection com.apple.backupd.sandbox.xpc: Connection invalid
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'Tapes' in project 'Tapes' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Preview Content/Preview Assets.xcassets /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: 1f1d7052e6e8b71b1feda78ec4cd9c21
+Build description path: /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/XCBuildData/1f1d7052e6e8b71b1feda78ec4cd9c21.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -o /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache
+Failed to create FS event stream. Considering the cache up-to-date.
+
+WriteAuxiliaryFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes.SwiftConstValuesFileList (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    write-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes.LinkFileList (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    write-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes.LinkFileList
+
+WriteAuxiliaryFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes.SwiftFileList (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    write-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes.SwiftFileList
+
+WriteAuxiliaryFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes-OutputFileMap.json (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    write-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes.SwiftFileList (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    write-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes.SwiftFileList
+
+WriteAuxiliaryFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes.SwiftConstValuesFileList (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    write-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes.LinkFileList (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    write-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes.LinkFileList
+
+WriteAuxiliaryFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes-OutputFileMap.json (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    write-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes-OutputFileMap.json
+
+ProcessInfoPlistFile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator/Tapes.app/Info.plist /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/empty-Tapes.plist (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    builtin-infoPlistUtility /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/empty-Tapes.plist -producttype com.apple.product-type.application -genpkginfo /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator/Tapes.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/assetcatalog_generated_info.plist -o /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator/Tapes.app/Info.plist
+
+SwiftDriver Tapes normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Tapes -Onone -enforce-exclusivity\=checked @/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -target arm64-apple-ios18.2-simulator -g -module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator -F /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache -output-file-map /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes_const_extract_protocols.json -Xcc -iquote -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-generated-files.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-own-target-headers.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-all-target-headers.hmap -Xcc -iquote -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-project-headers.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources-normal/arm64 -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources/arm64 -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/arm64/Tapes-Swift.h -working-directory /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios -experimental-emit-module-separately -disable-cmo
+
+SwiftDriver Tapes normal x86_64 com.apple.xcode.tools.swift.compiler (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Tapes -Onone -enforce-exclusivity\=checked @/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -target x86_64-apple-ios18.2-simulator -g -module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator -F /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator -emit-localized-strings -emit-localized-strings-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64 -c -j10 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache -output-file-map /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes_const_extract_protocols.json -Xcc -iquote -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-generated-files.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-own-target-headers.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-all-target-headers.hmap -Xcc -iquote -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-project-headers.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources-normal/x86_64 -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources/x86_64 -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes-Swift.h -working-directory /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal x86_64 Compiling\ ThumbnailView.swift,\ Tokens.swift,\ ExportCoordinator.swift,\ iOSExporterBridge.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/ThumbnailView.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/DesignSystem/Tokens.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/ExportCoordinator.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/iOSExporterBridge.swift (in target 'Tapes' from project 'Tapes')
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/ThumbnailView.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/DesignSystem/Tokens.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/ExportCoordinator.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/iOSExporterBridge.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+sandbox-exec: sandbox_apply: Operation not permitted
+SwiftCompile normal x86_64 Compiling\ ClipCarousel.swift,\ FabSwipableIcon.swift,\ SnappingHScroll.swift,\ TapeSettingsSheet.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/ClipCarousel.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/FabSwipableIcon.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/SnappingHScroll.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/TapeSettingsSheet.swift (in target 'Tapes' from project 'Tapes')
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/ClipCarousel.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/FabSwipableIcon.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/SnappingHScroll.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/TapeSettingsSheet.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+sandbox-exec: sandbox_apply: Operation not permitted
+SwiftCompile normal x86_64 Compiling\ AirPlayButton.swift,\ Carousel.swift,\ CastManager.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/AirPlayButton.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Carousel.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/CastManager.swift (in target 'Tapes' from project 'Tapes')
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/AirPlayButton.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Carousel.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Carousel.swift:147:1: error: external macro implementation type 'PreviewsMacros.SwiftUIView' could not be found for macro 'Preview(_:body:)'; '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server' produced malformed response
+#Preview("Dark Mode") {
+^
+SwiftUI.Preview:2:41: note: 'Preview(_:body:)' declared here
+@freestanding(declaration) public macro Preview(_ name: String? = nil, @ViewBuilder body: @escaping @MainActor () -> any View) = #externalMacro(module: "PreviewsMacros", type: "SwiftUIView")
+                                        ^
+/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Carousel.swift:157:1: error: external macro implementation type 'PreviewsMacros.SwiftUIView' could not be found for macro 'Preview(_:body:)'; '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server' produced malformed response
+#Preview("Light Mode") {
+^
+SwiftUI.Preview:2:41: note: 'Preview(_:body:)' declared here
+@freestanding(declaration) public macro Preview(_ name: String? = nil, @ViewBuilder body: @escaping @MainActor () -> any View) = #externalMacro(module: "PreviewsMacros", type: "SwiftUIView")
+                                        ^
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/CastManager.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+sandbox-exec: sandbox_apply: Operation not permitted
+SwiftCompile normal x86_64 Compiling\ Clip.swift,\ Tape.swift,\ MediaProviderLoader.swift,\ PhotoLibraryAccess.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Models/Clip.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Models/Tape.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/MediaProviderLoader.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PhotoLibraryAccess.swift (in target 'Tapes' from project 'Tapes')
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Models/Clip.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Models/Tape.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/MediaProviderLoader.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PhotoLibraryAccess.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 Compiling\ PhotosPermissionManager.swift,\ PHPickerVideo.swift,\ TapeAlbumService.swift,\ TapesLog.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PhotosPermissionManager.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PHPickerVideo.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/TapeAlbumService.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/TapesLog.swift (in target 'Tapes' from project 'Tapes')
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PhotosPermissionManager.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PHPickerVideo.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/TapeAlbumService.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/TapesLog.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 Compiling\ TapesApp.swift,\ Thumbnail.swift,\ GeneratedAssetSymbols.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/TapesApp.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Thumbnail.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'Tapes' from project 'Tapes')
+sandbox-exec: sandbox_apply: Operation not permitted
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/ClipCarousel.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/FabSwipableIcon.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/SnappingHScroll.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/TapeSettingsSheet.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/ThumbnailView.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/DesignSystem/Tokens.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/ExportCoordinator.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/iOSExporterBridge.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/TapeExporter.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/Camera/CameraCoordinator.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/Import/PhotoImportCoordinator.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/MediaPicker/MediaPickerSheet.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Models/Clip.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Models/Tape.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/MediaProviderLoader.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PhotoLibraryAccess.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PhotosPermissionManager.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PHPickerVideo.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/TapeAlbumService.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/TapesLog.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Playback/PlaybackPreparationCoordinator.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Playback/TapeCompositionBuilder.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/ViewModels/FeatureFlags.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/ViewModels/TapesStore.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Views/Player/TapePlayerView.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Views/QAChecklistView.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Views/TapeCardView.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Views/TapesListView.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/AirPlayButton.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Carousel.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/CastManager.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/ClipEditSheet.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/ContentView.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/FAB.swift -primary-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/TapesApp.swift -primary-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Thumbnail.swift -primary-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources/GeneratedAssetSymbols.swift -supplementary-output-file-map /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/supplementaryOutputs-20 -emit-localized-strings -emit-localized-strings-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64 -target x86_64-apple-ios18.2-simulator -module-can-import-version DeveloperToolsSupport 23.0.4 23.0.4 -module-can-import-version SwiftUI 7.0.84.1 7.0.84 -module-can-import-version UIKit 9088.1.113 9088.1.113 -disable-cross-import-overlay-search -swift-module-cross-import AVKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/AVKit.framework/Modules/AVKit.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import AVKit /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/AVKit.framework/Modules/AVKit.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/WidgetKit.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/SwiftUI.swiftoverlay -swift-module-cross-import PhotosUI /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk/System/Library/Frameworks/PhotosUI.framework/Modules/PhotosUI.swiftcrossimport/WidgetKit.swiftoverlay -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libFoundationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#FoundationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libObservationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#ObservationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libPreviewsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#PreviewsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftUIMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libTipKitMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#TipKitMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes-dependencies-2.json -enable-objc-interop -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.0.sdk -I /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator -F /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator -no-color-diagnostics -Xcc -fno-color-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=5 -module-cache-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -profile-generate -profile-coverage-mapping -swift-version 5 -enforce-exclusivity\=checked -Onone -D DEBUG -serialize-debugging-options -const-gather-protocols-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Tapes_const_extract_protocols.json -enable-experimental-feature DebugDescriptionMacro -enable-bare-slash-regex -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios -enable-anonymous-context-mangled-names -file-compilation-dir /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/SDKStatCaches.noindex/iphonesimulator26.0-23A339-26257891a6c027eb51374368541b8346.sdkstatcache -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/swift-overrides.hmap -Xcc -iquote -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-generated-files.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-own-target-headers.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-all-target-headers.hmap -Xcc -iquote -Xcc /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Tapes-project-headers.hmap -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources-normal/x86_64 -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources/x86_64 -Xcc -I/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name Tapes -frontend-parseable-output -disable-clang-spi -target-sdk-version 26.0 -target-sdk-name iphonesimulator26.0 -clang-target x86_64-apple-ios26.0-simulator -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -o /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/TapesApp.o -o /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Thumbnail.o -o /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/GeneratedAssetSymbols.o -index-unit-output-path /Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/TapesApp.o -index-unit-output-path /Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/Thumbnail.o -index-unit-output-path /Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/GeneratedAssetSymbols.o -index-store-path /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Index.noindex/DataStore -index-system-modules
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/TapesApp.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Thumbnail.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Thumbnail.swift:128:1: error: external macro implementation type 'PreviewsMacros.SwiftUIView' could not be found for macro 'Preview(_:body:)'; '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server' produced malformed response
+#Preview("Dark Mode") {
+^
+SwiftUI.Preview:2:41: note: 'Preview(_:body:)' declared here
+@freestanding(declaration) public macro Preview(_ name: String? = nil, @ViewBuilder body: @escaping @MainActor () -> any View) = #externalMacro(module: "PreviewsMacros", type: "SwiftUIView")
+                                        ^
+/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Thumbnail.swift:138:1: error: external macro implementation type 'PreviewsMacros.SwiftUIView' could not be found for macro 'Preview(_:body:)'; '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server' produced malformed response
+#Preview("Light Mode") {
+^
+SwiftUI.Preview:2:41: note: 'Preview(_:body:)' declared here
+@freestanding(declaration) public macro Preview(_ name: String? = nil, @ViewBuilder body: @escaping @MainActor () -> any View) = #externalMacro(module: "PreviewsMacros", type: "SwiftUIView")
+                                        ^
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftEmitModule normal x86_64 Emitting\ module\ for\ Tapes (in target 'Tapes' from project 'Tapes')
+EmitSwiftModule normal x86_64 (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+sandbox-exec: sandbox_apply: Operation not permitted
+SwiftCompile normal arm64 Compiling\ ClipCarousel.swift,\ FabSwipableIcon.swift,\ SnappingHScroll.swift,\ TapeSettingsSheet.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/ClipCarousel.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/FabSwipableIcon.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/SnappingHScroll.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/TapeSettingsSheet.swift (in target 'Tapes' from project 'Tapes')
+sandbox-exec: sandbox_apply: Operation not permitted
+
+SwiftCompile normal arm64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/ClipCarousel.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal arm64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/FabSwipableIcon.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal arm64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/SnappingHScroll.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal arm64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Components/TapeSettingsSheet.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 Compiling\ TapeExporter.swift,\ CameraCoordinator.swift,\ PhotoImportCoordinator.swift,\ MediaPickerSheet.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/TapeExporter.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/Camera/CameraCoordinator.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/Import/PhotoImportCoordinator.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/MediaPicker/MediaPickerSheet.swift (in target 'Tapes' from project 'Tapes')
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Export/TapeExporter.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/Camera/CameraCoordinator.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/Import/PhotoImportCoordinator.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Features/MediaPicker/MediaPickerSheet.swift (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ Tapes (in target 'Tapes' from project 'Tapes')
+sandbox-exec: sandbox_apply: Operation not permitted
+
+EmitSwiftModule normal arm64 (in target 'Tapes' from project 'Tapes')
+    cd /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios
+    
+
+SwiftCompile normal arm64 Compiling\ Clip.swift,\ Tape.swift,\ MediaProviderLoader.swift,\ PhotoLibraryAccess.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Models/Clip.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Models/Tape.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/MediaProviderLoader.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Platform/Photos/PhotoLibraryAccess.swift (in target 'Tapes' from project 'Tapes')
+
+note: Removed stale file '/Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/Objects-normal/x86_64/TapeFramePreferenceKey.swiftconstvalues'
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Carousel.swift (in target 'Tapes' from project 'Tapes')
+	SwiftCompile normal x86_64 Compiling\ TapesApp.swift,\ Thumbnail.swift,\ GeneratedAssetSymbols.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/TapesApp.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Thumbnail.swift /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/DerivedData/Build/Intermediates.noindex/Tapes.build/Debug-iphonesimulator/Tapes.build/DerivedSources/GeneratedAssetSymbols.swift (in target 'Tapes' from project 'Tapes')
+	SwiftCompile normal x86_64 /Users/hq/Desktop/iOS.Tapes/Tapes-iOS/tapes-ios/Tapes/Thumbnail.swift (in target 'Tapes' from project 'Tapes')
+	Building project Tapes with scheme Tapes
+(4 failures)
