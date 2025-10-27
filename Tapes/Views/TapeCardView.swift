@@ -124,6 +124,10 @@ struct TapeCardView: View {
                 // Left group: Title (hug) + 4 + pencil
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     titleTextView
+                        .onTapGesture {
+                            guard titleEditingConfig == nil else { return }
+                            beginEditingTitle()
+                        }
                     Image(systemName: "pencil")
                         .font(Tokens.Typography.title)
                         .foregroundColor(Tokens.Colors.onSurface)
@@ -133,12 +137,6 @@ struct TapeCardView: View {
                             beginEditingTitle()
                         }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard titleEditingConfig == nil else { return }
-                    beginEditingTitle()
-                }
                 .layoutPriority(1)
                 
                 // 32pt minimum gap
@@ -147,27 +145,34 @@ struct TapeCardView: View {
                 // Right group: gear 16 cast? 16 play
                 HStack(spacing: 16) {
                     // Settings button
-                    Button(action: onSettings) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Tokens.Colors.onSurface)
-                    }
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.onSurface)
+                        .onTapGesture {
+                            print("🔧 Settings button tapped! - \(tapeID)")
+                            onSettings()
+                        }
+                        .id("settings-\(tapeID)")
                     
                     // AirPlay button (only show if available devices)
                     if castManager.hasAvailableDevices {
-                        Button(action: onAirPlay) {
-                            Image(systemName: "airplayvideo")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(Tokens.Colors.onSurface)
-                        }
+                        Image(systemName: "airplayvideo")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.onSurface)
+                            .onTapGesture {
+                                onAirPlay()
+                            }
                     }
                     
                     // Play button
-                    Button(action: onPlay) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Tokens.Colors.onSurface)
-                    }
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.onSurface)
+                        .onTapGesture {
+                            print("▶️ Play button tapped! - \(tapeID)")
+                            onPlay()
+                        }
+                        .id("play-\(tapeID)")
                 }
             }
             .padding(.horizontal, Tokens.Spacing.m)

@@ -189,8 +189,10 @@ public class TapesStore: ObservableObject {
     // MARK: - Selected Tape Management
     
     public func selectTape(_ tape: Tape) {
+        print("🔧 TapesStore.selectTape called for: \(tape.title)")
         selectedTape = tape
         showingSettingsSheet = true
+        print("🔧 showingSettingsSheet set to: \(showingSettingsSheet)")
     }
     
     public func selectTape(by id: UUID) {

@@ -59,23 +59,28 @@ struct TapesListView: View {
         List {
             ForEach($tapesStore.tapes) { $tape in
                 let tapeID = $tape.wrappedValue.id
-                let onSettings = { tapesStore.selectTape($tape.wrappedValue) }
+                let currentTape = $tape.wrappedValue
+                let onSettings = { 
+                    print("🔧 onSettings called for tape: \(currentTape.title)")
+                    tapesStore.selectTape(currentTape) 
+                }
                 let onPlay: () -> Void = {
-                    tapeToPreview = $tape.wrappedValue
+                    print("▶️ onPlay called for tape: \(currentTape.title)")
+                    tapeToPreview = currentTape
                     showingPlayOptions = true
                 }
                 let onAirPlay: () -> Void = { }
                 let onThumbnailDelete: (Clip) -> Void = { clip in
-                    tapesStore.deleteClip(from: $tape.wrappedValue.id, clip: clip)
+                    tapesStore.deleteClip(from: currentTape.id, clip: clip)
                 }
                 let onClipInserted: (Clip, Int) -> Void = { clip, index in
-                    tapesStore.insertClip(clip, in: $tape.wrappedValue.id, atCenterOfCarouselIndex: index)
+                    tapesStore.insertClip(clip, in: currentTape.id, atCenterOfCarouselIndex: index)
                 }
                 let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void = { clip, placeholder in
-                    tapesStore.insertClipAtPlaceholder(clip, in: $tape.wrappedValue.id, placeholder: placeholder)
+                    tapesStore.insertClipAtPlaceholder(clip, in: currentTape.id, placeholder: placeholder)
                 }
                 let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void = { pickedMedia, strategy in
-                    tapesStore.insertMedia(pickedMedia, at: strategy, in: $tape.wrappedValue.id)
+                    tapesStore.insertMedia(pickedMedia, at: strategy, in: currentTape.id)
                 }
 
                 let titleEditingConfig: TapeCardView.TitleEditingConfig? = {
@@ -109,7 +114,7 @@ struct TapesListView: View {
                         onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
                         onMediaInserted: onMediaInserted,
                         onTitleFocusRequest: {
-                            startTitleEditing(tapeID: tapeID, currentTitle: $tape.wrappedValue.title)
+                            startTitleEditing(tapeID: tapeID, currentTitle: currentTape.title)
                         },
                         titleEditingConfig: titleEditingConfig
                     )
@@ -243,6 +248,7 @@ private struct NewTapeRevealContainer<Content: View>: View {
         content()
             .scaleEffect(targetScale, anchor: .center)
             .opacity(targetOpacity)
+            .allowsHitTesting(true)
             .onAppear {
                 if isPendingReveal {
                     isVisible = false
