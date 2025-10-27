@@ -144,6 +144,37 @@ struct TitleEditingConfig {
 - Maintains native List behavior
 - Consistent with iOS design patterns
 
+### 6. Fixed Black Background Behind Keyboard
+
+**Problem:**
+The keyboard appeared with a black background/container behind it, creating an unprofessional appearance that didn't match native iOS behavior.
+
+**Root Cause:**
+The VStack structure included a `Spacer()` that constrained the List's height:
+```swift
+VStack {
+    headerView
+    tapesList
+    Spacer()  // This constrained the List height
+}
+```
+
+**Solution:**
+Removed the `Spacer()` to allow the List to expand naturally:
+```swift
+VStack {
+    headerView
+    tapesList
+    // Spacer() removed
+}
+```
+
+**Benefits:**
+- List now fills available space properly
+- No black background behind keyboard
+- Matches native iOS form behavior
+- Clean, professional appearance
+
 ## Key Benefits Achieved
 
 ### 1. Native iOS Form Behavior
@@ -212,6 +243,7 @@ struct TitleEditingConfig {
 - [ ] Tape card layout unchanged
 - [ ] Business logic unchanged
 - [ ] 16pt spacing between cards
+- [ ] No black background behind keyboard
 - [ ] All existing functionality preserved
 
 ## Future Considerations

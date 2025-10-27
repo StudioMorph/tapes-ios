@@ -16,12 +16,12 @@ struct TapesListView: View {
                 VStack {
                     headerView
                     tapesList
-                    Spacer()
                 }
                 .navigationBarHidden(true)
             }
         }
         .background(Tokens.Colors.bg)
+        .background(Tokens.Colors.bg.ignoresSafeArea())
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
         }
