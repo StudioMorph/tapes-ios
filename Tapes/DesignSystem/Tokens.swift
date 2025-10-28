@@ -2,9 +2,12 @@ import SwiftUI
 
 public struct Tokens {
     public enum Spacing {
+        public static let xs: CGFloat = 4
         public static let s: CGFloat = 8
         public static let m: CGFloat = 16
         public static let l: CGFloat = 24
+        public static let xl: CGFloat = 32
+        public static let xxl: CGFloat = 48
     }
     
     public enum Radius {
@@ -27,7 +30,17 @@ public struct Tokens {
     }
     
     public enum Typography {
-        public static let title = Font.system(size: 17, weight: .semibold)
+        public static let largeTitle = Font.largeTitle
+        public static let title = Font.title2
+        public static let headline = Font.headline
+        public static let body = Font.body
+        public static let caption = Font.caption
+        public static let caption2 = Font.caption2
+    }
+    
+    public enum HitTarget {
+        public static let minimum: CGFloat = 44
+        public static let recommended: CGFloat = 48
     }
     
     public enum Timing {

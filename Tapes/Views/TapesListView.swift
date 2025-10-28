@@ -131,7 +131,7 @@ struct TapesListView: View {
 
     private var settingsSheet: some View {
         if let selectedTape = tapesStore.selectedTape {
-            return AnyView(TapeSettingsSheet(
+            return AnyView(TapeSettingsView(
                 tape: Binding(
                     get: { selectedTape },
                     set: { tapesStore.updateTape($0) }
