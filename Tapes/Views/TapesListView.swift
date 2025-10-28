@@ -21,8 +21,8 @@ struct TapesListView: View {
                 .navigationBarHidden(true)
             }
         }
-        .background(Tokens.Colors.bg)
-        .background(Tokens.Colors.bg.ignoresSafeArea())
+        .background(Tokens.Colors.primaryBackground)
+        .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
         }
@@ -42,14 +42,14 @@ struct TapesListView: View {
         HStack {
             Text("TAPES")
                 .font(.system(size: 24, weight: .bold))
-                .foregroundColor(Tokens.Colors.red)
+                .foregroundColor(Tokens.Colors.systemRed)
 
             Spacer()
 
             Button(action: { showingQAChecklist = true }) {
                 Image(systemName: "checklist")
                     .font(.title2)
-                    .foregroundColor(Tokens.Colors.red)
+                    .foregroundColor(Tokens.Colors.systemRed)
             }
         }
         .padding(.horizontal, Tokens.Spacing.m)
@@ -354,11 +354,11 @@ private struct DeleteSuccessToast: View {
             HStack(spacing: Tokens.Spacing.m) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(Tokens.Colors.primaryText)
                 
                 Text("Tape deleted")
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundColor(.white)
+                    .foregroundColor(Tokens.Colors.primaryText)
                     .fontWeight(.medium)
                 
                 Spacer()

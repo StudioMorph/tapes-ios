@@ -12,21 +12,21 @@ struct DestructiveActionSection: View {
                         ProgressView()
                             .scaleEffect(0.8)
                             .progressViewStyle(.circular)
-                            .tint(Tokens.Colors.red)
+                            .tint(Tokens.Colors.systemRed)
                     } else {
                         Image(systemName: "trash")
                             .font(Tokens.Typography.headline)
-                            .foregroundColor(Tokens.Colors.red)
+                            .foregroundColor(Tokens.Colors.systemRed)
                     }
                     
                     Text("Delete Tape")
                         .font(Tokens.Typography.headline)
-                        .foregroundColor(Tokens.Colors.red)
+                        .foregroundColor(Tokens.Colors.systemRed)
                 }
                 .padding(.vertical, Tokens.Spacing.m)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: Tokens.HitTarget.minimum)
-                .background(Tokens.Colors.elevated)
+                .background(Tokens.Colors.secondaryBackground)
                 .cornerRadius(Tokens.Radius.card)
             }
             .buttonStyle(.plain)
@@ -38,12 +38,12 @@ struct DestructiveActionSection: View {
             VStack(spacing: 2) {
                 Text("Also deletes the album from your device.")
                     .font(Tokens.Typography.caption)
-                    .foregroundColor(Tokens.Colors.muted)
+                    .foregroundColor(Tokens.Colors.secondaryText)
                     .multilineTextAlignment(.center)
                 
                 Text("All photos and videos will remain in your device's Library.")
                     .font(Tokens.Typography.caption)
-                    .foregroundColor(Tokens.Colors.muted)
+                    .foregroundColor(Tokens.Colors.secondaryText)
                     .multilineTextAlignment(.center)
             }
         }
@@ -63,5 +63,5 @@ struct DestructiveActionSection: View {
         )
     }
     .padding()
-    .background(Tokens.Colors.bg)
+    .background(Tokens.Colors.primaryBackground)
 }

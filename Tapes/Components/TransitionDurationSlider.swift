@@ -9,7 +9,7 @@ struct TransitionDurationSlider: View {
             HStack {
                 Text("0.1s")
                     .font(Tokens.Typography.caption)
-                    .foregroundColor(Tokens.Colors.muted)
+                    .foregroundColor(Tokens.Colors.secondaryText)
                 
                 Slider(value: $duration, in: 0.1...2.0, step: 0.1)
                     .accentColor(.blue)
@@ -19,15 +19,15 @@ struct TransitionDurationSlider: View {
                 
                 Text("2.0s")
                     .font(Tokens.Typography.caption)
-                    .foregroundColor(Tokens.Colors.muted)
+                    .foregroundColor(Tokens.Colors.secondaryText)
             }
             
             Text("\(String(format: "%.1f", duration))s")
                 .font(Tokens.Typography.headline)
-                .foregroundColor(Tokens.Colors.onSurface)
+                .foregroundColor(Tokens.Colors.primaryText)
         }
         .padding(Tokens.Spacing.l)
-        .background(Tokens.Colors.elevated)
+        .background(Tokens.Colors.secondaryBackground)
         .cornerRadius(Tokens.Radius.card)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Transition duration")
@@ -52,5 +52,5 @@ struct TransitionDurationSlider: View {
         hasChanges: .constant(false)
     )
     .padding()
-    .background(Tokens.Colors.bg)
+    .background(Tokens.Colors.primaryBackground)
 }

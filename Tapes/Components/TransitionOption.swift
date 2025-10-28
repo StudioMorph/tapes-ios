@@ -11,11 +11,11 @@ struct TransitionOption: View {
                 VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
                     Text(transition.displayName)
                         .font(Tokens.Typography.headline)
-                        .foregroundColor(Tokens.Colors.onSurface)
+                        .foregroundColor(Tokens.Colors.primaryText)
                     
                     Text(transitionDescription)
                         .font(Tokens.Typography.caption)
-                        .foregroundColor(Tokens.Colors.muted)
+                        .foregroundColor(Tokens.Colors.secondaryText)
                 }
                 
                 Spacer()
@@ -28,7 +28,7 @@ struct TransitionOption: View {
             }
             .padding(.vertical, Tokens.Spacing.m)
             .padding(.horizontal, Tokens.Spacing.m)
-            .background(Tokens.Colors.elevated)
+            .background(Tokens.Colors.secondaryBackground)
             .cornerRadius(Tokens.Radius.card)
         }
         .buttonStyle(.plain)
@@ -69,5 +69,5 @@ struct TransitionOption: View {
         )
     }
     .padding()
-    .background(Tokens.Colors.bg)
+    .background(Tokens.Colors.primaryBackground)
 }

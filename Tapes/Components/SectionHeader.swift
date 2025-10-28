@@ -6,7 +6,7 @@ struct SectionHeader: View {
     var body: some View {
         Text(title)
             .font(Tokens.Typography.title)
-            .foregroundColor(Tokens.Colors.onSurface)
+            .foregroundColor(Tokens.Colors.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityAddTraits(.isHeader)
     }
@@ -18,5 +18,5 @@ struct SectionHeader: View {
         SectionHeader(title: "Transition Duration")
     }
     .padding()
-    .background(Tokens.Colors.bg)
+    .background(Tokens.Colors.primaryBackground)
 }

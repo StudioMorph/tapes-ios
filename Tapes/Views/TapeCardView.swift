@@ -70,7 +70,7 @@ struct TapeCardView: View {
                 .focused($isTitleFocused)
                 .textFieldStyle(.plain)
                 .font(Tokens.Typography.title)
-                .foregroundColor(Tokens.Colors.onSurface)
+                .foregroundColor(Tokens.Colors.primaryText)
                 .disableAutocorrection(true)
                 .submitLabel(.done)
                 .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
@@ -84,7 +84,7 @@ struct TapeCardView: View {
         } else {
             Text(displayedTitle)
                 .font(Tokens.Typography.title)
-                .foregroundColor(Tokens.Colors.onSurface)
+                .foregroundColor(Tokens.Colors.primaryText)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
@@ -130,7 +130,7 @@ struct TapeCardView: View {
                         }
                     Image(systemName: "pencil")
                         .font(Tokens.Typography.title)
-                        .foregroundColor(Tokens.Colors.onSurface)
+                        .foregroundColor(Tokens.Colors.primaryText)
                         .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                         .onTapGesture {
                             guard titleEditingConfig == nil else { return }
@@ -147,7 +147,7 @@ struct TapeCardView: View {
                     // Settings button
                     Image(systemName: "gearshape")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.onSurface)
+                        .foregroundColor(Tokens.Colors.primaryText)
                         .onTapGesture {
                             print("🔧 Settings button tapped! - \(tapeID)")
                             onSettings()
@@ -158,7 +158,7 @@ struct TapeCardView: View {
                     if castManager.hasAvailableDevices {
                         Image(systemName: "airplayvideo")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Tokens.Colors.onSurface)
+                            .foregroundColor(Tokens.Colors.primaryText)
                             .onTapGesture {
                                 onAirPlay()
                             }
@@ -167,7 +167,7 @@ struct TapeCardView: View {
                     // Play button
                     Image(systemName: "play.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.onSurface)
+                        .foregroundColor(Tokens.Colors.primaryText)
                         .onTapGesture {
                             print("▶️ Play button tapped! - \(tapeID)")
                             onPlay()
@@ -216,7 +216,7 @@ struct TapeCardView: View {
                 
                 // 2) Red center line (between clips and FAB)
                 Rectangle()
-                    .fill(Tokens.Colors.red.opacity(0.9))
+                    .fill(Tokens.Colors.systemRed.opacity(0.9))
                     .frame(width: 2, height: thumbH)
                     .allowsHitTesting(false)
                     .zIndex(1) // above thumbnails, below FAB
@@ -255,7 +255,7 @@ struct TapeCardView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                .fill(Tokens.Colors.card)
+                .fill(Tokens.Colors.secondaryBackground)
         )
         .onAppear {
             if isNewSession {
@@ -443,7 +443,7 @@ private struct BatchProgressChip: View {
     }
     
     private var backgroundColor: Color {
-        Tokens.Colors.card.opacity(0.94)
+        Tokens.Colors.secondaryBackground.opacity(0.94)
     }
     
     @ViewBuilder
@@ -455,7 +455,7 @@ private struct BatchProgressChip: View {
         } else if progress.inProgress > 0 {
             ProgressView()
                 .controlSize(.small)
-                .tint(Tokens.Colors.onSurface)
+                .tint(Tokens.Colors.primaryText)
         } else {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundColor(.green)
@@ -468,7 +468,7 @@ private struct BatchProgressChip: View {
             leadingIcon
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Tokens.Colors.onSurface)
+                .foregroundColor(Tokens.Colors.primaryText)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -495,7 +495,7 @@ private struct BatchProgressChip: View {
     .environmentObject(TapesStore())  // lightweight preview store
     .preferredColorScheme(ColorScheme.dark)
     .padding()
-    .background(Tokens.Colors.bg)
+    .background(Tokens.Colors.primaryBackground)
 }
 
 #Preview("Light Mode") {
@@ -513,5 +513,5 @@ private struct BatchProgressChip: View {
     .environmentObject(TapesStore())  // lightweight preview store
     .preferredColorScheme(ColorScheme.light)
     .padding()
-    .background(Tokens.Colors.bg)
+    .background(Tokens.Colors.primaryBackground)
 }

@@ -41,7 +41,7 @@ struct TapeSettingsView: View {
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
             }
-            .background(Tokens.Colors.bg.ignoresSafeArea())
+            .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
             .navigationTitle("Tape Settings")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -50,7 +50,7 @@ struct TapeSettingsView: View {
                         resetToBindingValues()
                         onDismiss()
                     }
-                    .foregroundColor(Tokens.Colors.onSurface)
+                    .foregroundColor(Tokens.Colors.primaryText)
                     .accessibilityLabel("Cancel changes and close settings")
                 }
                 
@@ -59,7 +59,7 @@ struct TapeSettingsView: View {
                         saveChanges()
                         onDismiss()
                     }
-                    .foregroundColor(hasChanges ? .blue : Tokens.Colors.muted)
+                    .foregroundColor(hasChanges ? .blue : Tokens.Colors.secondaryText)
                     .disabled(!hasChanges)
                     .accessibilityLabel(hasChanges ? "Save changes" : "No changes to save")
                     .accessibilityHint(hasChanges ? "Saves the current transition settings" : "No changes have been made")
