@@ -22,11 +22,11 @@ struct TransitionOption: View {
                 
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(Tokens.Colors.red)
+                        .foregroundColor(.blue)
                         .font(Tokens.Typography.title)
                 }
             }
-            .padding(.vertical, Tokens.Spacing.s)
+            .padding(.vertical, Tokens.Spacing.m)
             .padding(.horizontal, Tokens.Spacing.m)
             .background(Tokens.Colors.elevated)
             .cornerRadius(Tokens.Radius.card)

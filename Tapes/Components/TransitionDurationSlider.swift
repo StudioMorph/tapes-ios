@@ -12,7 +12,7 @@ struct TransitionDurationSlider: View {
                     .foregroundColor(Tokens.Colors.muted)
                 
                 Slider(value: $duration, in: 0.1...2.0, step: 0.1)
-                    .accentColor(Tokens.Colors.red)
+                    .accentColor(.blue)
                     .onChange(of: duration) { _ in
                         hasChanges = true
                     }

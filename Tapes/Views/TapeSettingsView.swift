@@ -59,7 +59,7 @@ struct TapeSettingsView: View {
                         saveChanges()
                         onDismiss()
                     }
-                    .foregroundColor(hasChanges ? Tokens.Colors.red : Tokens.Colors.muted)
+                    .foregroundColor(hasChanges ? .blue : Tokens.Colors.muted)
                     .disabled(!hasChanges)
                     .accessibilityLabel(hasChanges ? "Save changes" : "No changes to save")
                     .accessibilityHint(hasChanges ? "Saves the current transition settings" : "No changes have been made")
@@ -94,7 +94,7 @@ struct TapeSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             SectionHeader(title: "Choose default transition")
             
-            VStack(spacing: Tokens.Spacing.m) {
+            VStack(spacing: Tokens.Spacing.s) {
                 ForEach(TransitionType.allCases, id: \.self) { transition in
                     TransitionOption(
                         transition: transition,

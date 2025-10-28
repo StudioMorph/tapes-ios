@@ -23,8 +23,9 @@ struct DestructiveActionSection: View {
                         .font(Tokens.Typography.headline)
                         .foregroundColor(Tokens.Colors.red)
                 }
+                .padding(.vertical, Tokens.Spacing.m)
                 .frame(maxWidth: .infinity)
-                .frame(height: Tokens.HitTarget.minimum)
+                .frame(minHeight: Tokens.HitTarget.minimum)
                 .background(Tokens.Colors.elevated)
                 .cornerRadius(Tokens.Radius.card)
             }
