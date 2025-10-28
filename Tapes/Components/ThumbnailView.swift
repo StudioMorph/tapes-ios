@@ -31,7 +31,7 @@ struct StartPlusView: View {
     var body: some View {
         ZStack {
             Rectangle()
-                .fill(Tokens.Colors.elevated)
+                .fill(Tokens.Colors.tertiaryBackground)
                 .clipShape(
                     UnevenRoundedRectangle(
                         topLeadingRadius: Tokens.Radius.thumb,
@@ -43,7 +43,7 @@ struct StartPlusView: View {
             
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .medium))
-                .foregroundColor(Tokens.Colors.onSurface)
+                .foregroundColor(Tokens.Colors.primaryText)
         }
     }
 }
@@ -52,7 +52,7 @@ struct EndPlusView: View {
     var body: some View {
         ZStack {
             Rectangle()
-                .fill(Tokens.Colors.elevated)
+                .fill(Tokens.Colors.tertiaryBackground)
                 .clipShape(
                     UnevenRoundedRectangle(
                         topLeadingRadius: 0,
@@ -64,7 +64,7 @@ struct EndPlusView: View {
             
             Image(systemName: "plus")
                 .font(.system(size: 24, weight: .medium))
-                .foregroundColor(Tokens.Colors.onSurface)
+                .foregroundColor(Tokens.Colors.primaryText)
         }
     }
 }
@@ -157,10 +157,10 @@ private struct PlaceholderClipView: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
-                .fill(Tokens.Colors.elevated)
+                .fill(Tokens.Colors.tertiaryBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
-                        .strokeBorder(isError ? Color.red : Tokens.Colors.onSurface.opacity(0.1), lineWidth: 1)
+                        .strokeBorder(isError ? Color.red : Tokens.Colors.primaryText.opacity(0.1), lineWidth: 1)
                 )
             VStack(spacing: 8) {
                 if isError {
@@ -170,11 +170,11 @@ private struct PlaceholderClipView: View {
                 } else {
                     ProgressView()
                         .controlSize(.regular)
-                        .tint(Tokens.Colors.onSurface)
+                        .tint(Tokens.Colors.primaryText)
                 }
                 Text(statusText)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Tokens.Colors.onSurface)
+                    .foregroundColor(Tokens.Colors.primaryText)
             }
             .padding(12)
         }
@@ -230,6 +230,6 @@ struct DurationBadge: View {
         ThumbnailView(item: .endPlus, onPlaceholderTap: { _ in })
             .frame(width: 150, height: 84)
     }
-    .background(Tokens.Colors.bg)
+    .background(Tokens.Colors.primaryBackground)
     .environmentObject(TapesStore())
 }
