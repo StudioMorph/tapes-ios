@@ -9,6 +9,7 @@ struct TapesListView: View {
     @State private var tapeToPreview: Tape?
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
+    @State private var showingDeleteSuccessToast = false
 
     var body: some View {
         NavigationView {
@@ -138,6 +139,9 @@ struct TapesListView: View {
                 onDismiss: {
                     tapesStore.showingSettingsSheet = false
                     tapesStore.clearSelectedTape()
+                },
+                onTapeDeleted: {
+                    showingDeleteSuccessToast = true
                 }
             ))
         } else {
@@ -188,6 +192,9 @@ struct TapesListView: View {
             }
             if exportCoordinator.exportError != nil {
                 ExportErrorAlert(coordinator: exportCoordinator)
+            }
+            if showingDeleteSuccessToast {
+                DeleteSuccessToast(isVisible: $showingDeleteSuccessToast)
             }
             AlbumAssociationAlert()
         }
@@ -331,6 +338,64 @@ private struct AlbumAssociationAlert: View {
                 }
             }
         )
+    }
+}
+
+// MARK: - Delete Success Toast
+
+private struct DeleteSuccessToast: View {
+    @Binding var isVisible: Bool
+    @State private var showing = false
+    
+    var body: some View {
+        VStack {
+            Spacer()
+            
+            HStack(spacing: Tokens.Spacing.m) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(.white)
+                
+                Text("Tape deleted")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(.white)
+                    .fontWeight(.medium)
+                
+                Spacer()
+            }
+            .padding(.horizontal, Tokens.Spacing.m)
+            .padding(.vertical, Tokens.Spacing.m)
+            .background(
+                RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
+                    .fill(Tokens.Colors.red)
+            )
+            .padding(.horizontal, Tokens.Spacing.l)
+            .padding(.bottom, Tokens.Spacing.l)
+            .opacity(showing ? 1.0 : 0.0)
+            .scaleEffect(showing ? 1.0 : 0.8)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showing)
+            .onAppear {
+                showing = true
+                
+                // Auto-dismiss after 3 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    withAnimation {
+                        showing = false
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        isVisible = false
+                    }
+                }
+            }
+            .onTapGesture {
+                withAnimation {
+                    showing = false
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    isVisible = false
+                }
+            }
+        }
     }
 }
 

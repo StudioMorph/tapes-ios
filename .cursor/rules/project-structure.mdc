@@ -1,0 +1,11 @@
+---
+alwaysApply: true
+---
+Prefer using components from /DesignSystem when available.
+For existing screens that predate the Design System, DO NOT rewrite or migrate
+unless I explicitly ask. When a DS component equivalent does not exist,
+use local, minimal SwiftUI views and leave TODOs.
+
+App/Features/** for feature UI & view models (Tape/*).
+Core/{Models,Persistence,Media,Thumbnails,Logging}.
+DesignSystem/ for shared UI. No singletons; prefer dependency injection.

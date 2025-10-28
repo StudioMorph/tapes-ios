@@ -1,0 +1,22 @@
+# .cursorrules
+rules:
+  - name: iOS Native Defaults
+    priority: highest
+    appliesTo: ["*"]
+    content: |
+      Use Apple's native APIs first. SwiftUI + MVVM. Swift Concurrency (async/await).
+      iOS 17+, Xcode 16+, Swift 5.10+. SPM only. AVFoundation for video, Photos for saving.
+      JSON via FileManager now; Core Data later. Follow Apple HIG for motion and layout.
+      Avoid third-party libs unless Apple APIs are insufficient; if proposed, justify and ensure SPM.
+
+  - name: Project Structure
+    appliesTo: ["*"]
+    content: |
+      App/Features/** for feature UI & view models (Tape/*).
+      Core/{Models,Persistence,Media,Thumbnails,Logging}.
+      DesignSystem/ for shared UI. No singletons; prefer DI.
+
+  - name: References
+    appliesTo: ["*"]
+    content: |
+      If unsure, consult docs in ios-cursor-context.md (repo file).

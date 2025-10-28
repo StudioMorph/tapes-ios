@@ -1,0 +1,21 @@
+---
+alwaysApply: true
+---
+For every new feature implementation, addition, or significant refactor:
+- Always generate or update a corresponding Markdown documentation file under `/docs/features/` or the relevant subfolder.
+- Each feature doc must include:
+  - Summary (1–2 lines)
+  - Purpose & scope
+  - Key UI components used
+  - Data flow (ViewModel → Model → Persistence)
+  - Testing or QA considerations
+  - Related tickets or links (if any)
+- After implementing or modifying a feature, update the `Runbook.md` file to reflect:
+  - New dependencies or modules
+  - Build or configuration steps
+  - Changes in environment variables or app setup
+- Documentation should follow British English and use clear, concise technical writing.
+- Keep the docs in sync with code; do not generate placeholder or boilerplate documentation.
+
+If unsure where to add documentation, consult `/docs/Runbook.md` or `ios-cursor-context.md` for conventions.
+
