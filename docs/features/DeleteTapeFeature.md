@@ -23,11 +23,16 @@ Added destructive "Delete Tape" functionality to the Tape Settings modal, allowi
    - Removes tape from `tapes` array
    - Calls `scheduleAlbumDeletionIfNeeded()` for album cleanup
    - Triggers auto-save
-6. **Success Flow**: 
+6. **Album Deletion**: `scheduleAlbumDeletionIfNeeded()` executes:
+   - Checks `FeatureFlags.deleteAssociatedPhotoAlbum` (now enabled)
+   - Retrieves tape's `albumLocalIdentifier`
+   - Calls `albumService.deleteAlbum(withLocalIdentifier:)` asynchronously
+   - Logs success/failure to `TapesLog.photos`
+7. **Success Flow**: 
    - Provide success haptic feedback
    - Dismiss settings modal
    - Show success toast "Tape deleted"
-7. **Navigation**: Return to Tapes list view
+8. **Navigation**: Return to Tapes list view
 
 ## Key Features Implemented
 
@@ -58,6 +63,14 @@ Added destructive "Delete Tape" functionality to the Tape Settings modal, allowi
 - **Graceful degradation**: No error handling needed as `deleteTape()` doesn't throw
 - **State management**: Loading state properly reset on completion
 - **User experience**: Smooth flow without error states
+- **Album deletion errors**: Logged to `TapesLog.photos` but don't block UI flow
+
+### Album Deletion Integration
+- **Feature flag enabled**: `FeatureFlags.deleteAssociatedPhotoAlbum` set to `true`
+- **Asynchronous execution**: Album deletion runs in background via `Task.detached`
+- **Error logging**: Failed album deletions are logged with full error details
+- **Non-blocking**: Album deletion failures don't prevent tape deletion from completing
+- **Photos integration**: Uses `TapeAlbumService` to interact with Photos framework
 
 ## Accessibility Features
 - **Button label**: "Delete Tape, destructive" for VoiceOver
@@ -112,6 +125,28 @@ private func deleteTape() {
 - **Success toast**: Overlay component in TapesListView
 - **Loading states**: Integrated into delete button UI
 
+### Album Deletion Implementation
+```swift
+// Feature flag enabling album deletion
+static var deleteAssociatedPhotoAlbum: Bool {
+    return true
+}
+
+// Album deletion scheduling in TapesStore
+private func scheduleAlbumDeletionIfNeeded(for tape: Tape) {
+    guard FeatureFlags.deleteAssociatedPhotoAlbum,
+          let albumId = tape.albumLocalIdentifier,
+          !albumId.isEmpty else { return }
+    Task.detached(priority: .utility) { [weak self] in
+        do {
+            try await self?.albumService.deleteAlbum(withLocalIdentifier: albumId)
+        } catch {
+            TapesLog.photos.error("Failed to delete Photos album \(albumId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+}
+```
+
 ## Testing & QA Considerations
 
 ### Manual Testing Checklist
@@ -129,9 +164,11 @@ private func deleteTape() {
 - [ ] Toast auto-dismisses after 3 seconds
 - [ ] Tapping toast dismisses it immediately
 - [ ] Tape is removed from the tapes list
-- [ ] Associated album is deleted from Photos
+- [ ] Associated album is deleted from Photos app
 - [ ] Original photos/videos remain in Photos Library
 - [ ] No duplicate tapes remain in persistence
+- [ ] Album deletion is logged to console (check TapesLog.photos)
+- [ ] Feature flag is properly enabled
 
 ### Accessibility Testing
 - [ ] VoiceOver reads button as "Delete Tape, destructive"
@@ -149,11 +186,14 @@ private func deleteTape() {
 ## Related Files Modified
 - `Tapes/Components/TapeSettingsSheet.swift`: Added delete section and functionality
 - `Tapes/Views/TapesListView.swift`: Added success toast and callback handling
+- `Tapes/ViewModels/FeatureFlags.swift`: Enabled `deleteAssociatedPhotoAlbum` flag
 - `docs/features/DeleteTapeFeature.md`: This documentation file
 
 ## Dependencies
 - **TapesStore**: Uses existing `deleteTape()` method
 - **Album Service**: Leverages existing album deletion via `scheduleAlbumDeletionIfNeeded()`
+- **FeatureFlags**: `deleteAssociatedPhotoAlbum` flag (now enabled)
+- **TapeAlbumService**: Handles actual Photos album deletion
 - **Design System**: Uses `Tokens.Colors.red` and spacing tokens
 - **SwiftUI**: Native confirmation dialog and progress view components
 
@@ -163,8 +203,24 @@ private func deleteTape() {
 - **Analytics**: Could track deletion events for usage insights
 - **Custom animations**: Could add custom deletion animations for better UX
 
+## Troubleshooting
+
+### Album Deletion Issues
+- **Check feature flag**: Verify `FeatureFlags.deleteAssociatedPhotoAlbum` returns `true`
+- **Check logs**: Look for `TapesLog.photos` entries in console output
+- **Verify album ID**: Ensure tape has valid `albumLocalIdentifier`
+- **Photos permissions**: Confirm app has Photos library access
+- **Async execution**: Album deletion runs in background - may take a few seconds
+
+### Common Issues
+- **Album not deleted**: Check console logs for error messages
+- **Feature flag disabled**: Verify `FeatureFlags.swift` has `return true`
+- **Missing album ID**: Some tapes may not have associated albums
+- **Photos app sync**: Changes may take time to appear in Photos app
+
 ## Notes
 - **British English**: All user-facing text uses British English spelling
 - **No business logic changes**: Reuses existing delete functionality without modification
 - **Consistent patterns**: Follows existing app patterns for destructive actions
 - **Performance**: Minimal impact as it reuses existing, optimized delete methods
+- **Album deletion**: Now fully enabled and integrated with Photos framework
