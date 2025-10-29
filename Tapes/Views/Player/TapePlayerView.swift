@@ -37,7 +37,7 @@ struct TapePlayerView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Tokens.Colors.primaryBackground.ignoresSafeArea()
 
             if let player {
                 VideoPlayer(player: player)

@@ -480,7 +480,7 @@ private struct BatchProgressChip: View {
     }
 }
 
-#Preview("Dark Mode") {
+#Preview {
     TapeCardView(
         tape: Binding.constant(Tape.sampleTapes[0]),
         tapeID: Tape.sampleTapes[0].id,
@@ -493,25 +493,6 @@ private struct BatchProgressChip: View {
         onMediaInserted: { _, _ in }
     )
     .environmentObject(TapesStore())  // lightweight preview store
-    .preferredColorScheme(ColorScheme.dark)
-    .padding()
-    .background(Tokens.Colors.primaryBackground)
-}
-
-#Preview("Light Mode") {
-    TapeCardView(
-        tape: Binding.constant(Tape.sampleTapes[0]),
-        tapeID: Tape.sampleTapes[0].id,
-        onSettings: {},
-        onPlay: {},
-        onAirPlay: {},
-        onThumbnailDelete: { _ in },
-        onClipInserted: { _, _ in },
-        onClipInsertedAtPlaceholder: { _, _ in },
-        onMediaInserted: { _, _ in }
-    )
-    .environmentObject(TapesStore())  // lightweight preview store
-    .preferredColorScheme(ColorScheme.light)
     .padding()
     .background(Tokens.Colors.primaryBackground)
 }

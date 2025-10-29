@@ -12,17 +12,39 @@ struct TapesListView: View {
     @State private var showingDeleteSuccessToast = false
 
     var body: some View {
-        NavigationView {
-            ZStack(alignment: .top) {
-                VStack {
-                    headerView
-                    tapesList
+        NavigationStack {
+            ZStack {
+                // Background layer - ensures consistent background throughout
+                Tokens.Colors.primaryBackground
+                    .ignoresSafeArea(.all)
+                
+                if tapesStore.tapes.isEmpty {
+                    EmptyStateView()
+                } else {
+                    VStack(spacing: 0) {
+                        HeaderView(onQAChecklistTapped: {
+                            showingQAChecklist = true
+                        })
+                        
+                        TapesList(
+                            tapes: $tapesStore.tapes,
+                            editingTapeID: editingTapeID,
+                            draftTitle: $draftTitle,
+                            onSettings: handleSettings,
+                            onPlay: handlePlay,
+                            onAirPlay: handleAirPlay,
+                            onThumbnailDelete: handleThumbnailDelete,
+                            onClipInserted: handleClipInserted,
+                            onClipInsertedAtPlaceholder: handleClipInsertedAtPlaceholder,
+                            onMediaInserted: handleMediaInserted,
+                            onTitleFocusRequest: handleTitleFocusRequest,
+                            onTitleCommit: commitTitleEditing
+                        )
+                    }
                 }
-                .navigationBarHidden(true)
             }
+            .navigationBarHidden(true)
         }
-        .background(Tokens.Colors.primaryBackground)
-        .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
         }
@@ -38,95 +60,41 @@ struct TapesListView: View {
         }
     }
 
-    private var headerView: some View {
-        HStack {
-            Text("TAPES")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundColor(Tokens.Colors.systemRed)
-
-            Spacer()
-
-            Button(action: { showingQAChecklist = true }) {
-                Image(systemName: "checklist")
-                    .font(.title2)
-                    .foregroundColor(Tokens.Colors.systemRed)
-            }
-        }
-        .padding(.horizontal, Tokens.Spacing.m)
-        .padding(.top, Tokens.Spacing.s)
+    // MARK: - Action Handlers
+    
+    private func handleSettings(_ tape: Tape) {
+        print("🔧 onSettings called for tape: \(tape.title)")
+        tapesStore.selectTape(tape)
     }
-
-    private var tapesList: some View {
-        List {
-            ForEach($tapesStore.tapes) { $tape in
-                let tapeID = $tape.wrappedValue.id
-                let currentTape = $tape.wrappedValue
-                let onSettings = { 
-                    print("🔧 onSettings called for tape: \(currentTape.title)")
-                    tapesStore.selectTape(currentTape) 
-                }
-                let onPlay: () -> Void = {
-                    print("▶️ onPlay called for tape: \(currentTape.title)")
-                    tapeToPreview = currentTape
-                    showingPlayOptions = true
-                }
-                let onAirPlay: () -> Void = { }
-                let onThumbnailDelete: (Clip) -> Void = { clip in
-                    tapesStore.deleteClip(from: currentTape.id, clip: clip)
-                }
-                let onClipInserted: (Clip, Int) -> Void = { clip, index in
-                    tapesStore.insertClip(clip, in: currentTape.id, atCenterOfCarouselIndex: index)
-                }
-                let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void = { clip, placeholder in
-                    tapesStore.insertClipAtPlaceholder(clip, in: currentTape.id, placeholder: placeholder)
-                }
-                let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void = { pickedMedia, strategy in
-                    tapesStore.insertMedia(pickedMedia, at: strategy, in: currentTape.id)
-                }
-
-                let titleEditingConfig: TapeCardView.TitleEditingConfig? = {
-                    guard editingTapeID == tapeID else { return nil }
-                    return TapeCardView.TitleEditingConfig(
-                        text: Binding(
-                            get: { draftTitle },
-                            set: { draftTitle = $0 }
-                        ),
-                        tapeID: tapeID,
-                        onCommit: commitTitleEditing
-                    )
-                }()
-
-                NewTapeRevealContainer(
-                    tapeID: tapeID,
-                    isNewlyInserted: tapesStore.latestInsertedTapeID == tapeID,
-                    isPendingReveal: tapesStore.pendingTapeRevealID == tapeID,
-                    onAnimationCompleted: {
-                        tapesStore.clearLatestInsertedTapeID(tapeID)
-                    }
-                ) {
-                    TapeCardView(
-                        tape: $tape,
-                        tapeID: tapeID,
-                        onSettings: onSettings,
-                        onPlay: onPlay,
-                        onAirPlay: onAirPlay,
-                        onThumbnailDelete: onThumbnailDelete,
-                        onClipInserted: onClipInserted,
-                        onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
-                        onMediaInserted: onMediaInserted,
-                        onTitleFocusRequest: {
-                            startTitleEditing(tapeID: tapeID, currentTitle: currentTape.title)
-                        },
-                        titleEditingConfig: titleEditingConfig
-                    )
-                }
-                .listRowInsets(EdgeInsets(top: 8, leading: Tokens.Spacing.m, bottom: 8, trailing: Tokens.Spacing.m))
-                .listRowSeparator(.hidden)
-                .id(tapeID)
-            }
-        }
-        .listStyle(.plain)
-        .scrollDismissesKeyboard(.interactively)
+    
+    private func handlePlay(_ tape: Tape) {
+        print("▶️ onPlay called for tape: \(tape.title)")
+        tapeToPreview = tape
+        showingPlayOptions = true
+    }
+    
+    private func handleAirPlay(_ tape: Tape) {
+        // AirPlay functionality - currently empty
+    }
+    
+    private func handleThumbnailDelete(_ tape: Tape, _ clip: Clip) {
+        tapesStore.deleteClip(from: tape.id, clip: clip)
+    }
+    
+    private func handleClipInserted(_ tape: Tape, _ clip: Clip, _ index: Int) {
+        tapesStore.insertClip(clip, in: tape.id, atCenterOfCarouselIndex: index)
+    }
+    
+    private func handleClipInsertedAtPlaceholder(_ tape: Tape, _ clip: Clip, _ placeholder: CarouselItem) {
+        tapesStore.insertClipAtPlaceholder(clip, in: tape.id, placeholder: placeholder)
+    }
+    
+    private func handleMediaInserted(_ tape: Tape, _ media: [PickedMedia], _ strategy: InsertionStrategy) {
+        tapesStore.insertMedia(media, at: strategy, in: tape.id)
+    }
+    
+    private func handleTitleFocusRequest(_ tapeID: UUID, _ currentTitle: String) {
+        startTitleEditing(tapeID: tapeID, currentTitle: currentTitle)
     }
 
     private var settingsSheet: some View {
@@ -200,6 +168,8 @@ struct TapesListView: View {
         }
     }
 
+    // MARK: - Title Editing
+    
     private func startTitleEditing(tapeID: UUID, currentTitle: String) {
         if editingTapeID != tapeID {
             cancelTitleEditing()
