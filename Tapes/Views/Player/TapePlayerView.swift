@@ -42,17 +42,21 @@ struct TapePlayerView: View {
             if let player {
                 VideoPlayer(player: player)
                     .disabled(true)
-                    .overlay(overlayContent)
+                    .overlay(loadingOverlay)
                     .overlay(tapCatcher)
                     .onDisappear { player.pause() }
             } else {
-                overlayContent
+                loadingOverlay
                     .overlay(tapCatcher)
             }
 
             if showingControls {
                 VStack {
-                    headerView
+                    PlayerHeader(
+                        currentClipIndex: currentClipIndex,
+                        totalClips: tape.clips.count,
+                        onDismiss: onDismiss
+                    )
                     Spacer()
                     controlsView
                 }
@@ -60,9 +64,10 @@ struct TapePlayerView: View {
                 .animation(.easeInOut(duration: 0.2), value: showingControls)
             }
 
-            if showSkipToast {
-                skipToastOverlay
-            }
+            PlayerSkipToast(
+                skippedCount: skippedClipCount,
+                isVisible: showSkipToast
+            )
         }
         .onAppear {
             Task { await preparePlayer() }
@@ -84,121 +89,38 @@ struct TapePlayerView: View {
             }
     }
 
-    // MARK: - Overlay
+    // MARK: - Loading Overlay
 
-    private var overlayContent: some View {
-        VStack {
-            if isLoading {
-                ProgressView("Getting tape ready…")
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .foregroundColor(.white)
-            } else if let loadError {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.yellow)
-                    Text(loadError)
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(.white)
-                        .font(.headline)
-                }
-                .padding(24)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    // MARK: - Header View
-
-    private var headerView: some View {
-        HStack {
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.title2)
-                    .foregroundColor(.white)
-            }
-
-            Spacer()
-
-            Text("\(currentClipIndex + 1) of \(tape.clips.count)")
-                .font(.headline)
-                .foregroundColor(.white)
-        }
-        .padding()
+    private var loadingOverlay: some View {
+        PlayerLoadingOverlay(
+            isLoading: isLoading,
+            loadError: loadError
+        )
     }
 
     // MARK: - Controls View
 
     private var controlsView: some View {
-        VStack(spacing: 24) {
-            progressView
-            controlButtons
+        VStack(spacing: 32) {
+            PlayerProgressBar(
+                currentTime: currentTime,
+                totalDuration: totalDuration,
+                onSeek: { time in
+                    seek(to: time, autoplay: isPlaying)
+                }
+            )
+            
+            PlayerControls(
+                isPlaying: isPlaying,
+                canGoBack: currentClipIndex > 0,
+                canGoForward: timeline != nil && currentClipIndex < (timeline?.segments.count ?? 1) - 1,
+                onPlayPause: togglePlayPause,
+                onPrevious: previousClip,
+                onNext: nextClip
+            )
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 40)
-    }
-
-    private var progressView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(height: 6)
-
-                    Rectangle()
-                        .fill(Color.white)
-                        .frame(width: geometry.size.width * progressFraction, height: 6)
-                }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            let progress = max(0, min(1, value.location.x / geometry.size.width))
-                            currentTime = totalDuration * progress
-                        }
-                        .onEnded { value in
-                            let progress = max(0, min(1, value.location.x / geometry.size.width))
-                            seek(to: totalDuration * progress, autoplay: isPlaying)
-                        }
-                )
-            }
-            .frame(height: 6)
-
-            HStack {
-                Text(formatTime(currentTime))
-                    .foregroundColor(.white)
-                    .font(.caption)
-                Spacer()
-                Text(formatTime(totalDuration))
-                    .foregroundColor(.white)
-                    .font(.caption)
-            }
-        }
-    }
-
-    private var controlButtons: some View {
-        HStack(spacing: 40) {
-            Button(action: previousClip) {
-                Image(systemName: "backward.fill")
-                    .font(.title)
-                    .foregroundColor(.white)
-            }
-            .disabled(currentClipIndex == 0)
-
-            Button(action: togglePlayPause) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.largeTitle)
-                    .foregroundColor(.white)
-            }
-
-            Button(action: nextClip) {
-                Image(systemName: "forward.fill")
-                    .font(.title)
-                    .foregroundColor(.white)
-            }
-            .disabled(timeline == nil || currentClipIndex >= (timeline?.segments.count ?? 1) - 1)
-        }
     }
 
     // MARK: - Player Preparation
@@ -638,18 +560,4 @@ extension TapePlayerView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: workItem)
     }
 
-    private var skipToastOverlay: some View {
-        VStack {
-            Spacer()
-            Text("Skipped \(skippedClipCount) clip\(skippedClipCount == 1 ? "" : "s")")
-                .font(.footnote)
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.7))
-                .clipShape(Capsule())
-                .padding(.bottom, 48)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
 }
