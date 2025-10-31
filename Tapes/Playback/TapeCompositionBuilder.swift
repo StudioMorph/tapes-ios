@@ -482,9 +482,10 @@ struct TapeCompositionBuilder {
                 }
             }
             
-            // Timeout task (30 seconds)
+            // Timeout task (15 seconds - match loading window)
             group.addTask {
-                try await Task.sleep(nanoseconds: 30_000_000_000)
+                try await Task.sleep(nanoseconds: 15_000_000_000)
+                TapesLog.player.warning("TapeCompositionBuilder: Photos video fetch timeout after 15s for \(localIdentifier)")
                 throw BuilderError.assetUnavailable(clipID: UUID()) // Timeout error
             }
             
@@ -1131,9 +1132,10 @@ private extension TapeCompositionBuilder {
                 }
             }
             
-            // Timeout task (30 seconds)
+            // Timeout task (15 seconds - match loading window)
             group.addTask {
-                try await Task.sleep(nanoseconds: 30_000_000_000)
+                try await Task.sleep(nanoseconds: 15_000_000_000)
+                TapesLog.player.warning("TapeCompositionBuilder: Photos image fetch timeout after 15s for \(localIdentifier)")
                 throw BuilderError.photosAssetMissing // Timeout error
             }
             
