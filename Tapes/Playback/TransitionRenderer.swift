@@ -37,17 +37,18 @@ final class BasicTransitionRenderer: TransitionRenderer {
         case .none:
             return destinationImage
             
-        case .dissolve:
+        case .crossfade:
             return dissolveTransition(from: sourceImage, to: destinationImage, progress: progress)
             
-        case .wipe:
-            return wipeTransition(from: sourceImage, to: destinationImage, progress: progress)
+        case .slideLR:
+            return slideLRTransition(from: sourceImage, to: destinationImage, progress: progress)
             
-        case .zoom:
-            return zoomTransition(from: sourceImage, to: destinationImage, progress: progress)
+        case .slideRL:
+            return slideRLTransition(from: sourceImage, to: destinationImage, progress: progress)
             
-        case .slide:
-            return slideTransition(from: sourceImage, to: destinationImage, progress: progress)
+        case .randomise:
+            // For randomise, use crossfade as default (actual randomisation handled at composition level)
+            return dissolveTransition(from: sourceImage, to: destinationImage, progress: progress)
         }
     }
     
@@ -66,31 +67,8 @@ final class BasicTransitionRenderer: TransitionRenderer {
         return filter.outputImage ?? destination
     }
     
-    private func wipeTransition(from source: CIImage, to destination: CIImage, progress: Float) -> CIImage {
-        // Simple horizontal wipe
-        let filter = CIFilter(name: "CIBarsSwipeTransition")!
-        filter.setValue(source, forKey: kCIInputImageKey)
-        filter.setValue(destination, forKey: kCIInputTargetImageKey)
-        filter.setValue(progress, forKey: kCIInputTimeKey)
-        return filter.outputImage ?? destination
-    }
-    
-    private func zoomTransition(from source: CIImage, to destination: CIImage, progress: Float) -> CIImage {
-        // Zoom out source, zoom in destination
-        let scale1 = 1.0 + Float(progress) * 0.2
-        let scale2 = 1.2 - Float(progress) * 0.2
-        
-        let transform1 = CGAffineTransform(scaleX: CGFloat(scale1), y: CGFloat(scale1))
-        let transform2 = CGAffineTransform(scaleX: CGFloat(scale2), y: CGFloat(scale2))
-        
-        let scaledSource = source.transformed(by: transform1)
-        let scaledDest = destination.transformed(by: transform2)
-        
-        return dissolveTransition(from: scaledSource, to: scaledDest, progress: progress)
-    }
-    
-    private func slideTransition(from source: CIImage, to destination: CIImage, progress: Float) -> CIImage {
-        // Slide source left, destination from right
+    private func slideLRTransition(from source: CIImage, to destination: CIImage, progress: Float) -> CIImage {
+        // Slide source left, destination from right (Left to Right)
         let width = source.extent.width
         let offset1 = -width * CGFloat(progress)
         let offset2 = width * (1.0 - CGFloat(progress))
@@ -101,11 +79,43 @@ final class BasicTransitionRenderer: TransitionRenderer {
         let movedSource = source.transformed(by: transform1)
         let movedDest = destination.transformed(by: transform2)
         
-        // Composite side by side
+        // Composite with fade
+        let fadedSource = applyFade(to: movedSource, progress: progress, fadeOut: true)
+        let fadedDest = applyFade(to: movedDest, progress: progress, fadeOut: false)
+        
         let filter = CIFilter(name: "CISourceOverCompositing")!
-        filter.setValue(movedDest, forKey: kCIInputImageKey)
-        filter.setValue(movedSource, forKey: kCIInputBackgroundImageKey)
+        filter.setValue(fadedDest, forKey: kCIInputImageKey)
+        filter.setValue(fadedSource, forKey: kCIInputBackgroundImageKey)
         return filter.outputImage ?? destination
+    }
+    
+    private func slideRLTransition(from source: CIImage, to destination: CIImage, progress: Float) -> CIImage {
+        // Slide source right, destination from left (Right to Left)
+        let width = source.extent.width
+        let offset1 = width * CGFloat(progress)
+        let offset2 = -width * (1.0 - CGFloat(progress))
+        
+        let transform1 = CGAffineTransform(translationX: offset1, y: 0)
+        let transform2 = CGAffineTransform(translationX: offset2, y: 0)
+        
+        let movedSource = source.transformed(by: transform1)
+        let movedDest = destination.transformed(by: transform2)
+        
+        // Composite with fade
+        let fadedSource = applyFade(to: movedSource, progress: progress, fadeOut: true)
+        let fadedDest = applyFade(to: movedDest, progress: progress, fadeOut: false)
+        
+        let filter = CIFilter(name: "CISourceOverCompositing")!
+        filter.setValue(fadedDest, forKey: kCIInputImageKey)
+        filter.setValue(fadedSource, forKey: kCIInputBackgroundImageKey)
+        return filter.outputImage ?? destination
+    }
+    
+    private func applyFade(to image: CIImage, progress: Float, fadeOut: Bool) -> CIImage {
+        let opacity = fadeOut ? (1.0 - progress) : progress
+        return image.applyingFilter("CIColorMatrix", parameters: [
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(opacity))
+        ])
     }
 }
 
