@@ -251,10 +251,26 @@ struct TapePlayerView: View {
                     }
                 },
                 onPrevious: {
-                    engine.seekToClip(at: engine.currentClipIndex - 1)
+                    // Find previous playable clip (accounting for skips)
+                    if let skipHandler = engine.skipHandler, skipHandler.shouldSkip(clipIndex: engine.currentClipIndex - 1) {
+                        if let prevReady = skipHandler.previousReadyClip(before: engine.currentClipIndex) {
+                            engine.seekToClip(at: prevReady)
+                        }
+                    } else {
+                        engine.seekToClip(at: engine.currentClipIndex - 1)
+                    }
                 },
                 onNext: {
-                    engine.seekToClip(at: engine.currentClipIndex + 1)
+                    // Find next playable clip (accounting for skips)
+                    if let skipHandler = engine.skipHandler, engine.currentClipIndex + 1 < tape.clips.count {
+                        if skipHandler.shouldSkip(clipIndex: engine.currentClipIndex + 1) {
+                            if let nextReady = skipHandler.nextReadyClip(after: engine.currentClipIndex) {
+                                engine.seekToClip(at: nextReady)
+                            }
+                        } else {
+                            engine.seekToClip(at: engine.currentClipIndex + 1)
+                        }
+                    }
                 }
             )
         }

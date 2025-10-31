@@ -20,11 +20,16 @@ final class PlaybackEngine: ObservableObject {
     private(set) var player: AVPlayer?
     private(set) var timeline: TapeCompositionBuilder.Timeline?
     
+    // Expose skipHandler for UI access (read-only)
+    var skipHandler: SkipHandler? {
+        return _skipHandler
+    }
+    
     // MARK: - Private Properties
     
     private let builder = TapeCompositionBuilder()
     private let loader = HybridAssetLoader()
-    private var skipHandler: SkipHandler?
+    private var _skipHandler: SkipHandler?
     
     private var timeObserver: Any?
     private var playerEndObserver: NSObjectProtocol?
@@ -92,14 +97,14 @@ final class PlaybackEngine: ObservableObject {
                 let skippedIndices = Set(windowResult.skippedAssets.map { $0.0 })
                 let readyIndices = Set(windowResult.readyAssets.map { $0.0 })
                 let allIndices = Array(0..<tape.clips.count)
-                skipHandler = SkipHandler(
+                _skipHandler = SkipHandler(
                     skippedIndices: skippedIndices,
                     readyIndices: readyIndices,
                     allClipIndices: allIndices
                 )
                 
                 // Check for high skip rate
-                let stats = skipHandler!.getSkipStats()
+                let stats = _skipHandler!.getSkipStats()
                 if stats.skipped > stats.ready {
                     TapesLog.player.warning("PlaybackEngine: High skip rate - \(stats.skipped) skipped, \(stats.ready) ready")
                 }
@@ -195,19 +200,23 @@ final class PlaybackEngine: ObservableObject {
     }
     
     func seekToClip(at index: Int) {
-        guard let timeline = timeline,
-              index >= 0,
-              index < timeline.segments.count else {
+        guard let timeline = timeline else {
+            TapesLog.player.warning("PlaybackEngine: Cannot seek - no timeline")
             return
         }
         
-        let segment = timeline.segments[index]
+        // Find segment with matching clipIndex (not segment index)
+        guard let segment = timeline.segments.first(where: { $0.clipIndex == index }) else {
+            TapesLog.player.warning("PlaybackEngine: Clip \(index) not found in timeline")
+            return
+        }
+        
         let seekTime = segment.timeRange.start
         let seconds = CMTimeGetSeconds(seekTime)
         
         seek(to: seconds)
         currentClipIndex = index
-        TapesLog.player.info("PlaybackEngine: Seek to clip \(index)")
+        TapesLog.player.info("PlaybackEngine: Seek to clip \(index) at time \(String(format: "%.2f", seconds))s")
     }
     
     func setError(_ message: String?) {
@@ -239,7 +248,7 @@ final class PlaybackEngine: ObservableObject {
         duration = 0
         error = nil
         timeline = nil
-        skipHandler = nil
+        _skipHandler = nil
         
         // Cancel loader
         Task {
@@ -311,7 +320,7 @@ final class PlaybackEngine: ObservableObject {
     
     private func checkSkipBehavior() {
         guard FeatureFlags.playbackEngineV2SkipBehavior,
-              let skipHandler = skipHandler,
+              let skipHandler = _skipHandler,
               let timeline = timeline else {
             return
         }
