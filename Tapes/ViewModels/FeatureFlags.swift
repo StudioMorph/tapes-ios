@@ -11,7 +11,7 @@ enum FeatureFlags {
     /// Phase 1: Hybrid loading (parallel local, sequential Photos), time window, skip behavior with placeholders.
     /// Default is `false` for safe rollout.
     static var playbackEngineV2Phase1: Bool {
-        return false
+        return true
     }
     
     /// Controls skip behavior within the new playback engine.
