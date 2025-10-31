@@ -216,7 +216,7 @@ final class PlaybackEngine: ObservableObject {
     }
     
     func teardown() {
-        TapesLog.player.info("PlaybackEngine: Teardown called (isPreparing: \(isPreparing))")
+        TapesLog.player.info("PlaybackEngine: Teardown called (isPreparing: \(self.isPreparing))")
         
         // Cancel any active preparation
         currentPrepareTask?.cancel()
