@@ -97,10 +97,24 @@ final class PlaybackEngine: ObservableObject {
                 }
                 
                 // Check if we have any ready assets
-                guard !windowResult.readyAssets.isEmpty else {
-                    setError("Unable to load any clips for this tape. Please check your network connection.")
-                    isBuffering = false
-                    return
+                // If all are skipped but we have assets, try to extend window or use placeholders
+                if windowResult.readyAssets.isEmpty {
+                    // If we have loading assets, wait a bit longer (extend window)
+                    if !windowResult.loadingAssets.isEmpty {
+                        TapesLog.player.info("PlaybackEngine: No assets ready, but \(windowResult.loadingAssets.count) still loading - extending window by 5s")
+                        // Give it a bit more time
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                        // Re-check - for now, continue with skipped assets (Phase 2 will handle extension)
+                    }
+                    
+                    // If still no ready assets, show error
+                    if windowResult.readyAssets.isEmpty && windowResult.skippedAssets.count == tape.clips.count {
+                        setError("Unable to load any clips for this tape. Please check your network connection and try again.")
+                        isBuffering = false
+                        return
+                    }
+                    
+                    // Fall through - will build with skipped assets (placeholders)
                 }
                 
                 // Create skip handler

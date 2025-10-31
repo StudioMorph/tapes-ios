@@ -296,8 +296,11 @@ actor HybridAssetLoader {
             
             let elapsed = Date().timeIntervalSince(startTime)
             
-            if Date() >= deadline {
-                TapesLog.player.warning("HybridAssetLoader: Photos asset \(index) resolved but window expired")
+            // Accept successful loads even if slightly past deadline
+            // Only skip if loading took way too long (> 2x window duration)
+            let maxAllowedTime = windowDuration * 2.0
+            if elapsed > maxAllowedTime {
+                TapesLog.player.warning("HybridAssetLoader: Photos asset \(index) resolved but took too long (\(String(format: "%.2f", elapsed))s)")
                 return .skipped(.timeout)
             }
             
@@ -318,11 +321,8 @@ actor HybridAssetLoader {
             let elapsed = Date().timeIntervalSince(startTime)
             TapesLog.player.error("HybridAssetLoader: Photos asset \(index) failed after \(String(format: "%.2f", elapsed))s: \(error.localizedDescription)")
             
-            if Date() >= deadline {
-                return .skipped(.timeout)
-            } else {
-                return .skipped(.error(error))
-            }
+            // Return error, not timeout (timeout is for taking too long, not failing)
+            return .skipped(.error(error))
         }
     }
     
@@ -371,6 +371,12 @@ actor HybridAssetLoader {
     ) async -> LoadingResult {
         let startTime = Date()
         
+        // Check deadline before starting (don't start if already expired)
+        guard Date() < deadline else {
+            TapesLog.player.warning("HybridAssetLoader: Image \(index) skipped - deadline expired before start")
+            return .skipped(.timeout)
+        }
+        
         do {
             // Use builder's image encoding
             // The builder handles image loading and encoding
@@ -378,8 +384,11 @@ actor HybridAssetLoader {
             
             let elapsed = Date().timeIntervalSince(startTime)
             
-            if Date() >= deadline {
-                TapesLog.player.warning("HybridAssetLoader: Image \(index) encoded but window expired")
+            // Accept successful encodings even if slightly past deadline
+            // Only skip if encoding took way too long (> 2x window duration)
+            let maxAllowedTime = windowDuration * 2.0
+            if elapsed > maxAllowedTime {
+                TapesLog.player.warning("HybridAssetLoader: Image \(index) encoded but took too long (\(String(format: "%.2f", elapsed))s)")
                 return .skipped(.timeout)
             }
             
@@ -400,11 +409,9 @@ actor HybridAssetLoader {
             let elapsed = Date().timeIntervalSince(startTime)
             TapesLog.player.error("HybridAssetLoader: Image \(index) encoding failed after \(String(format: "%.2f", elapsed))s: \(error.localizedDescription)")
             
-            if Date() >= deadline {
-                return .skipped(.timeout)
-            } else {
-                return .skipped(.error(error))
-            }
+            // Only skip on error if it happened early enough that we might retry
+            // Otherwise, still return error (not timeout)
+            return .skipped(.error(error))
         }
     }
 }
