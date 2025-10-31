@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import os
+import Network
 
 /// Manages background loading of remaining assets after initial window
 actor BackgroundAssetService {
@@ -180,6 +181,16 @@ actor BackgroundAssetService {
     private func assetFailed(index: Int, error: Error) {
         failedAssets[index] = error
         TapesLog.player.warning("BackgroundAssetService: Clip \(index) failed: \(error.localizedDescription)")
+    }
+    
+    private func updateNetworkStatus(isCellular: Bool) {
+        self.isCellular = isCellular
+        if isCellular {
+            // Reduce concurrency on cellular
+            maxConcurrentFetches = 1
+        } else {
+            maxConcurrentFetches = 2
+        }
     }
 }
 
