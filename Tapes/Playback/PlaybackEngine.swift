@@ -132,15 +132,30 @@ final class PlaybackEngine: ObservableObject {
                     return
                 }
                 
+                // Build initial composition using extension manager (Phase 2) or builder directly (Phase 1)
+                let initialComposition: TapeCompositionBuilder.PlayerComposition
+                if FeatureFlags.playbackEngineV2Phase2 {
+                    initialComposition = try await extensionManager.buildInitial(
+                        for: tape,
+                        readyAssets: windowResult.readyAssets,
+                        skippedIndices: skippedIndices
+                    )
+                } else {
+                    initialComposition = try await builder.buildPlayerItem(
+                        for: tape,
+                        readyAssets: windowResult.readyAssets,
+                        skippedIndices: skippedIndices
+                    )
+                }
+                
+                // Check if task was cancelled after building
+                guard !Task.isCancelled else {
+                    TapesLog.player.info("PlaybackEngine: Preparation cancelled after composition build")
+                    return
+                }
+                
                 let elapsed = Date().timeIntervalSince(startTime)
                 TapesLog.player.info("PlaybackEngine: Preparation complete in \(String(format: "%.2f", elapsed))s - \(stats.ready) ready, \(stats.skipped) skipped")
-                
-                // Build initial composition using extension manager
-                let initialComposition = try await extensionManager.buildInitial(
-                    for: tape,
-                    readyAssets: windowResult.readyAssets,
-                    skippedIndices: skippedIndices
-                )
                 
                 // Install composition
                 await install(composition: initialComposition)
