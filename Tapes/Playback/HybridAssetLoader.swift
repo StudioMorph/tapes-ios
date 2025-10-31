@@ -213,12 +213,10 @@ actor HybridAssetLoader {
         deadline: Date
     ) async -> LoadingResult {
         guard let localURL = clip.localURL else {
-            TapesLog.player.warning("HybridAssetLoader: Local file \(index) has no localURL, trying Photos fallback")
-            // Fall back to Photos API if available
-            if let assetLocalId = clip.assetLocalId {
-                return await resolvePhotosAsset(clip: clip, index: index, deadline: deadline)
-            }
-            return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -1, userInfo: [NSLocalizedDescriptionKey: "No local URL or Photos asset"])))
+            TapesLog.player.warning("HybridAssetLoader: Local file \(index) has no localURL")
+            // If no localURL, this shouldn't be in fast queue - should be in Photos queue
+            // Return timeout so it gets handled by sequential queue
+            return .skipped(.timeout)
         }
         
         let startTime = Date()
@@ -247,11 +245,10 @@ actor HybridAssetLoader {
                     assetURL = cachedURL
                 } else {
                     // File not found locally or in cache - fall back to Photos API
-                    TapesLog.player.warning("HybridAssetLoader: Local file \(index) not found, falling back to Photos API")
-                    if let assetLocalId = clip.assetLocalId {
-                        return await resolvePhotosAsset(clip: clip, index: index, deadline: deadline)
-                    }
-                    return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -2, userInfo: [NSLocalizedDescriptionKey: "File not found and no Photos asset"])))
+                    // But don't load Photos API in parallel (it's slow) - return skipped so it goes to sequential queue
+                    TapesLog.player.warning("HybridAssetLoader: Local file \(index) not found, will load via Photos queue")
+                    // Return timeout so it gets picked up by sequential/background loading
+                    return .skipped(.timeout)
                 }
             }
             
@@ -290,12 +287,9 @@ actor HybridAssetLoader {
             let elapsed = Date().timeIntervalSince(startTime)
             TapesLog.player.error("HybridAssetLoader: Local file \(index) failed after \(String(format: "%.2f", elapsed))s: \(error.localizedDescription)")
             
-            // If error and we have Photos fallback, try that
-            if let assetLocalId = clip.assetLocalId {
-                TapesLog.player.info("HybridAssetLoader: Local file \(index) failed, falling back to Photos API")
-                return await resolvePhotosAsset(clip: clip, index: index, deadline: deadline)
-            }
-            
+            // If error loading local file, don't try Photos API here (would cause parallel Photos requests)
+            // The sequential queue will handle Photos assets
+            TapesLog.player.warning("HybridAssetLoader: Local file \(index) failed: \(error.localizedDescription)")
             return .skipped(.error(error))
         }
     }
