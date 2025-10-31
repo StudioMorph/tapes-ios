@@ -137,7 +137,7 @@ actor BackgroundAssetService {
         queue.removeFirst()
         activeTasks.insert(nextTask.clipIndex)
         
-        TapesLog.player.info("BackgroundAssetService: Processing clip \(nextTask.clipIndex) (active: \(activeTasks.count))")
+        TapesLog.player.info("BackgroundAssetService: Processing clip \(nextTask.clipIndex) (active: \(self.activeTasks.count))")
         
         // Load asset
         Task {
