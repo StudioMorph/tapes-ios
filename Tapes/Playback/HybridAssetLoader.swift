@@ -327,9 +327,9 @@ actor HybridAssetLoader {
     ) async -> [(Int, LoadingResult)] {
         guard !clips.isEmpty else { return [] }
         
-        TapesLog.player.info("HybridAssetLoader: CPU queue - encoding \(clips.count) images (max \(maxConcurrentEncodings) concurrent)")
+        TapesLog.player.info("HybridAssetLoader: CPU queue - encoding \(clips.count) images (max \(self.maxConcurrentEncodings) concurrent)")
         
-        let semaphore = DispatchSemaphore(value: maxConcurrentEncodings)
+        let semaphore = DispatchSemaphore(value: self.maxConcurrentEncodings)
         
         return await withTaskGroup(of: (Int, LoadingResult).self) { group in
             for (offset, clip) in clips {
