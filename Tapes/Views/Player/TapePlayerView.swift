@@ -123,25 +123,43 @@ struct TapePlayerView: View {
             }
         }
         .onDisappear {
+            TapesLog.player.info("TapePlayerView: onDisappear called (appearanceTime: \(appearanceTime != nil ? "set" : "nil"), buffering: \(engine.isBuffering))")
+            
             // Prevent premature teardown during SwiftUI lifecycle transitions
             if FeatureFlags.playbackEngineV2Phase1 {
                 // Don't tear down if we just appeared or are actively buffering
+                if engine.isBuffering {
+                    TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still buffering")
+                    return
+                }
+                
                 if let appearanceTime = appearanceTime {
                     let timeSinceAppearance = Date().timeIntervalSince(appearanceTime)
-                    if timeSinceAppearance < 0.5 || engine.isBuffering {
-                        TapesLog.player.warning("TapePlayerView: Ignoring premature onDisappear (time: \(String(format: "%.2f", timeSinceAppearance))s, buffering: \(engine.isBuffering))")
+                    if timeSinceAppearance < 2.0 {
+                        TapesLog.player.warning("TapePlayerView: Ignoring premature onDisappear (only \(String(format: "%.2f", timeSinceAppearance))s since appearance)")
                         return
                     }
+                } else if hasAppeared {
+                    // Has appeared but no time recorded - still ignore for safety
+                    TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - hasAppeared=true but no appearanceTime")
+                    return
                 }
             } else {
-                // For legacy path, check time
+                // For legacy path
+                if isLoading {
+                    TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - legacy path is loading")
+                    return
+                }
+                
                 if let appearanceTime = appearanceTime {
                     let timeSinceAppearance = Date().timeIntervalSince(appearanceTime)
-                    if timeSinceAppearance < 0.5 || isLoading {
+                    if timeSinceAppearance < 2.0 {
                         return
                     }
                 }
             }
+            
+            TapesLog.player.info("TapePlayerView: Proceeding with teardown")
             tearDown()
             hasAppeared = false
             appearanceTime = nil

@@ -72,12 +72,19 @@ actor HybridAssetLoader {
         let imageClips = clips.enumerated().filter { $0.element.clipType == .image }
         
         // Load all queues
+        TapesLog.player.info("HybridAssetLoader: Starting parallel queue loading")
+        
+        let loadStartTime = Date()
         async let fastResults = loadFastQueue(localClips, deadline: deadline)
         async let sequentialResults = loadSequentialQueue(photosClips, deadline: deadline)
         async let cpuResults = loadCPUQueue(imageClips, deadline: deadline)
         
         // Collect all results
+        TapesLog.player.info("HybridAssetLoader: Waiting for queue results...")
         let (fast, sequential, cpu) = await (fastResults, sequentialResults, cpuResults)
+        
+        let loadElapsed = Date().timeIntervalSince(loadStartTime)
+        TapesLog.player.info("HybridAssetLoader: All queues completed in \(String(format: "%.2f", loadElapsed))s - processing results")
         
         // Combine results (all queues now return (Int, LoadingResult))
         var readyAssets: [(Int, ResolvedAsset)] = []
