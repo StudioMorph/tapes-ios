@@ -1103,27 +1103,49 @@ private extension TapeCompositionBuilder {
             throw BuilderError.photosAccessDenied
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
-            guard let asset = fetchResult.firstObject else {
-                continuation.resume(throwing: BuilderError.photosAssetMissing)
-                return
-            }
-            let options = PHImageRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
-            options.isSynchronous = false
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
-                if let data = data, let image = UIImage(data: data) {
-                    continuation.resume(returning: image)
-                } else if let error = info?[PHImageErrorKey] as? Error {
-                    continuation.resume(throwing: error)
-                } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
-                    continuation.resume(throwing: BuilderError.photosAssetMissing)
-                } else {
-                    continuation.resume(throwing: BuilderError.photosAssetMissing)
+        // Add timeout to prevent indefinite hangs
+        return try await withThrowingTaskGroup(of: UIImage.self) { group in
+            // Task to fetch from Photos
+            group.addTask {
+                return try await withCheckedThrowingContinuation { continuation in
+                    let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+                    guard let asset = fetchResult.firstObject else {
+                        continuation.resume(throwing: BuilderError.photosAssetMissing)
+                        return
+                    }
+                    let options = PHImageRequestOptions()
+                    options.deliveryMode = .highQualityFormat
+                    options.isNetworkAccessAllowed = true
+                    options.isSynchronous = false
+                    PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                        if let data = data, let image = UIImage(data: data) {
+                            continuation.resume(returning: image)
+                        } else if let error = info?[PHImageErrorKey] as? Error {
+                            continuation.resume(throwing: error)
+                        } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
+                            continuation.resume(throwing: BuilderError.photosAssetMissing)
+                        } else {
+                            continuation.resume(throwing: BuilderError.photosAssetMissing)
+                        }
+                    }
                 }
             }
+            
+            // Timeout task (30 seconds)
+            group.addTask {
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+                throw BuilderError.photosAssetMissing // Timeout error
+            }
+            
+            // Return first result (either success or timeout)
+            guard let result = try await group.next() else {
+                throw BuilderError.photosAssetMissing
+            }
+            
+            // Cancel remaining tasks
+            group.cancelAll()
+            
+            return result
         }
     }
 
