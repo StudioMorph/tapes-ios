@@ -201,8 +201,12 @@ actor HybridAssetLoader {
         deadline: Date
     ) async -> LoadingResult {
         guard let localURL = clip.localURL else {
-            TapesLog.player.warning("HybridAssetLoader: Local file \(index) has no localURL")
-            return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -1, userInfo: [NSLocalizedDescriptionKey: "No local URL"])))
+            TapesLog.player.warning("HybridAssetLoader: Local file \(index) has no localURL, trying Photos fallback")
+            // Fall back to Photos API if available
+            if let assetLocalId = clip.assetLocalId {
+                return await resolvePhotosAsset(clip: clip, index: index, deadline: deadline)
+            }
+            return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -1, userInfo: [NSLocalizedDescriptionKey: "No local URL or Photos asset"])))
         }
         
         let startTime = Date()
@@ -210,12 +214,36 @@ actor HybridAssetLoader {
         
         do {
             let fileManager = FileManager.default
+            var assetURL = localURL
+            
+            // Check if file exists at original path
             if !fileManager.fileExists(atPath: localURL.path) {
-                TapesLog.player.warning("HybridAssetLoader: Local file \(index) not found at path: \(localURL.path)")
-                return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -2, userInfo: [NSLocalizedDescriptionKey: "File not found"])))
+                // Try cache (same logic as old resolveVideoAsset)
+                let cacheDirectory = fileManager.temporaryDirectory.appendingPathComponent("PlaybackCache", isDirectory: true)
+                if !fileManager.fileExists(atPath: cacheDirectory.path) {
+                    try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+                }
+                
+                let fileExtension = localURL.pathExtension.isEmpty ? "mov" : localURL.pathExtension
+                let updatedAt = clip.updatedAt
+                let timestamp = Int((updatedAt.timeIntervalSince1970 * 1_000).rounded())
+                let versionComponent = "\(clip.id.uuidString)-\(timestamp)"
+                let cachedURL = cacheDirectory.appendingPathComponent(versionComponent).appendingPathExtension(fileExtension)
+                
+                if fileManager.fileExists(atPath: cachedURL.path) {
+                    TapesLog.player.info("HybridAssetLoader: Local file \(index) found in cache")
+                    assetURL = cachedURL
+                } else {
+                    // File not found locally or in cache - fall back to Photos API
+                    TapesLog.player.warning("HybridAssetLoader: Local file \(index) not found, falling back to Photos API")
+                    if let assetLocalId = clip.assetLocalId {
+                        return await resolvePhotosAsset(clip: clip, index: index, deadline: deadline)
+                    }
+                    return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -2, userInfo: [NSLocalizedDescriptionKey: "File not found and no Photos asset"])))
+                }
             }
             
-            let asset = AVURLAsset(url: localURL)
+            let asset = AVURLAsset(url: assetURL)
             
             // Load required properties
             let duration = try await asset.load(.duration)
@@ -244,6 +272,13 @@ actor HybridAssetLoader {
         } catch {
             let elapsed = Date().timeIntervalSince(startTime)
             TapesLog.player.error("HybridAssetLoader: Local file \(index) failed after \(String(format: "%.2f", elapsed))s: \(error.localizedDescription)")
+            
+            // If error and we have Photos fallback, try that
+            if let assetLocalId = clip.assetLocalId {
+                TapesLog.player.info("HybridAssetLoader: Local file \(index) failed, falling back to Photos API")
+                return await resolvePhotosAsset(clip: clip, index: index, deadline: deadline)
+            }
+            
             return .skipped(.error(error))
         }
     }
