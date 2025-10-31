@@ -457,24 +457,46 @@ struct TapeCompositionBuilder {
             throw BuilderError.photosAccessDenied
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
-            guard let phAsset = fetchResult.firstObject else {
-                continuation.resume(throwing: BuilderError.photosAssetMissing)
-                return
-            }
+        // Add timeout to prevent indefinite hangs
+        return try await withThrowingTaskGroup(of: AVAsset.self) { group in
+            // Task to fetch from Photos
+            group.addTask {
+                return try await withCheckedThrowingContinuation { continuation in
+                    let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+                    guard let phAsset = fetchResult.firstObject else {
+                        continuation.resume(throwing: BuilderError.photosAssetMissing)
+                        return
+                    }
 
-            let options = PHVideoRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
+                    let options = PHVideoRequestOptions()
+                    options.deliveryMode = .highQualityFormat
+                    options.isNetworkAccessAllowed = true
 
-            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, _ in
-                if let asset = asset {
-                    continuation.resume(returning: asset)
-                } else {
-                    continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
+                    PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, _ in
+                        if let asset = asset {
+                            continuation.resume(returning: asset)
+                        } else {
+                            continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
+                        }
+                    }
                 }
             }
+            
+            // Timeout task (30 seconds)
+            group.addTask {
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+                throw BuilderError.assetUnavailable(clipID: UUID()) // Timeout error
+            }
+            
+            // Return first result (either success or timeout)
+            guard let result = try await group.next() else {
+                throw BuilderError.assetUnavailable(clipID: UUID())
+            }
+            
+            // Cancel remaining tasks
+            group.cancelAll()
+            
+            return result
         }
     }
 
