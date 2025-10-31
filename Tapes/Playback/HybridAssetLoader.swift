@@ -231,49 +231,42 @@ actor HybridAssetLoader {
         
         TapesLog.player.info("HybridAssetLoader: Sequential queue - loading \(clips.count) Photos assets with overlap")
         
-        var results: [(Int, LoadingResult)] = []
-        var activeTasks: [Task<(Int, LoadingResult), Never>] = []
+        // Start all tasks with overlap delay between starts
+        var tasks: [Task<(Int, LoadingResult), Never>] = []
         
         for (offset, clip) in clips {
             guard !cancelled else {
-                results.append((offset, .skipped(.cancelled)))
+                tasks.append(Task { (offset, LoadingResult.skipped(.cancelled)) })
                 continue
             }
             
             guard Date() < deadline else {
                 TapesLog.player.warning("HybridAssetLoader: Window expired, skipping remaining Photos assets")
-                results.append((offset, .skipped(.timeout)))
+                tasks.append(Task { (offset, LoadingResult.skipped(.timeout)) })
                 continue
             }
             
-            // Start loading current clip
-            let currentTask = Task { [weak self] in
+            // Create task for this clip
+            let task = Task { [weak self] in
                 guard let self = self else { return (offset, LoadingResult.skipped(.cancelled)) }
                 let result = await self.resolvePhotosAsset(clip: clip, index: offset, deadline: deadline)
                 return (offset, result)
             }
             
-            activeTasks.append(currentTask)
+            tasks.append(task)
             
-            // Overlap pattern: Wait for overlap delay, then check if first task is done
-            // This allows next clip to start while previous is still loading
-            if activeTasks.count > 1 {
-                // Wait for overlap delay
+            // Overlap: Wait delay before starting next (if not last clip)
+            // This creates overlap - next starts while current is still loading
+            if offset < clips.count - 1 {
                 try? await Task.sleep(nanoseconds: UInt64(overlapDelay * 1_000_000_000))
-                
-                // Check if previous task (first in array) is done
-                if let firstTask = activeTasks.first, activeTasks.count > 1 {
-                    let (prevIndex, prevResult) = await firstTask.value
-                    results.append((prevIndex, prevResult))
-                    activeTasks.removeFirst()
-                }
             }
         }
         
-        // Wait for remaining tasks
-        for task in activeTasks {
-            let (index, result) = await task.value
-            results.append((index, result))
+        // Collect all results (they may complete in any order)
+        var results: [(Int, LoadingResult)] = []
+        for task in tasks {
+            let result = await task.value
+            results.append(result)
         }
         
         return results
