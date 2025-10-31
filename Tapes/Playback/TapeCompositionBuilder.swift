@@ -654,7 +654,7 @@ struct TapeCompositionBuilder {
             let timeRange = CMTimeRange(start: currentStart, duration: duration)
 
             let segment = Segment(
-                clipIndex: index,
+                clipIndex: assetContext.index, // Use the actual clip index from context, not array index
                 assetContext: assetContext,
                 timeRange: timeRange,
                 incomingTransition: incomingTransition,
