@@ -121,6 +121,19 @@ final class PlaybackEngine: ObservableObject {
                 let skippedIndices = Set(windowResult.skippedAssets.map { $0.0 })
                 let readyIndices = Set(windowResult.readyAssets.map { $0.0 })
                 let allIndices = Array(0..<tape.clips.count)
+                
+                // Log detailed skip information for debugging
+                TapesLog.player.info("PlaybackEngine: Skip summary - ready: \(readyIndices.sorted()), skipped: \(skippedIndices.sorted())")
+                for (index, reason) in windowResult.skippedAssets {
+                    let reasonStr: String
+                    switch reason {
+                    case .timeout: reasonStr = "timeout"
+                    case .error(let err): reasonStr = "error: \(err.localizedDescription)"
+                    case .cancelled: reasonStr = "cancelled"
+                    }
+                    TapesLog.player.warning("PlaybackEngine: Clip \(index) skipped: \(reasonStr)")
+                }
+                
                 _skipHandler = SkipHandler(
                     skippedIndices: skippedIndices,
                     readyIndices: readyIndices,
@@ -216,7 +229,14 @@ final class PlaybackEngine: ObservableObject {
         isBuffering = false
         isFinished = false
         currentTime = 0
-        currentClipIndex = 0
+        
+        // Set initial clip index based on first segment in timeline (not always 0 if clips are skipped)
+        if let firstSegment = composition.timeline.segments.first {
+            currentClipIndex = firstSegment.clipIndex
+            TapesLog.player.info("PlaybackEngine: Starting playback at clip \(currentClipIndex)")
+        } else {
+            currentClipIndex = 0
+        }
         
         TapesLog.player.info("PlaybackEngine: Composition installed, playback started")
     }
