@@ -53,7 +53,7 @@ actor BackgroundAssetService {
         // Start network monitoring
         let queue = DispatchQueue(label: "BackgroundAssetService.network")
         networkMonitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor in
+            Task {
                 await self?.updateNetworkStatus(isCellular: path.status == .satisfied && path.isExpensive)
             }
         }
@@ -183,7 +183,7 @@ actor BackgroundAssetService {
         TapesLog.player.warning("BackgroundAssetService: Clip \(index) failed: \(error.localizedDescription)")
     }
     
-    private func updateNetworkStatus(isCellular: Bool) {
+    func updateNetworkStatus(isCellular: Bool) {
         self.isCellular = isCellular
         if isCellular {
             // Reduce concurrency on cellular
