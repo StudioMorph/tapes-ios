@@ -234,6 +234,26 @@ final class PlaybackEngine: ObservableObject {
         TapesLog.player.info("PlaybackEngine: Seek to \(String(format: "%.2f", time))s")
     }
     
+    /// Step one frame forward or backward (Phase 3)
+    func stepFrame(direction: Int) {
+        guard FeatureFlags.playbackEngineV2Phase3 else { return }
+        guard let player = player, let timeline = timeline else { return }
+        
+        let currentCMTime = CMTime(seconds: currentTime, preferredTimescale: 600)
+        let frameDuration = CMTime(value: 1, timescale: 30) // Assume 30fps, can be enhanced
+        
+        let newTime: CMTime
+        if direction > 0 {
+            newTime = CMTimeAdd(currentCMTime, frameDuration)
+        } else {
+            newTime = CMTimeSubtract(currentCMTime, frameDuration)
+        }
+        
+        let clampedTime = max(0, min(CMTimeGetSeconds(newTime), duration))
+        seek(to: clampedTime)
+        TapesLog.player.info("PlaybackEngine: Stepped frame \(direction > 0 ? "forward" : "backward")")
+    }
+    
     func seekToClip(at index: Int) {
         guard let timeline = timeline else {
             TapesLog.player.warning("PlaybackEngine: Cannot seek - no timeline")
