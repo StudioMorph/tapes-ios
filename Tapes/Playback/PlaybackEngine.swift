@@ -30,6 +30,9 @@ final class PlaybackEngine: ObservableObject {
     private var playerEndObserver: NSObjectProtocol?
     private var playerStallObserver: NSObjectProtocol?
     
+    private var isPreparing = false
+    private var currentPrepareTask: Task<Void, Never>?
+    
     // MARK: - Initialization
     
     init() {
@@ -46,79 +49,111 @@ final class PlaybackEngine: ObservableObject {
     
     /// Prepare playback for a tape using hybrid loading strategy
     func prepare(tape: Tape) async {
+        // Cancel any existing preparation
+        currentPrepareTask?.cancel()
+        
         guard !tape.clips.isEmpty else {
             setError("This tape has no clips to play.")
             return
         }
         
+        isPreparing = true
         isBuffering = true
         setError(nil)
         
         let startTime = Date()
         TapesLog.player.info("PlaybackEngine: Starting preparation for tape with \(tape.clips.count) clips")
         
-        do {
-            // Load assets using hybrid strategy
-            let windowResult = await loader.loadWindow(clips: tape.clips)
+        // Wrap in a task so we can track it
+        currentPrepareTask = Task {
+            defer {
+                isPreparing = false
+                currentPrepareTask = nil
+            }
             
-            // Check if we have any ready assets
-            guard !windowResult.readyAssets.isEmpty else {
-                setError("Unable to load any clips for this tape. Please check your network connection.")
+            do {
+                // Load assets using hybrid strategy
+                let windowResult = await loader.loadWindow(clips: tape.clips)
+            
+                // Check if task was cancelled
+                guard !Task.isCancelled else {
+                    TapesLog.player.info("PlaybackEngine: Preparation cancelled")
+                    return
+                }
+                
+                // Check if we have any ready assets
+                guard !windowResult.readyAssets.isEmpty else {
+                    setError("Unable to load any clips for this tape. Please check your network connection.")
+                    isBuffering = false
+                    return
+                }
+                
+                // Create skip handler
+                let skippedIndices = Set(windowResult.skippedAssets.map { $0.0 })
+                let readyIndices = Set(windowResult.readyAssets.map { $0.0 })
+                let allIndices = Array(0..<tape.clips.count)
+                skipHandler = SkipHandler(
+                    skippedIndices: skippedIndices,
+                    readyIndices: readyIndices,
+                    allClipIndices: allIndices
+                )
+                
+                // Check for high skip rate
+                let stats = skipHandler!.getSkipStats()
+                if stats.skipped > stats.ready {
+                    TapesLog.player.warning("PlaybackEngine: High skip rate - \(stats.skipped) skipped, \(stats.ready) ready")
+                }
+                
+                // Build composition with ready assets
+                let composition = try await builder.buildPlayerItem(
+                    for: tape,
+                    readyAssets: windowResult.readyAssets,
+                    skippedIndices: skippedIndices
+                )
+                
+                // Check if task was cancelled after building
+                guard !Task.isCancelled else {
+                    TapesLog.player.info("PlaybackEngine: Preparation cancelled after composition build")
+                    return
+                }
+                
+                let elapsed = Date().timeIntervalSince(startTime)
+                TapesLog.player.info("PlaybackEngine: Preparation complete in \(String(format: "%.2f", elapsed))s - \(stats.ready) ready, \(stats.skipped) skipped")
+                
+                // Install composition
+                await install(composition: composition)
+                
+                // Calculate TTFMP
+                let ttfmp = Date().timeIntervalSince(startTime)
+                TapesLog.player.info("PlaybackEngine: TTFMP = \(String(format: "%.2f", ttfmp))s")
+                
+            } catch {
+                TapesLog.player.error("PlaybackEngine: Preparation failed: \(error.localizedDescription)")
+                setError(error.localizedDescription)
                 isBuffering = false
-                return
             }
-            
-            // Create skip handler
-            let skippedIndices = Set(windowResult.skippedAssets.map { $0.0 })
-            let readyIndices = Set(windowResult.readyAssets.map { $0.0 })
-            let allIndices = Array(0..<tape.clips.count)
-            skipHandler = SkipHandler(
-                skippedIndices: skippedIndices,
-                readyIndices: readyIndices,
-                allClipIndices: allIndices
-            )
-            
-            // Check for high skip rate
-            let stats = skipHandler!.getSkipStats()
-            if stats.skipped > stats.ready {
-                TapesLog.player.warning("PlaybackEngine: High skip rate - \(stats.skipped) skipped, \(stats.ready) ready")
-            }
-            
-            // Build composition with ready assets
-            let composition = try await builder.buildPlayerItem(
-                for: tape,
-                readyAssets: windowResult.readyAssets,
-                skippedIndices: skippedIndices
-            )
-            
-            let elapsed = Date().timeIntervalSince(startTime)
-            TapesLog.player.info("PlaybackEngine: Preparation complete in \(String(format: "%.2f", elapsed))s - \(stats.ready) ready, \(stats.skipped) skipped")
-            
-            // Install composition
-            await install(composition: composition)
-            
-            // Calculate TTFMP
-            let ttfmp = Date().timeIntervalSince(startTime)
-            TapesLog.player.info("PlaybackEngine: TTFMP = \(String(format: "%.2f", ttfmp))s")
-            
-        } catch {
-            TapesLog.player.error("PlaybackEngine: Preparation failed: \(error.localizedDescription)")
-            setError(error.localizedDescription)
-            isBuffering = false
         }
+        
+        await currentPrepareTask?.value
     }
     
     /// Install composition into player
     private func install(composition: TapeCompositionBuilder.PlayerComposition) async {
-        // Teardown existing player
-        teardown()
+        // Remove existing observers (but don't call full teardown which cancels preparation)
+        removeObservers()
+        
+        // Pause and clear old player (but don't cancel loader)
+        player?.pause()
+        player = nil
         
         // Create new player
         let playerItem = composition.playerItem
         let newPlayer = AVPlayer(playerItem: playerItem)
+        newPlayer.actionAtItemEnd = .pause
         
         // Store timeline for skip behavior
         timeline = composition.timeline
+        duration = CMTimeGetSeconds(composition.timeline.totalDuration)
         
         // Install observers
         installObservers(player: newPlayer)
@@ -130,6 +165,8 @@ final class PlaybackEngine: ObservableObject {
         isPlaying = true
         isBuffering = false
         isFinished = false
+        currentTime = 0
+        currentClipIndex = 0
         
         TapesLog.player.info("PlaybackEngine: Composition installed, playback started")
     }
@@ -179,6 +216,13 @@ final class PlaybackEngine: ObservableObject {
     }
     
     func teardown() {
+        TapesLog.player.info("PlaybackEngine: Teardown called (isPreparing: \(isPreparing))")
+        
+        // Cancel any active preparation
+        currentPrepareTask?.cancel()
+        currentPrepareTask = nil
+        isPreparing = false
+        
         // Remove observers
         removeObservers()
         
