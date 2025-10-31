@@ -1,5 +1,5 @@
 # Tape Player - From Scratch Design
-## Complete Rebuild with Bulletproof Logic & Performance
+## Complete Rebuild with Hybrid Loading Strategy & iOS Best Practices
 
 ---
 
@@ -11,8 +11,8 @@
 - `TransitionType` enum (transition definitions)
 
 **What We Build Fresh (No Recycling)**:
-- Asset loading system (from scratch)
-- Composition building (from scratch)
+- Hybrid asset loading system (from scratch)
+- Enhanced composition building with skip support (from scratch)
 - Player engine (from scratch)
 - State management (from scratch)
 - Transition rendering (from scratch)
@@ -24,123 +24,224 @@
 
 ### Design Goals
 1. **Bulletproof Logic**: Comprehensive error handling, state validation, edge case coverage
-2. **Performance**: Optimized memory usage, efficient asset loading, smooth playback
+2. **Performance**: Optimized memory usage, intelligent asset loading, smooth playback
 3. **Seamless Transitions**: Transitions rendered perfectly between clips, no glitches
-4. **Native APIs**: Use AVFoundation, AVKit, Swift Concurrency directly
-5. **Scalability**: Foundation that supports future features (3D transitions, etc.)
+4. **Native APIs**: Use AVFoundation, AVKit, SwiftUI, Swift Concurrency directly
+5. **HIG Compliance**: Follow iOS Human Interface Guidelines
+6. **Scalability**: Foundation that supports future features (3D transitions, etc.)
+
+---
+
+## Hybrid Loading Architecture
+
+### Asset Source Performance Characteristics
+
+1. **Local Files** (`localURL`): <100ms - Essentially instant
+2. **Photos Library (Local)**: <500ms - Fast
+3. **Photos Library (iCloud)**: 1-10s+ - Slow, variable
+4. **Image Encoding**: 1-3s - CPU-bound
+
+### Three-Tier Loading Strategy
+
+#### 1. Fast Queue (Parallel)
+**Purpose**: Load local files instantly
+
+**Implementation**:
+```swift
+// Load all local files in parallel
+let localClips = clips.filter { $0.localURL != nil }
+await withTaskGroup(of: ResolvedAsset.self) { group in
+    for clip in localClips {
+        group.addTask {
+            try await resolveLocalFile(clip)
+        }
+    }
+    // Collect all results
+}
+```
+
+**Characteristics**:
+- All clips start loading simultaneously
+- Ready in <200ms total
+- No system resource concerns (local file access is fast)
+
+#### 2. Sequential Priority Queue (Overlap)
+**Purpose**: Load Photos/iCloud assets efficiently
+
+**Implementation**:
+```swift
+// Sequential with overlap
+for (index, clip) in photosClips.enumerated() {
+    if Date() >= deadline { break }
+    
+    // Start loading current clip
+    let currentTask = Task { await resolvePhotos(clip) }
+    
+    // Overlap: Start next after delay (1.5s works well)
+    if index > 0 {
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+    }
+    
+    let result = await currentTask.value
+}
+```
+
+**Characteristics**:
+- One clip at a time (respects Photos framework limits)
+- Overlap: Next clip starts before current finishes
+- Adaptive: Works for both local Photos and iCloud
+- ~5-7 clips ready in 15s window (depends on local vs iCloud mix)
+
+**Why Sequential Overlap?**:
+- Photos framework optimized for 2-4 concurrent requests
+- Unknown if asset is local or iCloud until loading starts
+- Overlap maximizes throughput without overwhelming framework
+- System-friendly: Doesn't cause framework congestion
+
+#### 3. CPU Queue (Limited Parallel)
+**Purpose**: Encode images to video (Ken Burns)
+
+**Implementation**:
+```swift
+// Max 2 concurrent encodings
+let semaphore = DispatchSemaphore(value: 2)
+
+for imageClip in imageClips {
+    await semaphore.wait()
+    Task {
+        defer { semaphore.signal() }
+        try await encodeImageToVideo(imageClip)
+    }
+}
+```
+
+**Characteristics**:
+- Max 2 concurrent (CPU-intensive)
+- ~2-3 images encoded in 15s window
+- System-friendly: Doesn't overwhelm CPU
+
+### Time Window Implementation
+
+**Window Duration**: 10-15 seconds (configurable)
+
+**Flow**:
+```
+Time 0s:
+  - Start all local files in parallel
+  - Start Photos asset 1
+  - Start image encoding 1 (if any)
+
+Time 0.2s:
+  - All local files ready ✓
+
+Time 1.5s:
+  - Photos asset 1 at ~50% → Start Photos asset 2
+
+Time 3s:
+  - Photos asset 1 done, asset 2 at ~50% → Start Photos asset 3
+  - Image encoding 1 done → Start image encoding 2 (if any)
+
+Time 15s:
+  - Window expires → Build composition with ready assets
+  - Start playback immediately
+  - Continue loading remaining assets in background
+```
+
+**Result**: ~5-7 Photos assets + all local files ready in 15s
 
 ---
 
 ## Component Architecture (From Scratch)
 
-### 1. MediaAssetResolver
-**Purpose**: Load AVAssets from various sources with robust error handling
-
-**Responsibilities**:
-- Resolve video assets (local URL or Photos identifier)
-- Resolve image assets (encode to video for playback)
-- Handle iCloud assets with network access
-- Timeout/retry with exponential backoff
-- Error classification and reporting
+### 1. HybridAssetLoader
+**Purpose**: Implement three-tier loading strategy with time window
 
 **API**:
 ```swift
-actor MediaAssetResolver {
-    func resolveAsset(for clip: Clip) async throws -> ResolvedAsset
-    func resolveAssets(for clips: [Clip]) async throws -> [ResolvedAsset]
-}
-
-struct ResolvedAsset {
-    let asset: AVAsset
-    let naturalSize: CGSize
-    let duration: CMTime
-    let preferredTransform: CGAffineTransform
-    let hasAudio: Bool
-    let isTemporary: Bool // For encoded images
+actor HybridAssetLoader {
+    let windowDuration: TimeInterval = 15.0
+    let overlapDelay: TimeInterval = 1.5
+    
+    func loadWindow(clips: [Clip]) async -> WindowResult
+    
+    struct WindowResult {
+        let readyAssets: [(Int, ResolvedAsset)] // (clipIndex, asset)
+        let loadingAssets: [Int] // Clip indices still loading
+        let skippedAssets: [SkippedAsset] // Timed out/failed
+    }
+    
+    struct SkippedAsset {
+        let clipIndex: Int
+        let reason: SkipReason
+    }
+    
+    enum SkipReason {
+        case timeout
+        case error
+        case cancelled
+    }
 }
 ```
 
-**Implementation Notes**:
-- Use `actor` for thread safety
-- Parallel resolution using `TaskGroup`
-- Photos access via `PHImageManager` (native API)
-- Image encoding to temporary video files
-- Cleanup temporary files on deallocation
+**Implementation**:
+- Fast queue: All local files in parallel (TaskGroup)
+- Sequential queue: Photos assets with overlap pattern
+- CPU queue: Image encodings with semaphore limit (max 2)
+- Progress tracking
+- Timeout handling
+- Error classification
 
 **Error Handling**:
-- Network timeouts: Retry with backoff
-- Photos denied: Clear error message
-- Missing asset: Skip with logging
-- Encoding failure: Fallback to placeholder or skip
+- Network timeouts: Skip after window expires
+- Photos denied: Clear error, skip immediately
+- Missing asset: Skip immediately
+- Encoding failure: Skip image clip, continue
 
----
+### 2. Enhanced CompositionAssembler
+**Purpose**: Build composition with ready assets, handle skipped clips
 
-### 2. CompositionAssembler
-**Purpose**: Build AVFoundation compositions with seamless transitions
-
-**Responsibilities**:
-- Create `AVMutableComposition` with video/audio tracks
-- Calculate timeline with transition overlaps
-- Generate `AVVideoComposition` instructions for transitions
-- Apply audio mix for crossfades
-- Handle scale modes (fit/fill)
-- Support rotation transforms
+**Enhancements**:
+- Accept partial asset list (some clips may be skipped)
+- Build timeline accounting for skipped clips
+- Transitions only between consecutive ready clips
+- Skip markers in timeline (for potential extension later)
 
 **API**:
 ```swift
 struct CompositionAssembler {
     func assembleComposition(
-        clips: [Clip],
-        resolvedAssets: [ResolvedAsset],
-        transition: TransitionType,
-        transitionDuration: TimeInterval,
-        orientation: TapeOrientation,
-        scaleMode: ScaleMode
-    ) throws -> AssembledComposition
-}
-
-struct AssembledComposition {
-    let composition: AVMutableComposition
-    let videoComposition: AVMutableVideoComposition
-    let audioMix: AVMutableAudioMix?
-    let timeline: CompositionTimeline
+        tape: Tape,
+        readyAssets: [(Int, ResolvedAsset)], // Only ready assets
+        skippedIndices: Set<Int> // Which clips were skipped
+    ) throws -> AssembledComposition {
+        // Build timeline with only ready assets
+        // Calculate transitions only between consecutive ready clips
+        // Timeline accounts for skipped clips (no gaps in playback time)
+    }
 }
 ```
 
 **Timeline Calculation**:
 ```
-For N clips with transition duration T:
-- Clip 0: starts at 0, duration = clipDuration[0]
-- Clip 1: starts at clipDuration[0] - T, duration = clipDuration[1] + T (overlap)
-- Clip 2: starts at clipDuration[0] - T + clipDuration[1] - T, duration = clipDuration[2] + T
-- ...
-- Total duration = sum(clipDurations) - (N-1) * T
+Ready assets: [0, 1, 3, 5, 7] (skipped 2, 4, 6)
+Timeline:
+  - Clip 0: 0s → 5s
+  - Clip 1: 5s → 10s (transition from clip 0)
+  - [Skip clip 2]
+  - Clip 3: 10s → 15s (hard cut, no transition from clip 1)
+  - [Skip clip 4]
+  - Clip 5: 15s → 20s (hard cut, no transition)
+  - [Skip clip 6]
+  - Clip 7: 20s → 25s (hard cut, no transition)
 ```
 
-**Transition Instructions**:
-- `.none`: Sequential cuts, no overlap
-- `.crossfade`: Opacity ramps on both layers during overlap
-- `.slideLR`: Transform ramps (slide left-to-right) during overlap
-- `.slideRL`: Transform ramps (slide right-to-left) during overlap
-- `.randomise`: Deterministic sequence based on tape ID
-
-**Audio Mix**:
-- Crossfade: Volume ramps from 1.0 → 0.0 on outgoing, 0.0 → 1.0 on incoming
-- Hard cuts: No ramps, abrupt changes
-
----
+**Transition Rules**:
+- Transitions only between consecutive ready clips
+- If clip skipped → hard cut to next ready clip
+- No transition duration in skipped gaps
 
 ### 3. PlaybackEngine
 **Purpose**: Own AVPlayer, manage playback state and lifecycle
-
-**Responsibilities**:
-- Own single `AVPlayer` instance
-- Manage playback state (playing, paused, buffering, finished)
-- Observe playback events (time updates, end, stalls)
-- Handle interruptions (phone calls, app backgrounding)
-- Provide seek functionality with clip boundary awareness
-- Track current clip index
-- Error reporting
 
 **API**:
 ```swift
@@ -153,9 +254,10 @@ class PlaybackEngine: ObservableObject {
     @Published var duration: Double
     @Published var error: PlaybackError?
     
-    var player: AVPlayer? { get }
+    private(set) var player: AVPlayer?
+    private let skipHandler: SkipHandler
     
-    func load(composition: AssembledComposition) async
+    func prepare(tape: Tape) async
     func play()
     func pause()
     func seek(to time: Double)
@@ -164,94 +266,57 @@ class PlaybackEngine: ObservableObject {
 }
 ```
 
+**Skip Integration**:
+- `SkipHandler` tracks skipped clip indices
+- Monitor playback position
+- If reaches skipped clip → jump to next ready clip
+- Optional toast notification for skipped clips
+
 **State Management**:
-- Single source of truth for playback state
-- Thread-safe property updates (@MainActor)
+- Single source of truth (@Published properties)
+- Thread-safe updates (@MainActor)
 - Clear state transitions (Loading → Ready → Playing → Finished)
 
 **Observers**:
 - Time observer: Update currentTime every 0.1s
 - End observer: Detect playback completion
 - Stall observer: Detect buffering state
-- Interruption observer: Handle phone calls, etc.
+- Interruption observer: Handle phone calls, backgrounding
 
-**Error Handling**:
-- Classify errors (network, asset missing, encoding failure)
-- Provide user-friendly messages
-- Graceful degradation (skip failed clips, continue with available)
-
----
-
-### 4. TapePlayerController
-**Purpose**: Orchestrate asset loading, composition building, and playback
-
-**Responsibilities**:
-- Coordinate MediaAssetResolver and CompositionAssembler
-- Load all clips in parallel
-- Build composition once after all assets ready
-- Feed composition to PlaybackEngine
-- Handle errors and retries
-- Provide progress callbacks
+### 4. SkipHandler
+**Purpose**: Manage skip behavior during playback
 
 **API**:
 ```swift
-actor TapePlayerController {
-    func prepare(tape: Tape) async throws -> AssembledComposition
-    func cancel()
-}
-
-// Usage in view:
-Task {
-    do {
-        let composition = try await controller.prepare(tape: tape)
-        await engine.load(composition: composition)
-        engine.play()
-    } catch {
-        engine.error = error
-    }
+class SkipHandler {
+    private let skippedIndices: Set<Int>
+    private let readyIndices: Set<Int>
+    
+    func nextReadyClip(after index: Int) -> Int?
+    func shouldSkip(clipIndex: Int) -> Bool
+    func handleSkip(at index: Int, currentTime: CMTime) -> CMTime
 }
 ```
 
-**Flow**:
-1. Validate tape (has clips, valid settings)
-2. Resolve all assets in parallel (TaskGroup)
-3. Build composition with transitions
-4. Return ready-to-play composition
-5. Engine loads and plays
-
-**Error Strategy**:
-- If any clip fails: Retry up to 3 times with exponential backoff
-- If retry fails: Skip clip, continue with remaining
-- If all clips fail: Return error
-- Log all failures for debugging
-
----
+**Behavior**:
+- Track which clips are skipped
+- Provide next ready clip index
+- Calculate seek position when skipping
+- Optional: Toast notification ("Skipped clip X")
 
 ### 5. TapePlayerView
-**Purpose**: SwiftUI view for full-screen playback
-
-**Responsibilities**:
-- Full-screen black background
-- VideoPlayer overlay
-- Loading overlay (when buffering)
-- Controls overlay (play/pause, seek, next/prev, dismiss)
-- Auto-hide controls
-- Tap to reveal controls
-- AirPlay support
-- Accessibility
+**Purpose**: Full-screen SwiftUI player following HIG
 
 **Implementation**:
 ```swift
 struct TapePlayerView: View {
     @StateObject private var engine = PlaybackEngine()
-    @StateObject private var controller = TapePlayerController()
-    
     let tape: Tape
     let onDismiss: () -> Void
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black.ignoresSafeArea() // HIG: Immersive full-screen
             
             if let player = engine.player {
                 VideoPlayer(player: player)
@@ -259,190 +324,188 @@ struct TapePlayerView: View {
             }
             
             if engine.isBuffering {
-                LoadingOverlay()
+                PlayerLoadingOverlay()
             }
             
             if showingControls {
-                ControlsOverlay(engine: engine, onDismiss: onDismiss)
-            }
-        }
-        .onAppear {
-            Task {
-                await prepareAndPlay()
-            }
-        }
-    }
-    
-    private func prepareAndPlay() async {
-        engine.isBuffering = true
-        do {
-            let composition = try await controller.prepare(tape: tape)
-            await engine.load(composition: composition)
-            engine.play()
-        } catch {
-            engine.error = error
-        }
-        engine.isBuffering = false
-    }
-}
-```
-
----
-
-## Transition Rendering (Seamless)
-
-### Transition Types Support
-
-**`.none`**:
-- No overlap between clips
-- Sequential playback
-- Hard cuts
-
-**`.crossfade`**:
-- Overlap duration = `transitionDuration`
-- Opacity ramp on outgoing clip: 1.0 → 0.0
-- Opacity ramp on incoming clip: 0.0 → 1.0
-- Audio volume ramps (1.0 → 0.0 and 0.0 → 1.0)
-
-**`.slideLR`**:
-- Overlap duration = `transitionDuration`
-- Outgoing clip: Transform from (0, 0) → (-width, 0)
-- Incoming clip: Transform from (width, 0) → (0, 0)
-- Opacity fade on both clips during transition
-
-**`.slideRL`**:
-- Overlap duration = `transitionDuration`
-- Outgoing clip: Transform from (0, 0) → (width, 0)
-- Incoming clip: Transform from (-width, 0) → (0, 0)
-- Opacity fade on both clips during transition
-
-**`.randomise`**:
-- Generate deterministic sequence based on tape ID
-- Map each boundary to one of: `.none`, `.crossfade`, `.slideLR`, `.slideRL`
-- Apply same sequence logic as export (for parity)
-
-### Implementation Pattern
-
-For each transition boundary:
-1. Create `AVVideoCompositionInstruction`
-2. Add `AVVideoCompositionLayerInstruction` for outgoing clip
-3. Add `AVVideoCompositionLayerInstruction` for incoming clip
-4. Apply transform/opacity ramps based on transition type
-5. Ensure perfect frame alignment (30fps composition)
-
----
-
-## Asset Loading (Bulletproof)
-
-### Parallel Loading Strategy
-
-```swift
-func resolveAssets(for clips: [Clip]) async throws -> [ResolvedAsset] {
-    try await withThrowingTaskGroup(of: (Int, ResolvedAsset?).self) { group in
-        // Launch all tasks in parallel
-        for (index, clip) in clips.enumerated() {
-            group.addTask {
-                do {
-                    let asset = try await resolveAsset(for: clip)
-                    return (index, asset)
-                } catch {
-                    // Log error, return nil to skip
-                    return (index, nil)
+                VStack {
+                    PlayerHeader(onDismiss: onDismiss)
+                    Spacer()
+                    ControlsOverlay(engine: engine)
                 }
             }
         }
-        
-        // Collect results in order
-        var results: [ResolvedAsset?] = Array(repeating: nil, count: clips.count)
-        for try await (index, asset) in group {
-            results[index] = asset
+        .onAppear {
+            Task { await engine.prepare(tape: tape) }
         }
-        
-        // Filter out nil (failed clips)
-        return results.compactMap { $0 }
-    }
-}
-```
-
-### Photos/iCloud Handling
-
-```swift
-func resolveVideoFromPhotos(localIdentifier: String) async throws -> AVAsset {
-    let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-    guard status == .authorized || status == .limited else {
-        throw AssetError.photosAccessDenied
-    }
-    
-    return try await withCheckedThrowingContinuation { continuation in
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
-        guard let phAsset = fetchResult.firstObject else {
-            continuation.resume(throwing: AssetError.assetMissing)
-            return
-        }
-        
-        let options = PHVideoRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.isNetworkAccessAllowed = true // Critical for iCloud
-        options.version = .current
-        
-        PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
-            if let asset = asset {
-                continuation.resume(returning: asset)
-            } else if let error = info?[PHImageErrorKey] as? Error {
-                continuation.resume(throwing: error)
-            } else {
-                continuation.resume(throwing: AssetError.unknown)
-            }
+        .onDisappear {
+            engine.teardown()
         }
     }
 }
 ```
 
-### Image-to-Video Encoding
-
-```swift
-func encodeImageToVideo(image: UIImage, duration: TimeInterval) async throws -> AVAsset {
-    // Create temporary file
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent(UUID().uuidString)
-        .appendingPathExtension("mov")
-    
-    // Use AVAssetWriter (native API)
-    let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
-    // ... configure and encode
-    // Return AVURLAsset pointing to temp file
-}
-```
+**HIG Compliance**:
+- Full-screen black background (immersive experience)
+- Video fills screen (native VideoPlayer)
+- Controls auto-hide after 3s (standard pattern)
+- Tap to reveal controls
+- AirPlay button (AVRoutePickerView, native component)
+- Accessibility support (VoiceOver, Reduce Motion)
 
 ---
 
-## Performance Optimizations
+## Skip Behavior Implementation
 
-### Memory Management
-- **Single Composition**: Build once, play entire tape
-- **Asset Cleanup**: Release AVAssets after composition built
-- **Temporary Files**: Clean up encoded images after playback
-- **Observer Cleanup**: Remove all observers on teardown
+### When Playback Reaches Skipped Clip
 
-### Loading Performance
-- **Parallel Resolution**: All clips load simultaneously (TaskGroup)
-- **No Sequential Blocking**: No waiting for one clip before starting next
-- **Timeout Per Clip**: Each clip has independent timeout (don't block others)
+**Detection**:
+```swift
+// In PlaybackEngine time observer
+func updateCurrentClip() {
+    let currentTime = player.currentTime()
+    let currentClip = timeline.clipIndex(at: currentTime)
+    
+    if skipHandler.shouldSkip(clipIndex: currentClip) {
+        // Skip to next ready clip
+        if let nextReady = skipHandler.nextReadyClip(after: currentClip) {
+            seekToClip(at: nextReady)
+            // Optional: Show toast notification
+        }
+    }
+}
+```
 
-### Playback Performance
-- **Fixed Render Size**: 1080×1920 (portrait) or 1920×1080 (landscape)
-- **30fps Composition**: Standard frame rate for smooth playback
-- **Preferred Forward Buffer**: Set to 2 seconds
-- **Automatically Waits to Minimize Stalling**: AVPlayer built-in
+**Seek Calculation**:
+```swift
+func seekToClip(at index: Int) {
+    guard let startTime = timeline.startTime(for: index) else { return }
+    player.seek(to: startTime)
+    currentClipIndex = index
+}
+```
 
-### State Management
-- **Minimal State**: Only necessary @Published properties
-- **Main Actor Isolation**: All UI updates on main thread
-- **No Retain Cycles**: Weak references in closures
+**User Experience**:
+- Playback continues smoothly
+- No stalling or waiting
+- Optional toast: "Skipped clip X" (can be dismissed)
+- Background loading continues for skipped clips
 
 ---
 
-## Error Handling (Bulletproof)
+## iOS Best Practices & HIG Compliance
+
+### Native Components Used
+
+1. **VideoPlayer** (SwiftUI)
+   - Native full-screen video playback
+   - Automatic scaling and layout
+   - Built-in gesture support
+
+2. **AVRoutePickerView** (SwiftUI)
+   - Native AirPlay/Casting picker
+   - System-standard UI
+   - Automatic device discovery
+
+3. **AVPlayer** (AVFoundation)
+   - Native playback engine
+   - Automatic buffering management
+   - System-level integration
+
+4. **PHImageManager** (Photos)
+   - Native Photos library access
+   - Automatic iCloud handling
+   - Network access management
+
+### Swift Concurrency Patterns
+
+1. **async/await**
+   - All asset loading operations
+   - Composition building
+   - Non-blocking UI updates
+
+2. **TaskGroup**
+   - Parallel local file loading
+   - Structured concurrency
+   - Automatic error handling
+
+3. **Actor**
+   - Thread-safe asset loader
+   - Prevents data races
+   - Swift concurrency best practice
+
+4. **@MainActor**
+   - All UI updates
+   - PlaybackEngine state management
+   - Thread-safe property updates
+
+### HIG Compliance
+
+1. **Full-Screen Immersive**
+   - Black background
+   - Video fills screen
+   - Minimal UI (controls auto-hide)
+
+2. **Loading States**
+   - Clear "Loading tape..." indicator
+   - Progress indication (optional)
+   - Error messages with recovery options
+
+3. **Accessibility**
+   - VoiceOver support (all controls labeled)
+   - Reduce Motion support (slide transitions → crossfade)
+   - Dynamic Type support (controls scale with text size)
+
+4. **Error Handling**
+   - User-friendly messages
+   - Recovery options (retry, settings link)
+   - Graceful degradation (skip failed assets)
+
+### Performance Best Practices
+
+1. **Memory Management**
+   - Release AVAssets after composition built
+   - Clean up temporary files (image encodings)
+   - Monitor memory pressure
+
+2. **Energy Efficiency**
+   - Limit concurrent operations
+   - Throttle background loading
+   - Pause on memory warnings
+
+3. **Network Awareness**
+   - Respect cellular vs Wi-Fi
+   - Throttle iCloud downloads on cellular
+   - Background task management
+
+---
+
+## Performance Targets
+
+### Time to First Frame Played (TTFMP)
+- **Local files only**: ≤ 200ms p95
+- **Photos (local)**: ≤ 2.0s p95
+- **Mixed (local + iCloud)**: ≤ 15.0s p95 (window duration)
+- **All iCloud**: ≤ 15.0s p95 (window duration)
+
+### Skip Rate
+- **Good network**: < 2% of clips
+- **Slow network**: < 10% of clips
+- **No network (iCloud)**: Skip all iCloud, play local only
+
+### Stall Rate
+- **Local files**: Zero stalls
+- **Photos (local)**: ≤ 1 stall per 5 minutes p95
+- **Mixed**: ≤ 1 stall per 5 minutes p95
+
+### Memory Usage
+- **Small tapes (< 30 clips)**: ≤ 300MB peak
+- **Medium tapes (30-50 clips)**: ≤ 400MB peak
+- **Large tapes (50+ clips)**: ≤ 600MB peak (Phase 2)
+
+---
+
+## Error Handling
 
 ### Error Classification
 
@@ -454,6 +517,7 @@ enum PlaybackError: Error, LocalizedError {
     case encodingFailed(clipIndex: Int)
     case compositionFailed(String)
     case networkTimeout(clipIndex: Int)
+    case noReadyClips // All clips failed/skipped
     
     var errorDescription: String? {
         switch self {
@@ -469,271 +533,107 @@ enum PlaybackError: Error, LocalizedError {
             return "Failed to prepare playback: \(reason)"
         case .networkTimeout(let index):
             return "Clip \(index + 1) is taking too long to load."
+        case .noReadyClips:
+            return "Unable to load any clips for this tape."
         }
     }
 }
 ```
 
 ### Recovery Strategies
-- **Network Timeout**: Retry with exponential backoff (up to 3 attempts)
-- **Asset Missing**: Skip clip, continue with remaining
-- **Encoding Failure**: Skip image clip, continue
-- **Photos Denied**: Clear error, guide user to settings
 
-### User Feedback
-- Loading state: Show "Loading tape..." during preparation
-- Error state: Show specific error message with action
-- Skip notifications: Optional toast for skipped clips
+1. **Network Timeout**
+   - Skip clip after window expires
+   - Continue loading in background
+   - May become ready during playback
 
----
+2. **Asset Missing**
+   - Skip immediately
+   - Log for debugging
+   - Continue with remaining clips
 
-## State Machine (Bulletproof)
+3. **Encoding Failure**
+   - Skip image clip
+   - Continue with video clips
+   - Optional: Retry in background
 
-### States
-```
-Idle
-  ↓ (prepare called)
-Loading
-  ↓ (assets resolved + composition built)
-Ready
-  ↓ (play called)
-Playing
-  ↓ (pause called)
-Paused
-  ↓ (play called)
-Playing
-  ↓ (end reached)
-Finished
-  ↓ (seek/reset)
-Ready/Playing
-```
+4. **Photos Denied**
+   - Clear error message
+   - Link to Settings
+   - Skip all Photos assets, try local files
 
-### State Validation
-- **Loading**: Can't play, can't seek (show loading)
-- **Ready**: Can play, can seek
-- **Playing**: Can pause, can seek
-- **Paused**: Can play, can seek
-- **Finished**: Can seek to restart, can't play (already finished)
-
-### Transition Guards
-- Check state before actions
-- Clear error messages for invalid transitions
-- Log invalid state transitions for debugging
-
----
-
-## Transition Sequence (Deterministic)
-
-### Randomise Logic
-```swift
-func generateTransitionSequence(
-    tapeID: UUID,
-    clipCount: Int,
-    baseTransition: TransitionType
-) -> [TransitionType] {
-    guard baseTransition == .randomise else {
-        return Array(repeating: baseTransition, count: clipCount - 1)
-    }
-    
-    // Deterministic RNG seeded by tape ID
-    var generator = SeededRNG(seed: tapeID.hashValue)
-    let pool: [TransitionType] = [.none, .crossfade, .slideLR, .slideRL]
-    
-    return (0..<(clipCount - 1)).map { _ in
-        pool.randomElement(using: &generator)!
-    }
-}
-```
-
-### Seeded RNG
-```swift
-struct SeededRNG: RandomNumberGenerator {
-    private var state: UInt64
-    
-    init(seed: UInt64) {
-        self.state = seed
-    }
-    
-    mutating func next() -> UInt64 {
-        // Linear congruential generator
-        state = (state &* 2862933555777941757) &+ 3037000493
-        return state
-    }
-}
-```
-
-**Key**: Same sequence every time for same tape ID (parity with export)
-
----
-
-## Composition Building (From Scratch)
-
-### Track Creation
-```swift
-// Create video and audio tracks
-let videoTrack = composition.addMutableTrack(
-    withMediaType: .video,
-    preferredTrackID: kCMPersistentTrackID_Invalid
-)!
-
-let audioTrack = composition.addMutableTrack(
-    withMediaType: .audio,
-    preferredTrackID: kCMPersistentTrackID_Invalid
-)!
-```
-
-### Timeline Calculation
-```swift
-var currentTime: CMTime = .zero
-var instructions: [AVVideoCompositionInstructionProtocol] = []
-
-for (index, asset) in assets.enumerated() {
-    let clipDuration = asset.duration
-    let clipRange = CMTimeRange(start: .zero, duration: clipDuration)
-    
-    // Insert into composition
-    try videoTrack.insertTimeRange(clipRange, of: asset.videoTrack, at: currentTime)
-    if let audio = asset.audioTrack {
-        try audioTrack.insertTimeRange(clipRange, of: audio, at: currentTime)
-    }
-    
-    // Calculate transition
-    let transition = transitionSequence[safe: index]
-    let instruction = createInstruction(
-        for: asset,
-        at: currentTime,
-        transition: transition,
-        nextAsset: assets[safe: index + 1]
-    )
-    instructions.append(instruction)
-    
-    // Advance time (subtract overlap if transition exists)
-    let advance = transition != nil ? 
-        CMTimeSubtract(clipDuration, transitionDuration) : 
-        clipDuration
-    currentTime = CMTimeAdd(currentTime, advance)
-}
-```
-
-### Transition Instructions
-```swift
-func createInstruction(
-    for asset: ResolvedAsset,
-    at time: CMTime,
-    transition: TransitionType?,
-    nextAsset: ResolvedAsset?
-) -> AVVideoCompositionInstructionProtocol {
-    let instruction = AVMutableVideoCompositionInstruction()
-    instruction.timeRange = CMTimeRange(start: time, duration: asset.duration)
-    
-    let layerInstruction = AVMutableVideoCompositionLayerInstruction(
-        assetTrack: asset.videoTrack
-    )
-    
-    // Apply transforms based on scale mode, rotation
-    applyScaleAndRotation(to: layerInstruction, asset: asset)
-    
-    // If transition, apply ramp
-    if let transition = transition, let next = nextAsset {
-        applyTransitionRamp(
-            to: layerInstruction,
-            transition: transition,
-            overlapDuration: transitionDuration
-        )
-    }
-    
-    instruction.layerInstructions = [layerInstruction]
-    return instruction
-}
-```
-
----
-
-## Performance Targets
-
-### Time to First Frame Played (TTFMP)
-- **Local clips**: ≤ 1.0s p95
-- **iCloud clips**: ≤ 3.0s p95
-- **Mixed (local + iCloud)**: ≤ 2.5s p95
-
-### Stall Rate
-- **≤ 1 stall per 5 minutes** p95
-- **Zero stalls** for fully loaded local tapes
-
-### Memory Usage
-- **Peak memory**: ≤ 400MB for 30 clips
-- **Memory cleanup**: Release assets after composition built
-- **Temporary files**: Clean up after playback
-
-### Transition Smoothness
-- **60fps rendering**: On capable devices
-- **No visible glitches**: At transition boundaries
-- **Audio sync**: Perfect alignment with video
+5. **All Clips Failed**
+   - Show error message
+   - Provide retry option
+   - Option to dismiss
 
 ---
 
 ## Testing Strategy
 
 ### Unit Tests
-- Asset resolution (local, Photos, iCloud, images)
-- Composition building (various clip counts)
-- Transition sequence generation (deterministic)
-- Timeline calculations (overlaps, durations)
-- Error handling (all error paths)
+- HybridAssetLoader: Fast/sequential/CPU queue behavior
+- CompositionAssembler: Skip handling, timeline calculation
+- SkipHandler: Next ready clip calculation
+- Error handling: All error paths
 
 ### Integration Tests
-- End-to-end playback (load → build → play)
-- Transition visual verification
-- Seek accuracy
-- Clip boundary detection
+- End-to-end playback (load → build → play → skip)
+- Skip behavior during playback
+- Composition building with skipped clips
+- Transition handling with gaps
 
 ### Performance Tests
-- TTFMP measurement
-- Stall rate measurement
-- Memory profiling
-- Large tape handling (50+ clips)
+- TTFMP measurement (local/Photos/mixed scenarios)
+- Skip rate measurement (various network conditions)
+- Stall rate measurement (5-minute sessions)
+- Memory profiling (peak usage)
 
 ### Manual Testing
-- Local tapes
-- iCloud tapes
+- Local-only tapes
+- iCloud-only tapes
 - Mixed tapes
 - Image-only tapes
 - Various transition types
 - Error scenarios (Photos denied, network offline)
+- Skip behavior (slow network simulation)
+- Interruption handling (phone calls)
 
 ---
 
 ## Accessibility
 
 ### VoiceOver
-- Label all controls clearly
-- Announce playback state changes
-- Provide hints for gestures
+- All controls labeled clearly
+- State announcements ("Playing", "Paused", "Clip 3 of 12")
+- Progress bar announces current time
+- Error messages read aloud
 
 ### Reduce Motion
-- Replace slide transitions with crossfade
-- Keep Ken Burns but reduce motion intensity
+- Slide transitions → crossfade
+- Ken Burns effect → static image
 - Respect `UIAccessibility.isReduceMotionEnabled`
 
 ### Dynamic Type
-- Controls scale with user preferences
+- Controls scale with text size preference
 - Loading messages use system fonts
+- Readable at all text sizes
 
 ---
 
 ## Scalability Foundation
 
-### Future Extensions (Not Phase 1)
-
-**Phase 2**:
-- Progressive loading (segment-based compositions)
+### Phase 2 Extensions
+- Progressive composition extension
 - Background prefetch service
 - Thumbnail generation
+- Large tape strategies (queue-based)
 
-**Phase 3**:
+### Phase 3 Extensions
 - 3D transitions (Metal renderer)
 - Playback speed control
 - Advanced seeking features
+- Custom transition effects
 
 **Architecture Support**:
 - Protocol-based design (easy to add renderers)
@@ -742,109 +642,41 @@ func createInstruction(
 
 ---
 
-## Implementation Checklist
-
-### Phase 1 Components (From Scratch):
-- [ ] `MediaAssetResolver` (actor)
-  - Photos/iCloud resolution
-  - Image encoding
-  - Parallel loading
-  - Error handling
-  
-- [ ] `CompositionAssembler` (struct)
-  - Timeline calculation
-  - Track insertion
-  - Transition instructions
-  - Audio mix
-  
-- [ ] `PlaybackEngine` (@MainActor ObservableObject)
-  - AVPlayer management
-  - State management
-  - Observers
-  - Seek functionality
-  
-- [ ] `TapePlayerController` (actor)
-  - Orchestration
-  - Error recovery
-  - Progress tracking
-  
-- [ ] `TapePlayerView` (SwiftUI)
-  - UI layout
-  - State binding
-  - Controls
-  - Loading/error states
-
-### Shared Utilities:
-- [ ] `TransitionSequenceGenerator` (deterministic RNG)
-- [ ] `SeededRNG` (linear congruential generator)
-- [ ] Error types and messages
-
-**Total Estimated Lines**: ~800-1000 (clean, well-documented, bulletproof)
-
----
-
 ## Key Design Decisions
 
-### Why Actor for Asset Resolver?
-- Thread-safe asset loading
-- Prevents race conditions
-- Swift concurrency best practice
+### Why Hybrid Loading?
+- **Reality-based**: Local files instant, Photos variable
+- **System-friendly**: Doesn't overwhelm Photos framework
+- **Optimal resource usage**: Parallel where safe, sequential where needed
+- **Fast startup**: Local files ready instantly, Photos in reasonable time
 
-### Why Actor for Controller?
-- Thread-safe orchestration
-- Clean async API
-- Prevents concurrent preparations
+### Why Time Window?
+- **Predictable buffer**: Always ensures ~10-15s of ready content
+- **Fast startup**: User sees playback in 15s max
+- **Adapts to content**: Works regardless of clip durations
+- **Progressive**: Can extend as more assets load
 
-### Why MainActor for Engine?
-- AVPlayer must be on main thread
-- UI updates must be on main thread
-- ObservableObject needs main actor for @Published
+### Why Skip Behavior?
+- **Never blocks**: Playback always starts with available assets
+- **Seamless UX**: User doesn't notice skipped clips
+- **Resilient**: Handles network failures gracefully
+- **Recovery**: Skipped clips continue loading in background
 
-### Why Single Composition?
-- Simple and reliable
-- No mid-playback swaps
-- No timeline preservation complexity
-- Fast enough for Phase 1 scope (< 30 clips)
+### Why Native APIs?
+- **Performance**: Apple's frameworks are optimized
+- **Reliability**: Less custom code = fewer bugs
+- **Maintenance**: Easier to maintain with standard patterns
+- **Future-proof**: iOS updates benefit automatically
 
-### Why Parallel Loading?
-- Fastest possible startup
-- Uses TaskGroup (native, efficient)
-- Independent timeouts per clip
-- No blocking on slow clips
-
----
-
-## Success Metrics
-
-### Functional
-- ✅ All transition types work seamlessly
-- ✅ No playback jumping or glitches
-- ✅ Smooth audio transitions
-- ✅ Accurate seeking
-- ✅ Clip boundary detection
-
-### Performance
-- ✅ TTFMP ≤ 3.0s p95
-- ✅ Stall rate ≤ 1 per 5 minutes
-- ✅ Memory ≤ 400MB peak
-- ✅ 60fps playback on capable devices
-
-### Reliability
-- ✅ Handles all error scenarios gracefully
-- ✅ Never crashes
-- ✅ Recovers from network issues
-- ✅ Works offline (local assets)
-
-### User Experience
-- ✅ Loading state clearly indicated
-- ✅ Error messages are helpful
-- ✅ Controls are responsive
-- ✅ Full-screen immersive experience
+### Why Sequential Overlap for Photos?
+- **Unknown speed**: Can't predict local vs iCloud
+- **Framework limits**: Photos optimized for 2-4 concurrent
+- **Overlap maximizes throughput**: Next starts before current finishes
+- **System-friendly**: Doesn't cause framework congestion
 
 ---
 
-**Document Version**: 1.0  
+**Document Version**: 3.0 (Hybrid Loading Strategy)  
 **Created**: Complete rebuild from scratch design  
 **Status**: Ready for implementation  
-**Principle**: Zero recycling, bulletproof logic, maximum performance
-
+**Principle**: Hybrid loading, bulletproof logic, maximum performance, HIG compliance
