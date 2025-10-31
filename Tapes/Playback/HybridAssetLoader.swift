@@ -67,9 +67,26 @@ actor HybridAssetLoader {
         TapesLog.player.info("HybridAssetLoader: Starting loading window for \(clips.count) clips")
         
         // Separate clips by type
-        let localClips = clips.enumerated().filter { $0.element.localURL != nil }
-        let photosClips = clips.enumerated().filter { $0.element.assetLocalId != nil && $0.element.clipType == .video }
-        let imageClips = clips.enumerated().filter { $0.element.clipType == .image }
+        // Priority: localURL > assetLocalId (to avoid duplicates)
+        // Clips with localURL go to fast queue
+        // Clips with only assetLocalId (no localURL) go to sequential queue
+        // Image clips go to CPU queue
+        var processedIndices = Set<Int>()
+        let localClips = clips.enumerated().filter { offset, clip in
+            guard clip.localURL != nil else { return false }
+            processedIndices.insert(offset)
+            return true
+        }
+        let photosClips = clips.enumerated().filter { offset, clip in
+            guard clip.assetLocalId != nil && clip.clipType == .video && !processedIndices.contains(offset) else { return false }
+            processedIndices.insert(offset)
+            return true
+        }
+        let imageClips = clips.enumerated().filter { offset, clip in
+            guard clip.clipType == .image && !processedIndices.contains(offset) else { return false }
+            processedIndices.insert(offset)
+            return true
+        }
         
         // Load all queues
         TapesLog.player.info("HybridAssetLoader: Starting parallel queue loading")

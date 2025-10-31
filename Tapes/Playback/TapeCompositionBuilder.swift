@@ -268,7 +268,8 @@ struct TapeCompositionBuilder {
             let nextIndex = contexts[i + 1].index
             
             // Check if there are any skipped clips between current and next
-            let hasGap = ((currentIndex + 1)..<nextIndex).contains { skippedIndices.contains($0) }
+            // Only check for gaps if nextIndex > currentIndex + 1 (consecutive clips have no gap)
+            let hasGap = (nextIndex > currentIndex + 1) && ((currentIndex + 1)..<nextIndex).contains { skippedIndices.contains($0) }
             
             if hasGap {
                 // No transition across skipped clips
