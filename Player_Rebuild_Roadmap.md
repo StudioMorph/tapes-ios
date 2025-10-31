@@ -10,72 +10,48 @@ This roadmap divides the complete rebuild plan into **3 phases**. Each phase pro
 **Key Principles**:
 - **Each phase is shippable**: You can stop at any phase and have a working player
 - **Incremental complexity**: Start simple, add sophistication in later phases
-- **Extensibility built-in**: Architecture supports future enhancements without rebuilds
+- **Leverage existing code**: Use `TapeCompositionBuilder` directly (it already does parallel loading)
+- **Native APIs first**: Use Apple's frameworks directly
 - **Feature flag per phase**: Enable/disable phase features independently
 
 ---
 
-## Phase 1: Foundation + Fast, Reliable Playback
-**Goal**: Fast startup, smooth transitions, never-stuck playback, background prefetch
+## Phase 1: Simple Foundation + Fast Playback
+**Goal**: Fast startup, smooth transitions, never-stuck playback
 
 **Deliverable**: Production-ready player for small-to-medium tapes (up to ~30 clips) with 2D transitions
 
-### Core Components
+### Core Insight
 
-**1. PlayerEngine** (Basic)
+**`TapeCompositionBuilder` already does everything we need:**
+- Parallel asset loading using `TaskGroup` (Apple's native way)
+- Photos/iCloud handling automatically
+- Single composition building
+- Transition support via `AVVideoComposition`
+
+**Phase 1 should be simple:** Just call the builder directly. No custom orchestration needed.
+
+### Components
+
+**1. SimplePlayerEngine** (~100 lines)
 - ✅ Own AVPlayer, manage playback state
 - ✅ @Published properties: isPlaying, currentTime, currentClipIndex, isBuffering, error
 - ✅ Basic API: prepare, play, pause, seek, seekToClip, teardown
-- ✅ Time/boundary/end/stall observers
+- ✅ Time/end/stall observers
 - ✅ Basic interruption handling (pause on phone call)
+- ✅ Calls `builder.buildPlayerItem(for: tape)` directly
 - ❌ Playback speed control (defer to Phase 3)
 - ❌ Background audio continuation (defer to Phase 2)
 
-**2. AssetLoader** (Robust)
-- ✅ Request AVAsset (local + Photos/iCloud)
-- ✅ Network access enabled for iCloud
-- ✅ Progress callbacks, cancellation
-- ✅ Timeout/retry with exponential backoff
-- ✅ In-memory LRU cache (20 entries max)
-- ✅ Error classification
-- ❌ Disk cache (defer to Phase 2)
+**2. TapeCompositionBuilder** (Already Exists ✅)
+- ✅ Parallel loading using `TaskGroup` (built-in)
+- ✅ Photos/iCloud support (built-in)
+- ✅ Single composition building (built-in)
+- ✅ Transition support (built-in)
+- ✅ Image-to-video encoding (built-in)
+- **Use directly - no wrapper needed**
 
-**3. BackgroundAssetService** (Basic)
-- ✅ Priority queue for iCloud asset prefetch
-- ✅ Prioritize: current → next → next+1 → rest
-- ✅ Network detection (Wi-Fi vs cellular)
-- ✅ Aggressive on Wi-Fi, conservative on cellular
-- ✅ Progress callbacks
-- ❌ Background execution with BGProcessingRequest (defer to Phase 2)
-- ❌ Bandwidth estimation (defer to Phase 2)
-
-**4. ClipPrefetcher** (Always-Running)
-- ✅ Track current playback position
-- ✅ Pre-resolve next 2 clips in background
-- ✅ Pause/resume based on playback state
-- ✅ Back-pressure: stop on memory warnings
-- ✅ Integrate with BackgroundAssetService
-- ❌ Device capability adaptation (defer to Phase 3)
-
-**5. CompositionBuilder** (2D Transitions Only)
-- ✅ Build AVMutableComposition + AVVideoComposition
-- ✅ BasicTransitionRenderer (hardcoded, no protocol yet)
-- ✅ Support: none, crossfade, slideLR, slideRL, randomise
-- ✅ Ken Burns for images
-- ✅ Generate temporary video assets for stills
-- ✅ Audio ramps for crossfades
-- ✅ Single composition strategy (all clips in one)
-- ❌ Segment-based or queue-based strategies (defer to Phase 2)
-- ❌ TransitionRenderer protocol (defer to Phase 3)
-
-**6. PlaybackCoordinator** (Orchestrator)
-- ✅ Coordinate Engine + Builder + Preloader + BackgroundAssetService
-- ✅ Warmup → progressive → final flow
-- ✅ Progress callbacks: warmup ready, clip ready, completion, error
-- ✅ Error handling, skips, timeouts
-- ❌ Strategy selection (single composition only in Phase 1)
-
-**7. PlayerView** (SwiftUI UI)
+**3. PlayerView** (Minimal Changes ~20 lines)
 - ✅ Full-screen black background
 - ✅ VideoPlayer overlay
 - ✅ Glass "Loading Tape" overlay (when engine.isBuffering)
@@ -87,19 +63,54 @@ This roadmap divides the complete rebuild plan into **3 phases**. Each phase pro
 - ❌ Thumbnail scrubbing (defer to Phase 2)
 - ❌ Playback speed control UI (defer to Phase 3)
 
-**8. TransitionSequence** (Shared Utility)
+**4. TransitionSequence** (Shared Utility - Optional)
 - ✅ Seeded RNG for randomise (deterministic)
 - ✅ Duration clamping (per-clip + global 0.5s for randomise)
 - ✅ Shared between playback and export
+- **Note**: May already exist in export code, reuse if available
+
+### What We DON'T Need (Phase 1)
+
+- ❌ **AssetLoader**: Builder already loads assets
+- ❌ **BackgroundAssetService**: Builder's TaskGroup handles parallel loading efficiently
+- ❌ **ClipPrefetcher**: Not needed for single composition
+- ❌ **PlaybackCoordinator**: Builder already orchestrates loading
+- ❌ Progressive composition rebuilding
+- ❌ Complex state machines
+
+### Implementation Flow
+
+```
+1. User taps play
+   ↓
+2. TapePlayerView.onAppear
+   ↓
+3. engine.prepare(tape:)
+   - Set isBuffering = true (immediate - shows loading)
+   ↓
+4. builder.buildPlayerItem(for: tape)
+   - TaskGroup loads ALL clips in parallel
+   - Handles Photos/iCloud automatically
+   - Builds single AVMutableComposition
+   - Returns PlayerComposition
+   ↓
+5. engine.install(composition)
+   - Creates AVPlayer
+   - Sets playerItem
+   - Installs observers
+   - Auto-plays
+   - Set isBuffering = false (hides loading)
+   ↓
+6. Playback starts smoothly
+```
 
 ### Acceptance Criteria
 
-- ✅ **TTFMP**: ≤ 500ms p95 for local clips, ≤ 2.0s p95 for iCloud
+- ✅ **TTFMP**: ≤ 2.0s p95 (parallel loading via TaskGroup)
 - ✅ **Stall Rate**: ≤ 1 stall per 5 minutes p95
 - ✅ **Transition Smoothness**: No visible hiccups at boundaries
 - ✅ **Visual Parity**: Transitions match export output
-- ✅ **Background Prefetch**: iCloud assets ready before playback reaches them
-- ✅ **Next-Clip Pipeline**: Always 1-2 clips ahead
+- ✅ **No Jumping**: Single composition = no mid-playback replacements
 - ✅ **Basic Lifecycle**: Handles phone calls, app switching (pauses)
 - ✅ **Accessibility**: VoiceOver works, Reduce Motion respected
 
@@ -110,21 +121,20 @@ This roadmap divides the complete rebuild plan into **3 phases**. Each phase pro
 - [ ] TTFMP validation (local and iCloud clips)
 - [ ] Stall rate measurement (5-minute playback sessions)
 - [ ] Transition visual parity vs export
-- [ ] Background prefetch verification (iCloud assets)
-- [ ] Next-clip pipeline verification (always ahead)
 - [ ] Memory usage (≤ 400MB peak)
 - [ ] Error scenarios (Photos denied, timeout, missing asset)
 - [ ] Interruption handling (phone call during playback)
+- [ ] Large tape testing (30 clips)
 
 ### Estimated Timeline
-- **Duration**: 2-3 weeks
-- **Dependencies**: None (starts from clean slate)
-- **Risk**: Low (proven patterns, incremental approach)
+- **Duration**: 1 week
+- **Dependencies**: None (uses existing builder)
+- **Risk**: Very low (simple, proven pattern)
 
 ---
 
 ## Phase 2: Scalability + Performance Optimization
-**Goal**: Handle large tapes efficiently, memory-conscious, network-adaptive, production-ready error handling
+**Goal**: Handle large tapes efficiently, memory-conscious, network-adaptive
 
 **Deliverable**: Production-ready player for tapes of any size (50+ clips) with optimized memory and network usage
 
@@ -137,273 +147,146 @@ This roadmap divides the complete rebuild plan into **3 phases**. Each phase pro
 - ✅ `QueueCompositionStrategy` (AVQueuePlayer for 50+ clips)
 - ✅ Strategy selection based on clip count and device capabilities
 
-**2. CompositionBuilder** (Enhanced)
-- ✅ Support all composition strategies
-- ✅ Progressive segment building
-- ✅ Queue item management
-- ✅ Disk cache for encoded image assets (keyed by hash + duration + transform)
-- ✅ Cache TTL: 7 days, size limit: 200MB
+**2. Progressive Loading Service** (New)
+- ✅ Background prefetch for upcoming clips
+- ✅ Priority queue (current → next → next+1 → rest)
+- ✅ Network-aware (Wi-Fi vs cellular)
+- ✅ Memory-conscious (pause on memory warnings)
 
-**3. ThumbnailGenerator** (New)
-- ✅ Generate thumbnails for all clips in background
-- ✅ Cache thumbnails on disk (keyed by clip ID + timestamp)
-- ✅ Lazy loading: generate on-demand if not cached
-- ✅ Keyframe extraction for video, image extraction for photos
-- ✅ Progress callbacks for UI
-
-**4. MemoryManager** (New)
-- ✅ Respond to memory warnings
-- ✅ Aggressive cache eviction on pressure
-- ✅ Reduce prefetch window to 1 clip on pressure
-- ✅ Monitor peak memory usage
-- ✅ Log memory footprint for diagnostics
-
-**5. NetworkMonitor** (New)
-- ✅ Detect Wi-Fi vs cellular (NWPathMonitor)
-- ✅ Estimate bandwidth (optional)
-- ✅ Pause prefetch on cellular if user preference set
-- ✅ Adapt prefetch window based on network conditions
-
-**6. PlayerEngine** (Enhanced)
-- ✅ Background audio continuation (AVAudioSession configuration)
-- ✅ Save/restore playback state on app lifecycle
-- ✅ Resume playback after interruption if appropriate
-- ❌ Playback speed control (defer to Phase 3)
-
-**7. BackgroundAssetService** (Enhanced)
-- ✅ Background execution with BGProcessingRequest
+**3. BackgroundAssetService** (New)
+- ✅ Persistent background queue for iCloud assets
+- ✅ BGProcessingRequest for background execution
 - ✅ Bandwidth estimation
-- ✅ User preference: "Only prefetch on Wi-Fi"
-- ✅ Respect system "Low Data Mode"
+- ✅ Network adaptation
 
-**8. PlayerView** (Enhanced)
-- ✅ Thumbnail scrubbing (show thumbnails in progress bar)
-- ✅ Network indicator (optional: show when downloading from iCloud)
-- ✅ Memory pressure indicator (optional: show when memory constrained)
+**4. ThumbnailGenerator** (New)
+- ✅ Generate thumbnails for scrubbing UI
+- ✅ Cache on disk (keyed by clip ID + timestamp)
+- ✅ Lazy loading: generate on-demand if not cached
 
-### Enhanced Components
-
-**AssetLoader**:
-- ✅ Disk cache for resolved AVAssets (optional, for frequently accessed)
-- ✅ Cache size limits and TTL
-
-**ClipPrefetcher**:
-- ✅ Adaptive window sizing based on memory and network
-- ✅ Device capability awareness (prefetch less on older devices)
+**5. PlaybackCoordinator** (New - If Needed)
+- ✅ Orchestrate progressive loading
+- ✅ Manage composition swapping
+- ✅ Timeline preservation during swaps
+- ✅ Strategy selection
 
 ### Acceptance Criteria
 
-- ✅ **Large Tapes**: Smooth playback of 50+ clip tapes
-- ✅ **Memory Efficiency**: ≤ 400MB peak on modern iPhones, ≤ 250MB on older devices
-- ✅ **Network Adaptation**: Prefetch adapts to Wi-Fi vs cellular
-- ✅ **Thumbnail Scrubbing**: Smooth scrubbing with thumbnails
-- ✅ **Error Recovery**: Comprehensive error handling with user feedback
-- ✅ **Background Playback**: Continues when app backgrounds (if enabled)
-
-### Feature Flag
-- `playbackEngineV2Phase2`: Enable/disable Phase 2 features
-
-### Testing Checklist
-- [ ] Large tape playback (50+ clips)
-- [ ] Memory pressure scenarios
-- [ ] Network condition variations (Wi-Fi, cellular, no network)
-- [ ] Thumbnail generation and caching
-- [ ] Background playback continuation
-- [ ] Error recovery (various error types)
-- [ ] Cache eviction under memory pressure
-- [ ] Strategy selection (single vs segment vs queue)
+- ✅ **Large Tape Support**: 100+ clips without memory issues
+- ✅ **TTFMP**: ≤ 500ms p95 (progressive loading)
+- ✅ **Background Prefetch**: 90% hit rate for iCloud assets
+- ✅ **Memory**: ≤ 600MB peak for large tapes
+- ✅ **Network Adaptation**: Automatic throttling on cellular
 
 ### Estimated Timeline
 - **Duration**: 2-3 weeks
 - **Dependencies**: Phase 1 complete
-- **Risk**: Medium (introduces complexity, needs thorough testing)
+- **Risk**: Medium (more complex, but Phase 1 provides foundation)
 
 ---
 
-## Phase 3: Extensibility + Advanced Features
-**Goal**: 3D transitions, extensible architecture, device adaptation, advanced audio
+## Phase 3: Advanced Features & 3D Transitions
+**Goal**: 3D transitions, playback speed control, advanced customization
 
-**Deliverable**: Production-ready player with 3D transitions and fully extensible architecture
+**Deliverable**: Production-ready player with 3D transitions and advanced controls
 
 ### New Components
 
 **1. TransitionRenderer Protocol** (New)
 - ✅ `protocol TransitionRenderer`
-- ✅ Factory pattern: `TransitionRendererFactory`
-- ✅ Device capability detection (Metal support, chip generation)
+- ✅ `BasicTransitionRenderer` (2D transitions, refactored from Phase 1)
+- ✅ `MetalTransitionRenderer` (3D transitions via Metal)
+- ✅ Pluggable renderers
 
-**2. Layer3DTransitionRenderer** (New)
-- ✅ Implement TransitionRenderer protocol
-- ✅ Support: `.cube`, `.pageFlip`, `.rotate3D`
-- ✅ Uses CALayer + CATransform3D
-- ✅ Requires: A12+ chip for performance
-- ✅ Fallback to crossfade on older devices
+**2. Playback Speed Control** (Enhancement)
+- ✅ Variable speed (0.5x, 1x, 1.5x, 2x)
+- ✅ Speed change without seeking
+- ✅ Smooth transitions
 
-**3. DeviceCapabilities** (New)
-- ✅ Detect Metal support
-- ✅ Detect chip generation (A12+, A14+, etc.)
-- ✅ Detect available memory
-- ✅ Adapt strategies based on capabilities
-
-**4. AudioMixer** (New)
-- ✅ Audio normalization across clips
-- ✅ Optional audio ducking during transitions
-- ✅ Multi-track audio handling
-- ✅ User preference: Enable/disable normalization
-
-**5. PlayerEngine** (Enhanced)
-- ✅ Playback speed control (0.5x, 1x, 1.5x, 2x)
-- ✅ `setPlaybackRate(_ rate: Float)` API
-- ✅ UI control for speed selection
-
-**6. PlayerView** (Enhanced)
-- ✅ Playback speed control UI (dropdown or button)
-- ✅ 3D transition preview (optional: see transition before committing)
-- ✅ Advanced audio controls (normalization toggle)
-
-### Enhanced Components
-
-**CompositionBuilder**:
-- ✅ Use TransitionRenderer protocol (replace hardcoded BasicTransitionRenderer)
-- ✅ Select renderer via factory based on transition type and device capabilities
-- ✅ Support all transition types (2D + 3D)
-
-**TransitionSequence**:
-- ✅ Support 3D transition types in randomise pool (optional)
-- ✅ User preference: Include 3D in randomise, or 2D only
+**3. Advanced Controls** (UI)
+- ✅ Thumbnail scrubbing with preview
+- ✅ Frame-by-frame seeking
+- ✅ Playback speed UI
 
 ### Acceptance Criteria
 
-- ✅ **3D Transitions**: Smooth cube, pageFlip, rotate3D transitions
-- ✅ **Device Adaptation**: Automatically selects appropriate renderer based on device
-- ✅ **Extensibility**: Easy to add new transition renderers via protocol
-- ✅ **Playback Speed**: Smooth playback at 0.5x, 1.5x, 2x speeds
-- ✅ **Audio Mixing**: Normalized audio levels, optional ducking
-- ✅ **Performance**: 3D transitions don't cause frame drops on A12+ devices
-
-### Feature Flag
-- `playbackEngineV2Phase3`: Enable/disable Phase 3 features
-
-### Testing Checklist
-- [ ] 3D transitions on A12+ devices
-- [ ] Fallback to 2D on older devices
-- [ ] Playback speed control (all rates)
-- [ ] Audio normalization verification
-- [ ] Device capability detection accuracy
-- [ ] Extensibility: Add custom transition renderer
-- [ ] Performance: Frame drop rate during 3D transitions
+- ✅ **3D Transition Performance**: 60fps on supported devices
+- ✅ **Speed Control Latency**: < 100ms
+- ✅ **Device Compatibility**: Graceful fallback for unsupported devices
 
 ### Estimated Timeline
 - **Duration**: 2-3 weeks
-- **Dependencies**: Phase 2 complete
-- **Risk**: Medium-High (3D transitions are complex, performance-sensitive)
+- **Dependencies**: Phase 1 complete (Phase 2 optional)
+- **Risk**: Medium (Metal rendering complexity)
 
 ---
 
-## Architecture Extensibility (Built Across All Phases)
+## Key Architectural Decisions
 
-### Protocol-Based Design
-- **TransitionRenderer**: Add new transitions without touching core code
-- **CompositionStrategy**: Add new strategies (e.g., streaming) without rebuild
-- **PrefetchStrategy**: Plug in different prefetch algorithms
-- **DeviceCapabilities**: Extend capability detection for future devices
+### Why Simple Phase 1?
+1. **Builder already does parallel loading** - No need to duplicate
+2. **Native TaskGroup** - Apple's recommended way
+3. **Single composition** - Simple, reliable, no jumping
+4. **Fast implementation** - ~120 lines vs 1500+ over-engineered version
+5. **Easy to extend** - Foundation supports Phase 2/3 additions
 
-### Dependency Injection
-- All major components accept dependencies via initializers
-- Enables testing with mocks
-- Allows swapping implementations
+### Why No Coordinator in Phase 1?
+- **Unnecessary**: Builder already orchestrates loading
+- **Over-engineering**: Direct call is sufficient
+- **Easy to add**: Can wrap in coordinator for Phase 2 if needed
 
-### Feature Flags
-- Per-phase flags allow incremental rollout
-- Easy rollback if issues found
-- A/B testing capability
+### Why No BackgroundAssetService in Phase 1?
+- **TaskGroup is sufficient**: Already loads in parallel efficiently
+- **Not needed**: Single composition doesn't need background prefetch
+- **Phase 2 feature**: Add when we need progressive compositions
 
----
-
-## Risk Mitigation
-
-### Phase 1 Risks
-- **Risk**: Background prefetch might not be fast enough
-- **Mitigation**: Start prefetch immediately when tape opens, aggressive warmup window
-
-- **Risk**: Memory pressure from too many prefetched assets
-- **Mitigation**: Strict cache limits, back-pressure signals, memory warning handlers
-
-### Phase 2 Risks
-- **Risk**: Segment/queue strategies might introduce swapping overhead
-- **Mitigation**: Only use for large tapes, thorough performance testing
-
-- **Risk**: Thumbnail generation might be slow
-- **Mitigation**: Background generation, aggressive caching, lazy loading
-
-### Phase 3 Risks
-- **Risk**: 3D transitions might cause frame drops
-- **Mitigation**: Device capability detection, fallback to 2D, performance profiling
-
-- **Risk**: Complex architecture might be hard to maintain
-- **Mitigation**: Clear protocols, comprehensive tests, documentation
+### Why Use Builder Directly?
+- **Zero duplication**: Builder already handles everything
+- **Native APIs**: Uses TaskGroup, PHImageManager correctly
+- **Proven**: Existing export code uses it successfully
+- **Simple**: One call, get composition
 
 ---
 
-## Success Metrics (All Phases)
+## Migration Path
 
-### Performance
-- **TTFMP**: ≤ 500ms local, ≤ 2s iCloud (p95)
-- **Stall Rate**: ≤ 1 per 5 minutes (p95)
-- **Memory**: ≤ 400MB peak on modern devices
-- **Frame Drops**: < 1% during transitions
+### Phase 1 → Phase 2
+- Wrap engine in coordinator (if needed)
+- Add strategy protocol
+- Add progressive loading service
+- No breaking changes to engine API
+- Feature flag: `playbackEngineV2Phase2`
 
-### Reliability
-- **Error Recovery**: Graceful handling of all error types
-- **Background Prefetch**: iCloud assets ready before needed
-- **Interruption Handling**: Smooth pause/resume
-
-### User Experience
-- **Smoothness**: No visible hiccups, seamless transitions
-- **Accessibility**: Full VoiceOver support, Reduce Motion
-- **Extensibility**: Easy to add new features
+### Phase 2 → Phase 3
+- Add transition renderer protocol
+- Add Metal renderer
+- Extend builder with renderer injection
+- Backward compatible
+- Feature flag: `playbackEngineV2Phase3`
 
 ---
 
-## Rollout Strategy
+## Success Metrics
 
-### Phase 1 Rollout
-1. Internal testing (1 week)
-2. Beta to 10% users (1 week)
-3. Monitor metrics, fix issues
-4. Rollout to 50% users (1 week)
-5. Full rollout if metrics acceptable
+### Phase 1
+- TTFMP ≤ 2.0s p95
+- Stall rate ≤ 1 per 5 minutes p95
+- Memory ≤ 400MB peak
+- Zero playback jumping
 
-### Phase 2 Rollout
-1. Feature flag: Enable Phase 2 for beta users
-2. Monitor large tape performance
-3. Gradual rollout based on metrics
+### Phase 2
+- TTFMP ≤ 500ms p95
+- Support 100+ clips
+- Memory ≤ 600MB peak
+- 90% prefetch hit rate
 
-### Phase 3 Rollout
-1. Feature flag: Enable Phase 3 for beta users
-2. Monitor 3D transition performance
-3. Gradual rollout with device capability gating
-
----
-
-## Documentation Requirements
-
-### Per Phase
-- Architecture diagrams
-- API documentation
-- Testing guide
-- Troubleshooting guide
-- Performance benchmarks
-
-### Overall
-- Complete architecture overview
-- Extensibility guide (how to add new transitions)
-- Migration guide (from old to new player)
-- Telemetry guide (what metrics to monitor)
+### Phase 3
+- 60fps 3D transitions
+- Speed control < 100ms latency
+- Device compatibility maintained
 
 ---
 
-**Roadmap Version**: 1.0  
-**Last Updated**: Post-rebuild planning  
+**Document Version**: 2.0 (Rewritten based on research)  
+**Last Updated**: After clean architecture analysis  
 **Status**: Ready for Phase 1 implementation
-
