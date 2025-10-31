@@ -13,6 +13,8 @@ struct TapePlayerView: View {
     @StateObject private var engine = PlaybackEngine()
     @State private var showingControlsV2: Bool = true
     @State private var controlsTimerV2: Timer?
+    @State private var hasAppeared = false
+    @State private var appearanceTime: Date?
     
     // Legacy state
     @State private var player: AVPlayer?
@@ -110,6 +112,8 @@ struct TapePlayerView: View {
             }
         }
         .onAppear {
+            hasAppeared = true
+            appearanceTime = Date()
             if FeatureFlags.playbackEngineV2Phase1 {
                 Task { await preparePlayerV2() }
                 setupControlsTimerV2()
@@ -119,7 +123,28 @@ struct TapePlayerView: View {
             }
         }
         .onDisappear {
+            // Prevent premature teardown during SwiftUI lifecycle transitions
+            if FeatureFlags.playbackEngineV2Phase1 {
+                // Don't tear down if we just appeared or are actively buffering
+                if let appearanceTime = appearanceTime {
+                    let timeSinceAppearance = Date().timeIntervalSince(appearanceTime)
+                    if timeSinceAppearance < 0.5 || engine.isBuffering {
+                        TapesLog.player.warning("TapePlayerView: Ignoring premature onDisappear (time: \(String(format: "%.2f", timeSinceAppearance))s, buffering: \(engine.isBuffering))")
+                        return
+                    }
+                }
+            } else {
+                // For legacy path, check time
+                if let appearanceTime = appearanceTime {
+                    let timeSinceAppearance = Date().timeIntervalSince(appearanceTime)
+                    if timeSinceAppearance < 0.5 || isLoading {
+                        return
+                    }
+                }
+            }
             tearDown()
+            hasAppeared = false
+            appearanceTime = nil
         }
     }
 
