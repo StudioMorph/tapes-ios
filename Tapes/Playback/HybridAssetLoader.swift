@@ -98,7 +98,19 @@ actor HybridAssetLoader {
         
         // Collect all results
         TapesLog.player.info("HybridAssetLoader: Waiting for queue results...")
-        let (fast, sequential, cpu) = await (fastResults, sequentialResults, cpuResults)
+        
+        // Collect results one by one with logging
+        TapesLog.player.info("HybridAssetLoader: Waiting for fast queue...")
+        let fast = await fastResults
+        TapesLog.player.info("HybridAssetLoader: Fast queue completed with \(fast.count) results")
+        
+        TapesLog.player.info("HybridAssetLoader: Waiting for sequential queue...")
+        let sequential = await sequentialResults
+        TapesLog.player.info("HybridAssetLoader: Sequential queue completed with \(sequential.count) results")
+        
+        TapesLog.player.info("HybridAssetLoader: Waiting for CPU queue...")
+        let cpu = await cpuResults
+        TapesLog.player.info("HybridAssetLoader: CPU queue completed with \(cpu.count) results")
         
         let loadElapsed = Date().timeIntervalSince(loadStartTime)
         TapesLog.player.info("HybridAssetLoader: All queues completed in \(String(format: "%.2f", loadElapsed))s - processing results")
@@ -245,15 +257,20 @@ actor HybridAssetLoader {
             
             let asset = AVURLAsset(url: assetURL)
             
-            // Load required properties
+            // Load required properties with timeout protection
+            TapesLog.player.info("HybridAssetLoader: Loading properties for local file \(index)")
             let duration = try await asset.load(.duration)
+            TapesLog.player.info("HybridAssetLoader: Duration loaded for local file \(index)")
+            
             guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
                 return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -3, userInfo: [NSLocalizedDescriptionKey: "No video track"])))
             }
+            TapesLog.player.info("HybridAssetLoader: Video track loaded for local file \(index)")
             
             let naturalSize = try await videoTrack.load(.naturalSize)
             let preferredTransform = try await videoTrack.load(.preferredTransform)
             let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+            TapesLog.player.info("HybridAssetLoader: All properties loaded for local file \(index)")
             
             let elapsed = Date().timeIntervalSince(startTime)
             TapesLog.player.info("HybridAssetLoader: Local file \(index) resolved in \(String(format: "%.2f", elapsed))s")
@@ -347,7 +364,9 @@ actor HybridAssetLoader {
         
         do {
             // Use builder's Photos resolution
+            TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for Photos asset \(index)")
             let context = try await builder.resolveClipContext(for: clip, index: index)
+            TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for Photos asset \(index)")
             
             let elapsed = Date().timeIntervalSince(startTime)
             
@@ -435,7 +454,9 @@ actor HybridAssetLoader {
         do {
             // Use builder's image encoding
             // The builder handles image loading and encoding
+            TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for image \(index)")
             let context = try await builder.resolveClipContext(for: clip, index: index)
+            TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for image \(index)")
             
             let elapsed = Date().timeIntervalSince(startTime)
             
