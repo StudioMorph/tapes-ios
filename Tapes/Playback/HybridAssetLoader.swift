@@ -67,21 +67,33 @@ actor HybridAssetLoader {
         TapesLog.player.info("HybridAssetLoader: Starting loading window for \(clips.count) clips")
         
         // Separate clips by type
-        // Priority: localURL > assetLocalId (to avoid duplicates)
-        // Clips with localURL go to fast queue
-        // Clips with only assetLocalId (no localURL) go to sequential queue
+        // Strategy: Only clips with existing localURL files go to fast queue
+        // Clips needing Photos API (no localURL or localURL missing) go to sequential queue
         // Image clips go to CPU queue
         var processedIndices = Set<Int>()
+        
+        // Fast queue: Only clips with localURL AND file exists
+        let fileManager = FileManager.default
         let localClips = clips.enumerated().filter { offset, clip in
-            guard clip.localURL != nil else { return false }
+            guard let localURL = clip.localURL,
+                  fileManager.fileExists(atPath: localURL.path) else { return false }
             processedIndices.insert(offset)
             return true
         }
+        
+        // Sequential queue: Video clips that need Photos API (no localURL file or only assetLocalId)
         let photosClips = clips.enumerated().filter { offset, clip in
-            guard clip.assetLocalId != nil && clip.clipType == .video && !processedIndices.contains(offset) else { return false }
-            processedIndices.insert(offset)
-            return true
+            guard clip.clipType == .video && !processedIndices.contains(offset) else { return false }
+            // Include if has assetLocalId (will load from Photos) OR if localURL exists but file doesn't
+            let needsPhotos = clip.assetLocalId != nil
+            if needsPhotos {
+                processedIndices.insert(offset)
+                return true
+            }
+            return false
         }
+        
+        // CPU queue: Image clips
         let imageClips = clips.enumerated().filter { offset, clip in
             guard clip.clipType == .image && !processedIndices.contains(offset) else { return false }
             processedIndices.insert(offset)
