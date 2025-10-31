@@ -37,7 +37,9 @@ final class PlaybackEngine: ObservableObject {
     }
     
     deinit {
-        teardown()
+        Task { @MainActor [weak self] in
+            self?.teardown()
+        }
     }
     
     // MARK: - Public API
@@ -271,11 +273,11 @@ final class PlaybackEngine: ObservableObject {
         }
         
         // Check if current clip should be skipped
-        if skipHandler.shouldSkip(clipIndex: currentClipIndex) {
+        if skipHandler.shouldSkip(clipIndex: self.currentClipIndex) {
             // Skip to next ready clip
             if skipHandler.canSkip(),
-               let nextReady = skipHandler.nextReadyClip(after: currentClipIndex) {
-                TapesLog.player.info("PlaybackEngine: Skipping clip \(currentClipIndex), jumping to clip \(nextReady)")
+               let nextReady = skipHandler.nextReadyClip(after: self.currentClipIndex) {
+                TapesLog.player.info("PlaybackEngine: Skipping clip \(self.currentClipIndex), jumping to clip \(nextReady)")
                 seekToClip(at: nextReady)
             }
         }
