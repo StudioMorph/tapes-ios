@@ -63,10 +63,7 @@ actor ThumbnailGenerator {
         
         let thumbnailTime = time ?? CMTime(seconds: 0.1, preferredTimescale: 600)
         let result = try await generator.image(at: thumbnailTime)
-        guard let cgImage = result.image else {
-            throw NSError(domain: "ThumbnailGenerator", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to generate thumbnail"])
-        }
-        
+        let cgImage = result.image
         let image = UIImage(cgImage: cgImage)
         
         // Cache to disk and memory
@@ -105,7 +102,7 @@ actor ThumbnailGenerator {
         for i in 1...count {
             let time = CMTime(seconds: Double(i) * interval, preferredTimescale: 600)
             let result = try await generator.image(at: time)
-            guard let cgImage = result.image else { continue }
+            let cgImage = result.image
             thumbnails.append(UIImage(cgImage: cgImage))
         }
         
@@ -127,7 +124,7 @@ actor ThumbnailGenerator {
     
     private func cacheKey(for clip: Clip, index: Int, time: CMTime?) -> String {
         let timestamp = time.map { "\(Int(CMTimeGetSeconds($0) * 1000))" } ?? "0"
-        let updatedAt = clip.updatedAt?.timeIntervalSince1970 ?? 0
+        let updatedAt = clip.updatedAt.timeIntervalSince1970
         return "\(clip.id.uuidString)-\(index)-\(timestamp)-\(Int(updatedAt))"
     }
     
