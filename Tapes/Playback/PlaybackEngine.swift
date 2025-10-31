@@ -233,7 +233,7 @@ final class PlaybackEngine: ObservableObject {
         // Set initial clip index based on first segment in timeline (not always 0 if clips are skipped)
         if let firstSegment = composition.timeline.segments.first {
             currentClipIndex = firstSegment.clipIndex
-            TapesLog.player.info("PlaybackEngine: Starting playback at clip \(currentClipIndex)")
+            TapesLog.player.info("PlaybackEngine: Starting playback at clip \(self.currentClipIndex)")
         } else {
             currentClipIndex = 0
         }
