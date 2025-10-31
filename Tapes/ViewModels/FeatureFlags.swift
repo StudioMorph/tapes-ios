@@ -25,4 +25,14 @@ enum FeatureFlags {
     static var playbackEngineV2HybridLoading: Bool {
         return playbackEngineV2Phase1 && true
     }
+    
+    /// Controls Phase 2 features: Progressive extension, background prefetch, large tape support.
+    static var playbackEngineV2Phase2: Bool {
+        return playbackEngineV2Phase1 && false // Start disabled, enable after Phase 2 testing
+    }
+    
+    /// Controls Phase 3 features: 3D transitions, playback speed control, advanced controls.
+    static var playbackEngineV2Phase3: Bool {
+        return playbackEngineV2Phase1 && playbackEngineV2Phase2 && false // Requires Phase 2
+    }
 }

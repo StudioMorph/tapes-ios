@@ -16,6 +16,7 @@ final class PlaybackEngine: ObservableObject {
     @Published private(set) var currentClipIndex: Int = 0
     @Published private(set) var duration: Double = 0
     @Published private(set) var error: String?
+    @Published private(set) var playbackSpeed: Float = 1.0
     
     private(set) var player: AVPlayer?
     private(set) var timeline: TapeCompositionBuilder.Timeline?
@@ -31,16 +32,25 @@ final class PlaybackEngine: ObservableObject {
     private let loader = HybridAssetLoader()
     private var _skipHandler: SkipHandler?
     
+    // Phase 2 components
+    private let backgroundService: BackgroundAssetService
+    private let extensionManager: CompositionExtensionManager
+    
     private var timeObserver: Any?
     private var playerEndObserver: NSObjectProtocol?
     private var playerStallObserver: NSObjectProtocol?
     
     private var isPreparing = false
     private var currentPrepareTask: Task<Void, Never>?
+    private var extensionCheckTask: Task<Void, Never>?
     
     // MARK: - Initialization
     
     init() {
+        let sharedLoader = HybridAssetLoader()
+        self.backgroundService = BackgroundAssetService(loader: sharedLoader)
+        self.extensionManager = CompositionExtensionManager()
+        // Note: loader is created separately but can share builder
         TapesLog.player.info("PlaybackEngine: Initialized")
     }
     
@@ -125,8 +135,21 @@ final class PlaybackEngine: ObservableObject {
                 let elapsed = Date().timeIntervalSince(startTime)
                 TapesLog.player.info("PlaybackEngine: Preparation complete in \(String(format: "%.2f", elapsed))s - \(stats.ready) ready, \(stats.skipped) skipped")
                 
+                // Build initial composition using extension manager
+                let initialComposition = try await extensionManager.buildInitial(
+                    for: tape,
+                    readyAssets: windowResult.readyAssets,
+                    skippedIndices: skippedIndices
+                )
+                
                 // Install composition
-                await install(composition: composition)
+                await install(composition: initialComposition)
+                
+                // Phase 2: Start background loading and extension checks
+                if FeatureFlags.playbackEngineV2Phase2 {
+                    await startBackgroundLoading(tape: tape, skippedIndices: skippedIndices, windowResult: windowResult)
+                    startExtensionChecking(tape: tape)
+                }
                 
                 // Calculate TTFMP
                 let ttfmp = Date().timeIntervalSince(startTime)
@@ -190,6 +213,18 @@ final class PlaybackEngine: ObservableObject {
         TapesLog.player.info("PlaybackEngine: Pause")
     }
     
+    /// Set playback speed (Phase 3)
+    func setPlaybackSpeed(_ speed: Float) {
+        guard FeatureFlags.playbackEngineV2Phase3 else { return }
+        guard let player = player else { return }
+        
+        let clampedSpeed = max(0.5, min(2.0, speed))
+        player.rate = clampedSpeed
+        playbackSpeed = clampedSpeed
+        
+        TapesLog.player.info("PlaybackEngine: Speed set to \(String(format: "%.1f", clampedSpeed))x")
+    }
+    
     func seek(to time: Double) {
         guard let player = player else { return }
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
@@ -250,12 +285,78 @@ final class PlaybackEngine: ObservableObject {
         timeline = nil
         _skipHandler = nil
         
-        // Cancel loader
+        // Cancel loader and background service
         Task {
             await loader.cancel()
+            await backgroundService.cancel()
         }
         
+        // Cancel extension checking
+        extensionCheckTask?.cancel()
+        extensionCheckTask = nil
+        
+        // Reset extension manager
+        extensionManager.reset()
+        
         TapesLog.player.info("PlaybackEngine: Teardown complete")
+    }
+    
+    // MARK: - Phase 2: Background Loading & Extension
+    
+    private func startBackgroundLoading(
+        tape: Tape,
+        skippedIndices: Set<Int>,
+        windowResult: HybridAssetLoader.WindowResult
+    ) async {
+        // Collect clips that are still loading or were skipped
+        var backgroundClips: [(Int, Clip)] = []
+        
+        for (index, clip) in tape.clips.enumerated() {
+            // Skip if already ready or not in our tracking
+            let isReady = windowResult.readyAssets.contains { $0.0 == index }
+            let isSkipped = skippedIndices.contains(index)
+            
+            if !isReady {
+                // Determine priority: higher for clips that come sooner
+                let priority: BackgroundAssetService.Priority = (index < 10) ? .high : .normal
+                backgroundClips.append((index, clip))
+            }
+        }
+        
+        if !backgroundClips.isEmpty {
+            await backgroundService.enqueue(assets: backgroundClips.map { ($0.0, $0.1) }, priority: .normal)
+            TapesLog.player.info("PlaybackEngine: Started background loading for \(backgroundClips.count) clips")
+        }
+    }
+    
+    private func startExtensionChecking(tape: Tape) {
+        extensionCheckTask?.cancel()
+        
+        extensionCheckTask = Task {
+            while !Task.isCancelled {
+                // Check every 2 seconds for new assets
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                
+                guard !Task.isCancelled else { break }
+                
+                // Get completed assets from background service
+                let completed = await backgroundService.getAllCompletedAssets()
+                
+                if !completed.isEmpty {
+                    // Try to extend composition
+                    if let extended = try? await extensionManager.extendIfNeeded(
+                        for: tape,
+                        newAssets: completed,
+                        currentPlaybackTime: currentTime,
+                        player: player
+                    ) {
+                        // Install extended composition (seamless)
+                        await install(composition: extended)
+                        TapesLog.player.info("PlaybackEngine: Composition extended with \(completed.count) new assets")
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Observers
