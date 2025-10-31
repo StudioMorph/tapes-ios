@@ -33,7 +33,7 @@ actor BackgroundAssetService {
     private var completedAssets: [Int: HybridAssetLoader.ResolvedAsset] = [:]
     private var failedAssets: [Int: Error] = [:]
     
-    private let maxConcurrentFetches: Int
+    private var maxConcurrentFetches: Int
     private var isPaused = false
     private var isCancelled = false
     
