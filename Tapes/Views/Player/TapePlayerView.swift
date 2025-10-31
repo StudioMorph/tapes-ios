@@ -231,48 +231,105 @@ struct TapePlayerView: View {
     
     private var controlsViewV2: some View {
         VStack(spacing: 32) {
-            PlayerProgressBar(
-                currentTime: engine.currentTime,
-                totalDuration: engine.duration,
-                onSeek: { time in
-                    engine.seek(to: time)
-                }
-            )
+            // Phase 3: Thumbnail scrubber or standard progress bar
+            if FeatureFlags.playbackEngineV2Phase3 {
+                // TODO: Integrate ThumbnailScrubber when thumbnails are generated
+                PlayerProgressBar(
+                    currentTime: engine.currentTime,
+                    totalDuration: engine.duration,
+                    onSeek: { time in
+                        engine.seek(to: time)
+                    }
+                )
+            } else {
+                PlayerProgressBar(
+                    currentTime: engine.currentTime,
+                    totalDuration: engine.duration,
+                    onSeek: { time in
+                        engine.seek(to: time)
+                    }
+                )
+            }
             
-            PlayerControls(
-                isPlaying: engine.isPlaying,
-                canGoBack: engine.currentClipIndex > 0,
-                canGoForward: engine.currentClipIndex < tape.clips.count - 1,
-                onPlayPause: {
-                    if engine.isPlaying {
-                        engine.pause()
-                    } else {
-                        engine.play()
-                    }
-                },
-                onPrevious: {
-                    // Find previous playable clip (accounting for skips)
-                    if let skipHandler = engine.skipHandler, skipHandler.shouldSkip(clipIndex: engine.currentClipIndex - 1) {
-                        if let prevReady = skipHandler.previousReadyClip(before: engine.currentClipIndex) {
-                            engine.seekToClip(at: prevReady)
+            // Phase 3: Advanced controls or standard controls
+            if FeatureFlags.playbackEngineV2Phase3 {
+                AdvancedPlayerControls(
+                    isPlaying: engine.isPlaying,
+                    playbackSpeed: engine.playbackSpeed,
+                    canGoBack: engine.currentClipIndex > 0,
+                    canGoForward: engine.currentClipIndex < tape.clips.count - 1,
+                    onPlayPause: {
+                        if engine.isPlaying {
+                            engine.pause()
+                        } else {
+                            engine.play()
                         }
-                    } else {
-                        engine.seekToClip(at: engine.currentClipIndex - 1)
-                    }
-                },
-                onNext: {
-                    // Find next playable clip (accounting for skips)
-                    if let skipHandler = engine.skipHandler, engine.currentClipIndex + 1 < tape.clips.count {
-                        if skipHandler.shouldSkip(clipIndex: engine.currentClipIndex + 1) {
-                            if let nextReady = skipHandler.nextReadyClip(after: engine.currentClipIndex) {
-                                engine.seekToClip(at: nextReady)
+                    },
+                    onPrevious: {
+                        // Find previous playable clip (accounting for skips)
+                        if let skipHandler = engine.skipHandler, skipHandler.shouldSkip(clipIndex: engine.currentClipIndex - 1) {
+                            if let prevReady = skipHandler.previousReadyClip(before: engine.currentClipIndex) {
+                                engine.seekToClip(at: prevReady)
                             }
                         } else {
-                            engine.seekToClip(at: engine.currentClipIndex + 1)
+                            engine.seekToClip(at: engine.currentClipIndex - 1)
+                        }
+                    },
+                    onNext: {
+                        // Find next playable clip (accounting for skips)
+                        if let skipHandler = engine.skipHandler, engine.currentClipIndex + 1 < tape.clips.count {
+                            if skipHandler.shouldSkip(clipIndex: engine.currentClipIndex + 1) {
+                                if let nextReady = skipHandler.nextReadyClip(after: engine.currentClipIndex) {
+                                    engine.seekToClip(at: nextReady)
+                                }
+                            } else {
+                                engine.seekToClip(at: engine.currentClipIndex + 1)
+                            }
+                        }
+                    },
+                    onSpeedChange: { speed in
+                        engine.setPlaybackSpeed(speed)
+                    },
+                    onFrameStep: { direction in
+                        engine.stepFrame(direction: direction)
+                    }
+                )
+            } else {
+                PlayerControls(
+                    isPlaying: engine.isPlaying,
+                    canGoBack: engine.currentClipIndex > 0,
+                    canGoForward: engine.currentClipIndex < tape.clips.count - 1,
+                    onPlayPause: {
+                        if engine.isPlaying {
+                            engine.pause()
+                        } else {
+                            engine.play()
+                        }
+                    },
+                    onPrevious: {
+                        // Find previous playable clip (accounting for skips)
+                        if let skipHandler = engine.skipHandler, skipHandler.shouldSkip(clipIndex: engine.currentClipIndex - 1) {
+                            if let prevReady = skipHandler.previousReadyClip(before: engine.currentClipIndex) {
+                                engine.seekToClip(at: prevReady)
+                            }
+                        } else {
+                            engine.seekToClip(at: engine.currentClipIndex - 1)
+                        }
+                    },
+                    onNext: {
+                        // Find next playable clip (accounting for skips)
+                        if let skipHandler = engine.skipHandler, engine.currentClipIndex + 1 < tape.clips.count {
+                            if skipHandler.shouldSkip(clipIndex: engine.currentClipIndex + 1) {
+                                if let nextReady = skipHandler.nextReadyClip(after: engine.currentClipIndex) {
+                                    engine.seekToClip(at: nextReady)
+                                }
+                            } else {
+                                engine.seekToClip(at: engine.currentClipIndex + 1)
+                            }
                         }
                     }
-                }
-            )
+                )
+            }
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 40)
