@@ -24,9 +24,11 @@ actor ThumbnailGenerator {
             try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         }
         
-        // Clean old cache on init
-        Task {
-            await cleanupOldCache()
+        // Clean old cache on init (defer to avoid blocking startup)
+        Task.detached(priority: .background) {
+            // Small delay to let UI render first
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+            await self.cleanupOldCache()
         }
     }
     

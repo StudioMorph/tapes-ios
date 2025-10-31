@@ -13,7 +13,10 @@ struct TapesApp: App {
 
     init() {
         // Clean up stale cache files on app startup to prevent AVFoundation errors
-        Task.detached(priority: .utility) {
+        // Use background priority and delay slightly to avoid blocking startup
+        Task.detached(priority: .background) {
+            // Small delay to let UI render first
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
             TapeCompositionBuilder.cleanupStaleCache()
         }
     }

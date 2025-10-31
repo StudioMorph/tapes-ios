@@ -123,10 +123,18 @@ public class TapesStore: ObservableObject {
             saveTapesToDisk()
         }
         
-        // Restore empty tape invariant after loading
+        // Restore empty tape invariant after loading (fast, synchronous)
         restoreEmptyTapeInvariant()
-        restoreMissingClipMetadata()
-        scheduleLegacyAlbumAssociation()
+        
+        // Defer heavy async work to avoid blocking startup
+        Task { @MainActor in
+            // Wait a moment for UI to render
+            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+            
+            // These operations are heavy (network/Photos API) - run after UI appears
+            restoreMissingClipMetadata()
+            scheduleLegacyAlbumAssociation()
+        }
     }
     
     #if DEBUG
