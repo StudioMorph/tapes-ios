@@ -69,8 +69,11 @@ struct TapesListView: View {
     
     private func handlePlay(_ tape: Tape) {
         print("▶️ onPlay called for tape: \(tape.title)")
-        tapeToPreview = tape
-        showingPlayOptions = true
+        // Defer state updates to avoid blocking gesture handler
+        Task { @MainActor in
+            tapeToPreview = tape
+            showingPlayOptions = true
+        }
     }
     
     private func handleAirPlay(_ tape: Tape) {
@@ -139,14 +142,13 @@ struct TapesListView: View {
         )
     }
 
+    @ViewBuilder
     private var playerView: some View {
         if let tape = tapeToPreview {
-            return AnyView(TapePlayerView(tape: tape, onDismiss: {
+            TapePlayerView(tape: tape, onDismiss: {
                 showingPlayer = false
                 tapeToPreview = nil
-            }))
-        } else {
-            return AnyView(EmptyView())
+            })
         }
     }
 
