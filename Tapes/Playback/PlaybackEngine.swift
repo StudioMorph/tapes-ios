@@ -119,16 +119,9 @@ final class PlaybackEngine: ObservableObject {
                     TapesLog.player.warning("PlaybackEngine: High skip rate - \(stats.skipped) skipped, \(stats.ready) ready")
                 }
                 
-                // Build composition with ready assets
-                let composition = try await builder.buildPlayerItem(
-                    for: tape,
-                    readyAssets: windowResult.readyAssets,
-                    skippedIndices: skippedIndices
-                )
-                
-                // Check if task was cancelled after building
+                // Check if task was cancelled before building
                 guard !Task.isCancelled else {
-                    TapesLog.player.info("PlaybackEngine: Preparation cancelled after composition build")
+                    TapesLog.player.info("PlaybackEngine: Preparation cancelled before composition build")
                     return
                 }
                 
