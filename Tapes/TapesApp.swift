@@ -11,6 +11,13 @@ import SwiftUI
 struct TapesApp: App {
     @StateObject private var tapeStore = TapesStore()   // single source of truth
 
+    init() {
+        // Clean up stale cache files on app startup to prevent AVFoundation errors
+        Task.detached(priority: .utility) {
+            TapeCompositionBuilder.cleanupStaleCache()
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

@@ -554,6 +554,44 @@ struct TapeCompositionBuilder {
         let versionComponent = "\(clip.id.uuidString)-\(timestamp)"
         return cacheDirectory.appendingPathComponent(versionComponent).appendingPathExtension(fileExtension)
     }
+    
+    /// Clean up stale cache files that might cause AVFoundation errors
+    static func cleanupStaleCache() {
+        let fileManager = FileManager.default
+        let cacheDirectory = fileManager.temporaryDirectory.appendingPathComponent("PlaybackCache", isDirectory: true)
+        
+        guard fileManager.fileExists(atPath: cacheDirectory.path) else { return }
+        
+        do {
+            let contents = try fileManager.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.contentModificationDateKey], options: [])
+            
+            let now = Date()
+            let maxAge: TimeInterval = 7 * 24 * 60 * 60 // 7 days
+            
+            var cleanedCount = 0
+            for url in contents {
+                // Check if file is older than maxAge or doesn't exist anymore
+                if let modDate = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+                    if now.timeIntervalSince(modDate) > maxAge {
+                        try? fileManager.removeItem(at: url)
+                        cleanedCount += 1
+                    }
+                } else {
+                    // File metadata unavailable - might be corrupted, remove it
+                    try? fileManager.removeItem(at: url)
+                    cleanedCount += 1
+                }
+            }
+            
+            if cleanedCount > 0 {
+                TapesLog.player.info("TapeCompositionBuilder: Cleaned up \(cleanedCount) stale cache files")
+            }
+        } catch {
+            // If cleanup fails, try removing the entire cache directory and recreating it
+            TapesLog.player.warning("TapeCompositionBuilder: Cache cleanup failed, removing cache directory: \(error.localizedDescription)")
+            try? fileManager.removeItem(at: cacheDirectory)
+        }
+    }
 
     private func makeAccessibleCopyIfNeeded(for clip: Clip, sourceURL: URL) throws -> URL {
         return try Self.accessibleURL(for: clip, url: sourceURL)
