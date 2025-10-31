@@ -201,14 +201,17 @@ actor HybridAssetLoader {
         deadline: Date
     ) async -> LoadingResult {
         guard let localURL = clip.localURL else {
+            TapesLog.player.warning("HybridAssetLoader: Local file \(index) has no localURL")
             return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -1, userInfo: [NSLocalizedDescriptionKey: "No local URL"])))
         }
         
         let startTime = Date()
+        TapesLog.player.info("HybridAssetLoader: Resolving local file \(index) from \(localURL.lastPathComponent)")
         
         do {
             let fileManager = FileManager.default
             if !fileManager.fileExists(atPath: localURL.path) {
+                TapesLog.player.warning("HybridAssetLoader: Local file \(index) not found at path: \(localURL.path)")
                 return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -2, userInfo: [NSLocalizedDescriptionKey: "File not found"])))
             }
             

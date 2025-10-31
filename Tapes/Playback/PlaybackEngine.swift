@@ -468,7 +468,11 @@ final class PlaybackEngine: ObservableObject {
             return
         }
         
+        // Update current clip index first based on actual playback position
+        updateCurrentClipIndex()
+        
         // Check if current clip should be skipped
+        // Note: We check the actual clip index from the timeline segment, not the segment index
         if skipHandler.shouldSkip(clipIndex: self.currentClipIndex) {
             // Skip to next ready clip
             if skipHandler.canSkip(),
