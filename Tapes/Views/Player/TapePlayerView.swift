@@ -9,6 +9,12 @@ private final class PlaybackCoordinatorHolder: ObservableObject {
 // MARK: - Unified Tape Player View
 
 struct TapePlayerView: View {
+    // New engine (Phase 1)
+    @StateObject private var engine = PlaybackEngine()
+    @State private var showingControlsV2: Bool = true
+    @State private var controlsTimerV2: Timer?
+    
+    // Legacy state
     @State private var player: AVPlayer?
     @State private var timeline: TapeCompositionBuilder.Timeline?
     @State private var currentClipIndex: Int = 0
@@ -39,39 +45,78 @@ struct TapePlayerView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if let player {
-                VideoPlayer(player: player)
-                    .disabled(true)
-                    .overlay(loadingOverlay)
-                    .overlay(tapCatcher)
-                    .onDisappear { player.pause() }
-            } else {
-                loadingOverlay
-                    .overlay(tapCatcher)
-            }
-
-            if showingControls {
-                VStack {
-                    PlayerHeader(
-                        currentClipIndex: currentClipIndex,
-                        totalClips: tape.clips.count,
-                        onDismiss: onDismiss
-                    )
-                    Spacer()
-                    controlsView
+            // Phase 1: New engine path
+            if FeatureFlags.playbackEngineV2Phase1 {
+                if let player = engine.player {
+                    VideoPlayer(player: player)
+                        .disabled(true)
+                        .overlay(tapCatcherV2)
+                        .onDisappear { player.pause() }
                 }
-                .transition(.opacity)
-                .animation(.easeInOut(duration: 0.2), value: showingControls)
-            }
+                
+                // Loading overlay (on top)
+                if engine.isBuffering {
+                    loadingOverlayV2
+                        .zIndex(100)
+                }
 
-            PlayerSkipToast(
-                skippedCount: skippedClipCount,
-                isVisible: showSkipToast
-            )
+                // Controls (show/hide based on state)
+                if showingControlsV2 || engine.error != nil || engine.isFinished {
+                    VStack {
+                        PlayerHeader(
+                            currentClipIndex: engine.currentClipIndex,
+                            totalClips: tape.clips.count,
+                            onDismiss: onDismiss
+                        )
+                        Spacer()
+                        if engine.error == nil {
+                            controlsViewV2
+                        }
+                    }
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.2), value: showingControlsV2)
+                }
+            } else {
+                // Legacy path
+                if let player {
+                    VideoPlayer(player: player)
+                        .disabled(true)
+                        .overlay(loadingOverlay)
+                        .overlay(tapCatcher)
+                        .onDisappear { player.pause() }
+                } else {
+                    loadingOverlay
+                        .overlay(tapCatcher)
+                }
+
+                if showingControls {
+                    VStack {
+                        PlayerHeader(
+                            currentClipIndex: currentClipIndex,
+                            totalClips: tape.clips.count,
+                            onDismiss: onDismiss
+                        )
+                        Spacer()
+                        controlsView
+                    }
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.2), value: showingControls)
+                }
+
+                PlayerSkipToast(
+                    skippedCount: skippedClipCount,
+                    isVisible: showSkipToast
+                )
+            }
         }
         .onAppear {
-            Task { await preparePlayer() }
-            setupControlsTimer()
+            if FeatureFlags.playbackEngineV2Phase1 {
+                Task { await preparePlayerV2() }
+                setupControlsTimerV2()
+            } else {
+                Task { await preparePlayer() }
+                setupControlsTimer()
+            }
         }
         .onDisappear {
             tearDown()
@@ -88,6 +133,17 @@ struct TapePlayerView: View {
                 }
             }
     }
+    
+    private var tapCatcherV2: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .allowsHitTesting(!showingControlsV2)
+            .onTapGesture {
+                if !showingControlsV2 {
+                    toggleControlsV2()
+                }
+            }
+    }
 
     // MARK: - Loading Overlay
 
@@ -95,6 +151,13 @@ struct TapePlayerView: View {
         PlayerLoadingOverlay(
             isLoading: isLoading,
             loadError: loadError
+        )
+    }
+    
+    private var loadingOverlayV2: some View {
+        PlayerLoadingOverlay(
+            isLoading: engine.isBuffering,
+            loadError: engine.error
         )
     }
 
@@ -122,8 +185,70 @@ struct TapePlayerView: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 40)
     }
+    
+    private var controlsViewV2: some View {
+        VStack(spacing: 32) {
+            PlayerProgressBar(
+                currentTime: engine.currentTime,
+                totalDuration: engine.duration,
+                onSeek: { time in
+                    engine.seek(to: time)
+                }
+            )
+            
+            PlayerControls(
+                isPlaying: engine.isPlaying,
+                canGoBack: engine.currentClipIndex > 0,
+                canGoForward: engine.currentClipIndex < tape.clips.count - 1,
+                onPlayPause: {
+                    if engine.isPlaying {
+                        engine.pause()
+                    } else {
+                        engine.play()
+                    }
+                },
+                onPrevious: {
+                    engine.seekToClip(at: engine.currentClipIndex - 1)
+                },
+                onNext: {
+                    engine.seekToClip(at: engine.currentClipIndex + 1)
+                }
+            )
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 40)
+    }
 
-    // MARK: - Player Preparation
+    // MARK: - Player Preparation (Phase 1 - New Engine)
+    
+    @MainActor
+    private func preparePlayerV2() async {
+        await engine.prepare(tape: tape)
+    }
+    
+    private func toggleControlsV2() {
+        if showingControlsV2 {
+            withAnimation { showingControlsV2 = false }
+            controlsTimerV2?.invalidate()
+            controlsTimerV2 = nil
+        } else {
+            withAnimation { showingControlsV2 = true }
+            setupControlsTimerV2()
+        }
+    }
+    
+    private func setupControlsTimerV2() {
+        controlsTimerV2?.invalidate()
+        controlsTimerV2 = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
+            if engine.isPlaying && engine.error == nil {
+                withAnimation {
+                    showingControlsV2 = false
+                }
+            }
+        }
+    }
+
+    // MARK: - Player Preparation (Legacy)
 
     @MainActor
     private func preparePlayer() async {
@@ -464,24 +589,30 @@ struct TapePlayerView: View {
     }
 
     private func tearDown() {
-        coordinatorHolder.coordinator.cancel()
-        controlsTimer?.invalidate()
-        controlsTimer = nil
-        removeTimeObserver()
-        if let token = playerEndObserver {
-            NotificationCenter.default.removeObserver(token)
+        if FeatureFlags.playbackEngineV2Phase1 {
+            engine.teardown()
+            controlsTimerV2?.invalidate()
+            controlsTimerV2 = nil
+        } else {
+            coordinatorHolder.coordinator.cancel()
+            removeTimeObserver()
+            if let token = playerEndObserver {
+                NotificationCenter.default.removeObserver(token)
+            }
+            playerEndObserver = nil
+            skipToastWorkItem?.cancel()
+            skipToastWorkItem = nil
+            showSkipToast = false
+            skippedClipCount = 0
+            playbackIntent = false
+            pendingComposition = nil
+            pendingAutoplay = false
+            pendingCompositionIsFinal = false
+            player?.pause()
+            player = nil
+            controlsTimer?.invalidate()
+            controlsTimer = nil
         }
-        playerEndObserver = nil
-        skipToastWorkItem?.cancel()
-        skipToastWorkItem = nil
-        showSkipToast = false
-        skippedClipCount = 0
-        playbackIntent = false
-        pendingComposition = nil
-        pendingAutoplay = false
-        pendingCompositionIsFinal = false
-        player?.pause()
-        player = nil
     }
 
     // MARK: - Metrics

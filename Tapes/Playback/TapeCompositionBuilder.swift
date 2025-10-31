@@ -171,6 +171,140 @@ struct TapeCompositionBuilder {
         let timeline = makeTimeline(for: tape, contexts: contexts)
         return try buildPlayerComposition(for: tape, timeline: timeline)
     }
+    
+    /// Build composition with only ready assets (for hybrid loading with skip behavior).
+    /// This method builds a composition with only the provided contexts, handling transitions
+    /// only between consecutive ready clips.
+    @MainActor
+    func buildPlayerItem(
+        for tape: Tape,
+        readyAssets: [(Int, HybridAssetLoader.ResolvedAsset)],
+        skippedIndices: Set<Int>
+    ) async throws -> PlayerComposition {
+        guard !readyAssets.isEmpty else {
+            throw BuilderError.assetUnavailable(clipID: UUID())
+        }
+        
+        // Convert HybridAssetLoader.ResolvedAsset to ClipAssetContext (load tracks async)
+        var contexts: [ClipAssetContext] = []
+        for (index, resolved) in readyAssets {
+            let videoTracks = try await resolved.asset.loadTracks(withMediaType: .video)
+            guard let videoTrack = videoTracks.first else {
+                throw BuilderError.missingVideoTrack
+            }
+            
+            let audioTracks = try await resolved.asset.loadTracks(withMediaType: .audio)
+            
+            contexts.append(ClipAssetContext(
+                index: index,
+                clip: resolved.clip,
+                asset: resolved.asset,
+                duration: resolved.duration,
+                naturalSize: resolved.naturalSize,
+                preferredTransform: resolved.preferredTransform,
+                hasAudio: resolved.hasAudio,
+                videoTrack: videoTrack,
+                audioTrack: audioTracks.first,
+                motionEffect: resolved.motionEffect,
+                isTemporaryAsset: resolved.isTemporary
+            ))
+        }
+        
+        // Sort by index to maintain order
+        contexts.sort { $0.index < $1.index }
+        
+        // Build timeline with only ready assets (transitions only between consecutive ready clips)
+        let timeline = makeTimelineWithSkips(for: tape, contexts: contexts, skippedIndices: skippedIndices)
+        return try buildPlayerComposition(for: tape, timeline: timeline)
+    }
+    
+    /// Build timeline accounting for skipped clips - transitions only between consecutive ready clips
+    private func makeTimelineWithSkips(
+        for tape: Tape,
+        contexts: [ClipAssetContext],
+        skippedIndices: Set<Int>
+    ) -> Timeline {
+        guard !contexts.isEmpty else {
+            return Timeline(
+                segments: [],
+                renderSize: renderSize(for: tape.orientation),
+                totalDuration: .zero,
+                transitionSequence: []
+            )
+        }
+        
+        // Build transition descriptors only for consecutive ready clips
+        let transitionDescriptors = buildTransitionDescriptorsWithSkips(
+            for: tape,
+            contexts: contexts,
+            skippedIndices: skippedIndices
+        )
+        
+        let segments = buildSegments(for: contexts, transitions: transitionDescriptors)
+        let totalDuration = segments.last.map { CMTimeAdd($0.timeRange.start, $0.timeRange.duration) } ?? .zero
+        
+        return Timeline(
+            segments: segments,
+            renderSize: renderSize(for: tape.orientation),
+            totalDuration: totalDuration,
+            transitionSequence: transitionDescriptors
+        )
+    }
+    
+    /// Build transition descriptors accounting for skipped clips
+    private func buildTransitionDescriptorsWithSkips(
+        for tape: Tape,
+        contexts: [ClipAssetContext],
+        skippedIndices: Set<Int>
+    ) -> [TransitionDescriptor?] {
+        guard contexts.count > 1 else { return [] }
+        
+        let baseStyle = tape.transition
+        var descriptors: [TransitionDescriptor?] = []
+        
+        // Only add transitions between consecutive ready clips (no gaps)
+        for i in 0..<(contexts.count - 1) {
+            let currentIndex = contexts[i].index
+            let nextIndex = contexts[i + 1].index
+            
+            // Check if there are any skipped clips between current and next
+            let hasGap = (currentIndex + 1)..<nextIndex contains { skippedIndices.contains($0) }
+            
+            if hasGap {
+                // No transition across skipped clips
+                descriptors.append(nil)
+            } else {
+                // Normal transition logic
+                let style: TransitionType
+                switch baseStyle {
+                case .none, .crossfade, .slideLR, .slideRL:
+                    style = baseStyle
+                case .randomise:
+                    // Use deterministic sequence based on tape ID
+                    let allIndices = Array(skippedIndices).sorted()
+                    // Generate sequence for all boundaries, then filter
+                    let fullSequence = generateRandomSequence(boundaries: tape.clips.count - 1, tapeID: tape.id)
+                    style = fullSequence[currentIndex]
+                }
+                
+                let currentAsset = contexts[i]
+                let nextAsset = contexts[i + 1]
+                
+                let maxDurationCurrent = CMTimeMultiplyByFloat64(currentAsset.duration, multiplier: 0.5)
+                let maxDurationNext = CMTimeMultiplyByFloat64(nextAsset.duration, multiplier: 0.5)
+                let rawDuration = CMTime(seconds: tape.transitionDuration, preferredTimescale: 600)
+                let capped = minTime(rawDuration, maxDurationCurrent, maxDurationNext)
+                
+                if CMTimeCompare(capped, .zero) <= 0 || style == .none {
+                    descriptors.append(nil)
+                } else {
+                    descriptors.append(TransitionDescriptor(style: style, duration: capped))
+                }
+            }
+        }
+        
+        return descriptors
+    }
 
     func resolveClipContext(for clip: Clip, index: Int) async throws -> ClipAssetContext {
         let contexts = try await loadAssets(for: [clip], startIndex: index)
