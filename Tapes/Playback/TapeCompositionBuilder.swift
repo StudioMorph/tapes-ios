@@ -471,22 +471,30 @@ struct TapeCompositionBuilder {
             throw BuilderError.photosAssetMissing
         }
 
+        // Match old working code exactly
         let options = PHVideoRequestOptions()
-        options.deliveryMode = .highQualityFormat
+        options.version = .current
+        options.deliveryMode = .automatic  // OLD CODE USED .automatic
         options.isNetworkAccessAllowed = true
         
         // Simple continuation - just like the old working approach
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAsset, Error>) in
+            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestAVAsset...")
             PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
+                TapesLog.player.info("TapeCompositionBuilder: Photos callback fired - asset: \(asset != nil), info: \(info != nil)")
                 if let asset = asset {
+                    TapesLog.player.info("TapeCompositionBuilder: Photos returned asset successfully")
                     continuation.resume(returning: asset)
                 } else if let info = info,
                           let error = info[PHImageErrorKey] as? Error {
+                    TapesLog.player.error("TapeCompositionBuilder: Photos error: \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                 } else {
+                    TapesLog.player.error("TapeCompositionBuilder: Photos returned nil asset with no error")
                     continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
                 }
             }
+            TapesLog.player.info("TapeCompositionBuilder: requestAVAsset call completed, waiting for callback...")
         }
     }
 
