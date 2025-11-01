@@ -62,12 +62,12 @@ struct TapePlayerView: View {
                 
                 // Loading overlay - show whenever actually loading/preparing (no fake delays)
                 // Place at top level of ZStack to ensure visibility
-                if engine.isPreparing || engine.isBuffering {
+                // Use explicit binding to ensure SwiftUI observes state changes
+                let isCurrentlyLoading = engine.isPreparing || engine.isBuffering
+                if isCurrentlyLoading {
                     loadingOverlayV2
                         .zIndex(100)
                         .transition(.opacity)
-                        .animation(.easeInOut(duration: 0.2), value: engine.isPreparing)
-                        .animation(.easeInOut(duration: 0.2), value: engine.isBuffering)
                 }
 
                 // Controls (show/hide based on state)
