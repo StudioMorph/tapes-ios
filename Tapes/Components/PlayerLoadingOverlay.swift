@@ -27,6 +27,7 @@ struct PlayerLoadingOverlay: View {
                 }
                 .padding(32)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .transition(.opacity)
             } else if let loadError {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle.fill")

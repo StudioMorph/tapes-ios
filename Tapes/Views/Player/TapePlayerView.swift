@@ -65,6 +65,9 @@ struct TapePlayerView: View {
                 if engine.isPreparing || engine.isBuffering {
                     loadingOverlayV2
                         .zIndex(100)
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.2), value: engine.isPreparing)
+                        .animation(.easeInOut(duration: 0.2), value: engine.isBuffering)
                 }
 
                 // Controls (show/hide based on state)
