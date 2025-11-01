@@ -205,11 +205,8 @@ struct TapePlayerView: View {
     private var tapCatcherV2: some View {
         Color.clear
             .contentShape(Rectangle())
-            .allowsHitTesting(!showingControlsV2)
             .onTapGesture {
-                if !showingControlsV2 {
-                    toggleControlsV2()
-                }
+                toggleControlsV2()
             }
     }
 
@@ -426,21 +423,26 @@ struct TapePlayerView: View {
     
     private func toggleControlsV2() {
         if showingControlsV2 {
+            // Hide controls
             withAnimation { showingControlsV2 = false }
             controlsTimerV2?.invalidate()
             controlsTimerV2 = nil
         } else {
+            // Show controls
             withAnimation { showingControlsV2 = true }
+            // Auto-hide after 3 seconds if playing
             setupControlsTimerV2()
         }
     }
     
     private func setupControlsTimerV2() {
         controlsTimerV2?.invalidate()
-        controlsTimerV2 = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
-            if engine.isPlaying && engine.error == nil {
+        controlsTimerV2 = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            // Auto-hide controls if playing and no errors
+            if self.engine.isPlaying && self.engine.error == nil && !self.engine.isPreparing && !self.engine.isBuffering {
                 withAnimation {
-                    showingControlsV2 = false
+                    self.showingControlsV2 = false
                 }
             }
         }
