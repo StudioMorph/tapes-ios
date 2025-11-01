@@ -321,6 +321,7 @@ actor HybridAssetLoader {
         
         for (offset, clip) in clips {
             guard !cancelled else {
+                TapesLog.player.info("HybridAssetLoader: Sequential queue cancelled, skipping clip \(offset)")
                 tasks.append(Task { (offset, LoadingResult.skipped(.cancelled)) })
                 continue
             }
@@ -331,10 +332,16 @@ actor HybridAssetLoader {
                 continue
             }
             
-            // Create task for this clip
+            // Create task for this clip (starts immediately)
+            TapesLog.player.info("HybridAssetLoader: Sequential queue - starting task for clip \(offset)")
             let task = Task { [weak self] in
-                guard let self = self else { return (offset, LoadingResult.skipped(.cancelled)) }
+                guard let self = self else {
+                    TapesLog.player.warning("HybridAssetLoader: Sequential queue - self deallocated for clip \(offset)")
+                    return (offset, LoadingResult.skipped(.cancelled))
+                }
+                TapesLog.player.info("HybridAssetLoader: Sequential queue - task executing for clip \(offset)")
                 let result = await self.resolvePhotosAsset(clip: clip, index: offset, deadline: deadline)
+                TapesLog.player.info("HybridAssetLoader: Sequential queue - task completed for clip \(offset)")
                 return (offset, result)
             }
             
@@ -343,17 +350,22 @@ actor HybridAssetLoader {
             // Overlap: Wait delay before starting next (if not last clip)
             // This creates overlap - next starts while current is still loading
             if offset < clips.count - 1 {
+                TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting \(overlapDelay)s before starting clip \(offset + 1)")
                 try? await Task.sleep(nanoseconds: UInt64(overlapDelay * 1_000_000_000))
             }
         }
         
         // Collect all results (they may complete in any order)
+        TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting for \(tasks.count) tasks to complete")
         var results: [(Int, LoadingResult)] = []
-        for task in tasks {
+        for (index, task) in tasks.enumerated() {
+            TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting for task \(index)")
             let result = await task.value
+            TapesLog.player.info("HybridAssetLoader: Sequential queue - got result for task \(index)")
             results.append(result)
         }
         
+        TapesLog.player.info("HybridAssetLoader: Sequential queue - all \(results.count) tasks completed")
         return results
     }
     

@@ -1185,13 +1185,37 @@ private extension TapeCompositionBuilder {
             throw BuilderError.photosAccessDenied
         }
 
+        // Use shared state for request ID to enable cancellation
+        final class RequestState {
+            var requestID: PHImageRequestID?
+            let lock = NSLock()
+            
+            func set(_ id: PHImageRequestID) {
+                lock.lock()
+                requestID = id
+                lock.unlock()
+            }
+            
+            func getAndClear() -> PHImageRequestID? {
+                lock.lock()
+                defer { lock.unlock() }
+                let id = requestID
+                requestID = nil
+                return id
+            }
+        }
+        
+        let requestState = RequestState()
+        
         // Add timeout to prevent indefinite hangs
+        TapesLog.player.info("TapeCompositionBuilder: fetchImageFromPhotos starting with timeout for \(localIdentifier)")
         return try await withThrowingTaskGroup(of: UIImage.self) { group in
             // Task to fetch from Photos
             group.addTask {
                 return try await withCheckedThrowingContinuation { continuation in
                     let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
                     guard let asset = fetchResult.firstObject else {
+                        TapesLog.player.warning("TapeCompositionBuilder: Photos image asset not found")
                         continuation.resume(throwing: BuilderError.photosAssetMissing)
                         return
                     }
@@ -1199,36 +1223,69 @@ private extension TapeCompositionBuilder {
                     options.deliveryMode = .highQualityFormat
                     options.isNetworkAccessAllowed = true
                     options.isSynchronous = false
-                    PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                    
+                    TapesLog.player.info("TapeCompositionBuilder: Requesting image from Photos...")
+                    let reqID = PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                        // Clear request ID since it completed
+                        _ = requestState.getAndClear()
+                        
                         if let data = data, let image = UIImage(data: data) {
+                            TapesLog.player.info("TapeCompositionBuilder: Photos image received")
                             continuation.resume(returning: image)
                         } else if let error = info?[PHImageErrorKey] as? Error {
+                            TapesLog.player.error("TapeCompositionBuilder: Photos image request failed: \(error.localizedDescription)")
                             continuation.resume(throwing: error)
                         } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
+                            TapesLog.player.warning("TapeCompositionBuilder: Photos image request cancelled")
                             continuation.resume(throwing: BuilderError.photosAssetMissing)
                         } else {
+                            TapesLog.player.error("TapeCompositionBuilder: Photos image request returned nil")
                             continuation.resume(throwing: BuilderError.photosAssetMissing)
                         }
                     }
+                    requestState.set(reqID)
                 }
             }
             
             // Timeout task (15 seconds - match loading window)
             group.addTask {
+                TapesLog.player.info("TapeCompositionBuilder: Image timeout task started (15s)")
                 try await Task.sleep(nanoseconds: 15_000_000_000)
                 TapesLog.player.warning("TapeCompositionBuilder: Photos image fetch timeout after 15s for \(localIdentifier)")
+                // Cancel the Photos request if it's still pending
+                if let reqID = requestState.getAndClear() {
+                    PHImageManager.default().cancelImageRequest(reqID)
+                    TapesLog.player.info("TapeCompositionBuilder: Cancelled Photos image request \(reqID)")
+                }
                 throw BuilderError.photosAssetMissing // Timeout error
             }
             
             // Return first result (either success or timeout)
-            guard let result = try await group.next() else {
-                throw BuilderError.photosAssetMissing
+            TapesLog.player.info("TapeCompositionBuilder: Waiting for image task result...")
+            do {
+                guard let result = try await group.next() else {
+                    TapesLog.player.error("TapeCompositionBuilder: No result from image task group")
+                    throw BuilderError.photosAssetMissing
+                }
+                
+                TapesLog.player.info("TapeCompositionBuilder: Got image result, canceling remaining tasks")
+                // Cancel remaining tasks
+                group.cancelAll()
+                
+                // Cancel Photos request if it's still pending
+                if let reqID = requestState.getAndClear() {
+                    PHImageManager.default().cancelImageRequest(reqID)
+                }
+                
+                return result
+            } catch {
+                // Ensure Photos request is cancelled on error/timeout
+                if let reqID = requestState.getAndClear() {
+                    PHImageManager.default().cancelImageRequest(reqID)
+                }
+                group.cancelAll()
+                throw error
             }
-            
-            // Cancel remaining tasks
-            group.cancelAll()
-            
-            return result
         }
     }
 
