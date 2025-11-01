@@ -19,7 +19,7 @@ struct PlayerLoadingOverlay: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(1.2)
                     
-                    Text("Getting tape ready…")
+                    Text("Loading tape")
                         .font(Tokens.Typography.headline)
                         .fontWeight(.medium)
                         .foregroundStyle(.white)

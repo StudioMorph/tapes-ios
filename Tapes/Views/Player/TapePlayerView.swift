@@ -57,7 +57,8 @@ struct TapePlayerView: View {
                 }
                 
                 // Loading overlay (on top)
-                if engine.isBuffering {
+                // Show loading overlay when actually loading/preparing (no fake delays)
+                if engine.isPreparing || engine.isBuffering {
                     loadingOverlayV2
                         .zIndex(100)
                 }
