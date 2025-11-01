@@ -477,9 +477,10 @@ struct TapeCompositionBuilder {
         options.deliveryMode = .automatic  // OLD CODE USED .automatic
         options.isNetworkAccessAllowed = true
         
-        // Simple continuation - just like the old working approach
+        // Call Photos API - ensure we're not isolated to an actor that might block the callback
+        // Old code worked because it wasn't called from an actor
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAsset, Error>) in
-            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestAVAsset...")
+            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestAVAsset (not on actor)...")
             PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
                 TapesLog.player.info("TapeCompositionBuilder: Photos callback fired - asset: \(asset != nil), info: \(info != nil)")
                 if let asset = asset {
