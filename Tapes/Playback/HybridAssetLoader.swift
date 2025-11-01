@@ -333,14 +333,16 @@ actor HybridAssetLoader {
             }
             
             // Create task for this clip (starts immediately)
+            // Use Task.detached like old PlaybackPreparationCoordinator - Photos API needs non-actor context
             TapesLog.player.info("HybridAssetLoader: Sequential queue - starting task for clip \(offset)")
-            let task = Task { [weak self] in
+            let builder = self.builder  // Capture builder outside actor
+            let task = Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self = self else {
                     TapesLog.player.warning("HybridAssetLoader: Sequential queue - self deallocated for clip \(offset)")
                     return (offset, LoadingResult.skipped(.cancelled))
                 }
                 TapesLog.player.info("HybridAssetLoader: Sequential queue - task executing for clip \(offset)")
-                let result = await self.resolvePhotosAsset(clip: clip, index: offset, deadline: deadline)
+                let result = await self.resolvePhotosAsset(clip: clip, index: offset, deadline: deadline, builder: builder)
                 TapesLog.player.info("HybridAssetLoader: Sequential queue - task completed for clip \(offset)")
                 return (offset, result)
             }
@@ -372,7 +374,8 @@ actor HybridAssetLoader {
     private func resolvePhotosAsset(
         clip: Clip,
         index: Int,
-        deadline: Date
+        deadline: Date,
+        builder: TapeCompositionBuilder
     ) async -> LoadingResult {
         guard let assetLocalId = clip.assetLocalId else {
             return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -4, userInfo: [NSLocalizedDescriptionKey: "No asset local ID"])))
@@ -381,8 +384,8 @@ actor HybridAssetLoader {
         let startTime = Date()
         
         do {
-            // Use builder's Photos resolution
-            // Builder is NOT an actor, so we can call it directly from actor (no blocking)
+            // Use builder's Photos resolution - called from detached task (non-actor context)
+            // This matches old PlaybackPreparationCoordinator pattern
             TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for Photos asset \(index)")
             let context = try await builder.resolveClipContext(for: clip, index: index)
             TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for Photos asset \(index)")
@@ -460,7 +463,8 @@ actor HybridAssetLoader {
     private func encodeImage(
         clip: Clip,
         index: Int,
-        deadline: Date
+        deadline: Date,
+        builder: TapeCompositionBuilder
     ) async -> LoadingResult {
         let startTime = Date()
         
@@ -471,8 +475,8 @@ actor HybridAssetLoader {
         }
         
         do {
-            // Use builder's image encoding
-            // Builder is NOT an actor, so we can call it directly from actor (no blocking)
+            // Use builder's image encoding - called from detached task (non-actor context)
+            // This matches old PlaybackPreparationCoordinator pattern
             TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for image \(index)")
             let context = try await builder.resolveClipContext(for: clip, index: index)
             TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for image \(index)")
