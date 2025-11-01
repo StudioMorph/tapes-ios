@@ -439,7 +439,7 @@ struct TapeCompositionBuilder {
     }
 
     private func resolveAsset(for clip: Clip) async throws -> ResolvedAsset {
-        TapesLog.player.info("TapeCompositionBuilder: resolveAsset started for clip type: \(clip.clipType)")
+        TapesLog.player.info("TapeCompositionBuilder: resolveAsset started for clip type: \(String(describing: clip.clipType))")
         switch clip.clipType {
         case .video:
             TapesLog.player.info("TapeCompositionBuilder: Resolving video asset")
@@ -485,12 +485,15 @@ struct TapeCompositionBuilder {
                     options.isNetworkAccessAllowed = true
 
                     TapesLog.player.info("TapeCompositionBuilder: Requesting AVAsset from Photos...")
-                    PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, error in
+                    PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, errorDict in
                         if let asset = asset {
                             TapesLog.player.info("TapeCompositionBuilder: Photos AVAsset received")
                             continuation.resume(returning: asset)
-                        } else if let error = error {
-                            TapesLog.player.error("TapeCompositionBuilder: Photos request failed: \(error.localizedDescription)")
+                        } else if let errorDict = errorDict {
+                            // Photos API returns [AnyHashable: Any]? not Error
+                            let errorMessage = (errorDict[PHImageErrorKey] as? Error)?.localizedDescription ?? "Unknown Photos error"
+                            TapesLog.player.error("TapeCompositionBuilder: Photos request failed: \(errorMessage)")
+                            let error = errorDict[PHImageErrorKey] as? Error ?? BuilderError.assetUnavailable(clipID: UUID())
                             continuation.resume(throwing: error)
                         } else {
                             TapesLog.player.error("TapeCompositionBuilder: Photos request returned nil asset")
