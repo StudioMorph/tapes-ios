@@ -47,6 +47,10 @@ final class PlaybackEngine: ObservableObject {
     // Flag to prevent index updates during explicit seek operations
     private var isSeekingToClip = false
     
+    // Debounce skip operations to prevent rapid-fire taps
+    private var lastSkipTime: Date = .distantPast
+    private let skipDebounceInterval: TimeInterval = 0.3
+    
     // MARK: - Initialization
     
     init() {
@@ -313,6 +317,14 @@ final class PlaybackEngine: ObservableObject {
             return
         }
         
+        // Debounce rapid skip operations
+        let now = Date()
+        guard now.timeIntervalSince(lastSkipTime) >= skipDebounceInterval else {
+            TapesLog.player.info("PlaybackEngine: Skip debounced (too rapid)")
+            return
+        }
+        lastSkipTime = now
+        
         // Find segment with matching clipIndex (not segment index)
         guard let segment = timeline.segments.first(where: { $0.clipIndex == index }) else {
             TapesLog.player.warning("PlaybackEngine: Clip \(index) not found in timeline")
@@ -326,14 +338,22 @@ final class PlaybackEngine: ObservableObject {
         isSeekingToClip = true
         
         // Update clip index BEFORE seeking to prevent updateCurrentClipIndex from overriding it
+        // Use explicit assignment to trigger SwiftUI update immediately
         currentClipIndex = index
         
         // Seek without triggering index update (we already set it explicitly)
-        seek(to: seconds, skipIndexUpdate: true)
+        // Use tolerance for smoother seeks
+        guard let player = player else { return }
+        let cmTime = CMTime(seconds: seconds, preferredTimescale: 600)
+        let toleranceBefore = CMTime(seconds: 0.1, preferredTimescale: 600)
+        let toleranceAfter = CMTime(seconds: 0.1, preferredTimescale: 600)
         
-        // Clear flag after a brief delay to allow seek to complete
+        player.seek(to: cmTime, toleranceBefore: toleranceBefore, toleranceAfter: toleranceAfter)
+        currentTime = seconds
+        
+        // Clear flag after a longer delay to ensure seek and UI updates complete smoothly
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms delay
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms delay for smoother transition
             isSeekingToClip = false
         }
         
