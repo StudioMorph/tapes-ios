@@ -442,12 +442,17 @@ actor HybridAssetLoader {
                     continue
                 }
                 
-                // group.addTask already runs detached, but we need builder passed explicitly
-                group.addTask {
+                // Use Task.detached inside group.addTask to escape actor context for Photos API
+                group.addTask { [weak self] in
+                    guard let self = self else { return (offset, .skipped(.cancelled)) }
+                    
                     await semaphore.wait()
                     defer { semaphore.signal() }
                     
-                    let result = await encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
+                    // Run Photos API call in detached context (images also use Photos)
+                    let result = await Task.detached(priority: .userInitiated) {
+                        await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
+                    }.value
                     return (offset, result)
                 }
             }
