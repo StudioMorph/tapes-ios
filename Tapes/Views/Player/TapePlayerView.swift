@@ -54,11 +54,17 @@ struct TapePlayerView: View {
                         .disabled(true)
                         .overlay(tapCatcherV2)
                         .onDisappear { player.pause() }
+                } else {
+                    // Show loading overlay when there's no player yet (during preparation)
+                    if engine.isPreparing || engine.isBuffering {
+                        loadingOverlayV2
+                    }
+                    tapCatcherV2
                 }
                 
-                // Loading overlay (on top)
+                // Loading overlay (on top of player when it exists)
                 // Show loading overlay when actually loading/preparing (no fake delays)
-                if engine.isPreparing || engine.isBuffering {
+                if (engine.isPreparing || engine.isBuffering) && engine.player != nil {
                     loadingOverlayV2
                         .zIndex(100)
                 }
