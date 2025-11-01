@@ -1141,7 +1141,7 @@ private extension TapeCompositionBuilder {
             ) { image, info in
                 TapesLog.player.info("TapeCompositionBuilder: Image callback fired - image: \(image != nil), info: \(info != nil)")
                 if let image = image {
-                    TapesLog.player.info("TapeCompositionBuilder: Photos returned image successfully (size: \(image.size))")
+                    TapesLog.player.info("TapeCompositionBuilder: Photos returned image successfully (size: \(image.size.width)x\(image.size.height))")
                     continuation.resume(returning: image)
                 } else if let error = info?[PHImageErrorKey] as? Error {
                     TapesLog.player.error("TapeCompositionBuilder: Image error: \(error.localizedDescription)")
