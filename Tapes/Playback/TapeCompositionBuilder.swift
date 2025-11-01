@@ -1103,24 +1103,32 @@ private extension TapeCompositionBuilder {
             throw BuilderError.photosAssetMissing
         }
         
+        // Use same options as old working code
         let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
+        options.deliveryMode = .automatic  // Match old code pattern
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
         
-        // Simple continuation - just like the old working approach
+        // Simple continuation - ensure callback happens
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UIImage, Error>) in
+            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestImageDataAndOrientation...")
             PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                TapesLog.player.info("TapeCompositionBuilder: Image callback fired - data: \(data != nil), info: \(info != nil)")
                 if let data = data, let image = UIImage(data: data) {
+                    TapesLog.player.info("TapeCompositionBuilder: Photos returned image successfully")
                     continuation.resume(returning: image)
                 } else if let error = info?[PHImageErrorKey] as? Error {
+                    TapesLog.player.error("TapeCompositionBuilder: Image error: \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                 } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
+                    TapesLog.player.warning("TapeCompositionBuilder: Image request cancelled")
                     continuation.resume(throwing: BuilderError.photosAssetMissing)
                 } else {
+                    TapesLog.player.error("TapeCompositionBuilder: Image returned nil with no error")
                     continuation.resume(throwing: BuilderError.photosAssetMissing)
                 }
             }
+            TapesLog.player.info("TapeCompositionBuilder: requestImageDataAndOrientation call completed, waiting for callback...")
         }
     }
 
