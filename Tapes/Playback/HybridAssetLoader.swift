@@ -456,7 +456,7 @@ final class HybridAssetLoader {
                     let result = await Task.detached(priority: .userInitiated) {
                         await semaphore.wait()
                         defer { semaphore.signal() }
-                        return await encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
+                        return await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
                     }.value
                     return (offset, result)
                 }
