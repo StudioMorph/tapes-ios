@@ -485,19 +485,20 @@ struct TapeCompositionBuilder {
                     options.isNetworkAccessAllowed = true
 
                     TapesLog.player.info("TapeCompositionBuilder: Requesting AVAsset from Photos...")
-                    PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, errorDict in
+                    PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
                         if let asset = asset {
                             TapesLog.player.info("TapeCompositionBuilder: Photos AVAsset received")
                             continuation.resume(returning: asset)
-                        } else if let errorDict = errorDict {
-                            // Photos API returns [AnyHashable: Any]? not Error
-                            let errorMessage = (errorDict[PHImageErrorKey] as? Error)?.localizedDescription ?? "Unknown Photos error"
-                            TapesLog.player.error("TapeCompositionBuilder: Photos request failed: \(errorMessage)")
-                            let error = errorDict[PHImageErrorKey] as? Error ?? BuilderError.assetUnavailable(clipID: UUID())
-                            continuation.resume(throwing: error)
                         } else {
-                            TapesLog.player.error("TapeCompositionBuilder: Photos request returned nil asset")
-                            continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
+                            // Photos API info dict may contain error
+                            if let info = info,
+                               let error = info[PHImageErrorKey] as? Error {
+                                TapesLog.player.error("TapeCompositionBuilder: Photos request failed: \(error.localizedDescription)")
+                                continuation.resume(throwing: error)
+                            } else {
+                                TapesLog.player.error("TapeCompositionBuilder: Photos request returned nil asset")
+                                continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
+                            }
                         }
                     }
                 }
