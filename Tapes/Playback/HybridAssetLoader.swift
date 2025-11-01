@@ -437,37 +437,64 @@ final class HybridAssetLoader {
         
         TapesLog.player.info("HybridAssetLoader: CPU queue - encoding \(clips.count) images (max \(self.maxConcurrentEncodings) concurrent)")
         
-        let semaphore = DispatchSemaphore(value: self.maxConcurrentEncodings)
+        // CRITICAL FIX: Don't create all tasks at once - Photos API gets exhausted
+        // Create tasks sequentially as slots become available (producer-consumer pattern)
+        let builder = self.builder
+        var results: [(Int, LoadingResult)] = []
+        var clipIndex = 0
         
-        let builder = self.builder  // Capture builder outside actor
-        return await withTaskGroup(of: (Int, LoadingResult).self) { group in
-            for (offset, clip) in clips {
+        // Use AsyncSemaphore for proper async/await support
+        let semaphore = AsyncSemaphore(value: self.maxConcurrentEncodings)
+        
+        await withTaskGroup(of: (Int, LoadingResult).self) { group in
+            // Start initial batch (maxConcurrentEncodings tasks)
+            for i in 0..<min(self.maxConcurrentEncodings, clips.count) {
+                let (offset, clip) = clips[i]
                 guard !cancelled else {
                     group.addTask { (offset, .skipped(.cancelled)) }
                     continue
                 }
                 
-                // Use Task.detached to escape MainActor context (PlaybackEngine is @MainActor)
-                // Photos API callbacks need to execute freely without MainActor blocking
+                clipIndex = i + 1
                 group.addTask { [weak self] in
                     guard let self = self else { return (offset, .skipped(.cancelled)) }
                     
-                    // Run Photos API call in detached context (images also use Photos)
+                    await semaphore.wait()
+                    defer { semaphore.signal() }
+                    
+                    // Run Photos API call in detached context
                     let result = await Task.detached(priority: .userInitiated) {
-                        await semaphore.wait()
-                        defer { semaphore.signal() }
                         return await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
                     }.value
                     return (offset, result)
                 }
             }
             
-            var results: [(Int, LoadingResult)] = []
+            // As tasks complete, start next one (producer-consumer)
             for await result in group {
                 results.append(result)
+                
+                // Start next task if more clips to process
+                if clipIndex < clips.count && !cancelled {
+                    let (offset, clip) = clips[clipIndex]
+                    clipIndex += 1
+                    
+                    group.addTask { [weak self] in
+                        guard let self = self else { return (offset, .skipped(.cancelled)) }
+                        
+                        await semaphore.wait()
+                        defer { semaphore.signal() }
+                        
+                        let result = await Task.detached(priority: .userInitiated) {
+                            return await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
+                        }.value
+                        return (offset, result)
+                    }
+                }
             }
-            return results
         }
+        
+        return results
     }
     
     private func encodeImage(
