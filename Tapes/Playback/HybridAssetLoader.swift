@@ -434,6 +434,7 @@ actor HybridAssetLoader {
         
         let semaphore = DispatchSemaphore(value: self.maxConcurrentEncodings)
         
+        let builder = self.builder  // Capture builder outside actor
         return await withTaskGroup(of: (Int, LoadingResult).self) { group in
             for (offset, clip) in clips {
                 guard !cancelled else {
@@ -441,13 +442,12 @@ actor HybridAssetLoader {
                     continue
                 }
                 
-                group.addTask { [weak self] in
-                    guard let self = self else { return (offset, .skipped(.cancelled)) }
-                    
+                // group.addTask already runs detached, but we need builder passed explicitly
+                group.addTask {
                     await semaphore.wait()
                     defer { semaphore.signal() }
                     
-                    let result = await self.encodeImage(clip: clip, index: offset, deadline: deadline)
+                    let result = await encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
                     return (offset, result)
                 }
             }
