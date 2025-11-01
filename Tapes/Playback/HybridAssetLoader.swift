@@ -320,59 +320,48 @@ final class HybridAssetLoader {
         
         TapesLog.player.info("HybridAssetLoader: Sequential queue - loading \(clips.count) Photos assets with overlap")
         
-        // Start all tasks with overlap delay between starts
-        var tasks: [Task<(Int, LoadingResult), Never>] = []
+        // CRITICAL FIX: Load sequentially with overlap (not all at once)
+        // Photos framework has limits - creating 5+ requests simultaneously exhausts it
+        // Load one at a time with overlap delay to prevent framework exhaustion
+        let builder = self.builder
+        var results: [(Int, LoadingResult)] = []
         
         for (offset, clip) in clips {
             guard !cancelled else {
                 TapesLog.player.info("HybridAssetLoader: Sequential queue cancelled, skipping clip \(offset)")
-                tasks.append(Task { (offset, LoadingResult.skipped(.cancelled)) })
+                results.append((offset, .skipped(.cancelled)))
                 continue
             }
             
             guard Date() < deadline else {
                 TapesLog.player.warning("HybridAssetLoader: Window expired, skipping remaining Photos assets")
-                tasks.append(Task { (offset, LoadingResult.skipped(.timeout)) })
+                results.append((offset, .skipped(.timeout)))
                 continue
             }
             
-            // Create task for this clip (starts immediately)
-            // Use Task.detached to escape MainActor context (PlaybackEngine is @MainActor)
-            // Photos API callbacks need to execute freely without MainActor blocking
-            TapesLog.player.info("HybridAssetLoader: Sequential queue - starting task for clip \(offset)")
-            let builder = self.builder
-            let task = Task.detached(priority: .userInitiated) { [weak self] in
+            // Load this clip in detached context (escape MainActor)
+            TapesLog.player.info("HybridAssetLoader: Sequential queue - loading clip \(offset)")
+            let result = await Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self = self else {
-                    TapesLog.player.warning("HybridAssetLoader: Sequential queue - self deallocated for clip \(offset)")
                     return (offset, LoadingResult.skipped(.cancelled))
                 }
                 TapesLog.player.info("HybridAssetLoader: Sequential queue - task executing for clip \(offset)")
-                let result = await self.resolvePhotosAsset(clip: clip, index: offset, deadline: deadline, builder: builder)
+                let loadingResult = await self.resolvePhotosAsset(clip: clip, index: offset, deadline: deadline, builder: builder)
                 TapesLog.player.info("HybridAssetLoader: Sequential queue - task completed for clip \(offset)")
-                return (offset, result)
-            }
+                return (offset, loadingResult)
+            }.value
             
-            tasks.append(task)
+            results.append(result)
             
             // Overlap: Wait delay before starting next (if not last clip)
-            // This creates overlap - next starts while current is still loading
+            // This creates overlap - next starts while current is still loading (if it takes longer than delay)
             if offset < clips.count - 1 {
                 TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting \(self.overlapDelay)s before starting clip \(offset + 1)")
                 try? await Task.sleep(nanoseconds: UInt64(self.overlapDelay * 1_000_000_000))
             }
         }
         
-        // Collect all results (they may complete in any order)
-        TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting for \(tasks.count) tasks to complete")
-        var results: [(Int, LoadingResult)] = []
-        for (index, task) in tasks.enumerated() {
-            TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting for task \(index)")
-            let result = await task.value
-            TapesLog.player.info("HybridAssetLoader: Sequential queue - got result for task \(index)")
-            results.append(result)
-        }
-        
-        TapesLog.player.info("HybridAssetLoader: Sequential queue - all \(results.count) tasks completed")
+        TapesLog.player.info("HybridAssetLoader: Sequential queue - all \(results.count) clips completed")
         return results
     }
     
@@ -459,10 +448,12 @@ final class HybridAssetLoader {
                 group.addTask { [weak self] in
                     guard let self = self else { return (offset, .skipped(.cancelled)) }
                     
+                    // CRITICAL: Wait on semaphore BEFORE creating detached task
+                    // This ensures Photos API requests are throttled properly
                     await semaphore.wait()
                     defer { semaphore.signal() }
                     
-                    // Run Photos API call in detached context
+                    // Run Photos API call in detached context (only after semaphore allows it)
                     let result = await Task.detached(priority: .userInitiated) {
                         return await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
                     }.value
@@ -482,9 +473,12 @@ final class HybridAssetLoader {
                     group.addTask { [weak self] in
                         guard let self = self else { return (offset, .skipped(.cancelled)) }
                         
+                        // CRITICAL: Wait on semaphore BEFORE creating detached task
+                        // This ensures Photos API requests are throttled properly
                         await semaphore.wait()
                         defer { semaphore.signal() }
                         
+                        // Run Photos API call in detached context (only after semaphore allows it)
                         let result = await Task.detached(priority: .userInitiated) {
                             return await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
                         }.value
@@ -553,4 +547,5 @@ final class HybridAssetLoader {
 }
 
 // Note: LoadingResult doesn't have clipIndex - we track indices separately in results arrays
+
 
