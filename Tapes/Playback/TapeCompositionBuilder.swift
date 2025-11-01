@@ -1132,7 +1132,7 @@ private extension TapeCompositionBuilder {
         // Can specify target size, Photos Framework handles resizing efficiently
         // Returns orientation-corrected UIImage directly (avoids manual normalization)
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UIImage, Error>) in
-            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestImage (targetSize: \(targetSize))...")
+            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestImage (targetSize: \(targetSize.width)x\(targetSize.height))...")
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: targetSize,
