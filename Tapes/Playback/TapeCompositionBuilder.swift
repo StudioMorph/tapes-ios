@@ -450,7 +450,7 @@ struct TapeCompositionBuilder {
             TapesLog.player.info("TapeCompositionBuilder: Resolving image asset")
             let image = try await loadImage(for: clip)
             let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
-            let asset = try createVideoAsset(from: image, clip: clip, duration: durationSeconds)
+            let asset = try await createVideoAsset(from: image, clip: clip, duration: durationSeconds)
             TapesLog.player.info("TapeCompositionBuilder: Image asset encoded to video")
             return ResolvedAsset(
                 asset: asset,
@@ -1216,8 +1216,10 @@ private extension TapeCompositionBuilder {
 
         for frameIndex in 0..<totalFrames {
             let time = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
+            // OPTIMIZATION: Use async yield instead of blocking sleep
+            // Allows other tasks to run while waiting for encoder
             while !input.isReadyForMoreMediaData {
-                Thread.sleep(forTimeInterval: 0.001)
+                try await Task.sleep(nanoseconds: 100_000) // 0.1ms yield
             }
 
             var pixelBuffer: CVPixelBuffer?
@@ -1238,11 +1240,13 @@ private extension TapeCompositionBuilder {
         }
 
         input.markAsFinished()
-        let semaphore = DispatchSemaphore(value: 0)
-        writer.finishWriting {
-            semaphore.signal()
+        // OPTIMIZATION: Use async/await instead of blocking semaphore
+        // This allows other tasks to run while encoding finishes
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            writer.finishWriting {
+                continuation.resume()
+            }
         }
-        semaphore.wait()
         return AVURLAsset(url: url)
     }
 
