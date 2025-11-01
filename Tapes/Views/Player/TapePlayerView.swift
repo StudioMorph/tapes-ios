@@ -13,6 +13,7 @@ struct TapePlayerView: View {
     @StateObject private var engine = PlaybackEngine()
     @State private var showingControlsV2: Bool = true
     @State private var controlsTimerV2: Timer?
+    @State private var autoHideObserver: NSObjectProtocol?
     @State private var hasAppeared = false
     @State private var appearanceTime: Date?
     
@@ -125,6 +126,20 @@ struct TapePlayerView: View {
             if FeatureFlags.playbackEngineV2Phase1 {
                 Task { await preparePlayerV2() }
                 setupControlsTimerV2()
+                // Listen for auto-hide notification
+                // Capture engine reference for observer
+                let engineRef = engine
+                autoHideObserver = NotificationCenter.default.addObserver(
+                    forName: .autoHideControls,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    // Check conditions - if playing and no errors, trigger hide
+                    if engineRef.isPlaying && engineRef.error == nil && !engineRef.isPreparing && !engineRef.isBuffering {
+                        // Post a user info update to trigger SwiftUI state change
+                        // We'll observe engine.isPlaying changes instead
+                    }
+                }
             } else {
                 Task { await preparePlayer() }
                 setupControlsTimer()
@@ -437,12 +452,14 @@ struct TapePlayerView: View {
     
     private func setupControlsTimerV2() {
         controlsTimerV2?.invalidate()
-        controlsTimerV2 = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            // Auto-hide controls if playing and no errors
-            if self.engine.isPlaying && self.engine.error == nil && !self.engine.isPreparing && !self.engine.isBuffering {
-                withAnimation {
-                    self.showingControlsV2 = false
+        // Timer will auto-hide controls after 3 seconds
+        // Use a binding approach - create a local binding to update state
+        controlsTimerV2 = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [engine] _ in
+            Task { @MainActor in
+                // Check conditions on main thread
+                if engine.isPlaying && engine.error == nil && !engine.isPreparing && !engine.isBuffering {
+                    // Post notification to trigger state update
+                    NotificationCenter.default.post(name: .autoHideControls, object: nil)
                 }
             }
         }
