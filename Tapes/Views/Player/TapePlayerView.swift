@@ -224,7 +224,7 @@ struct TapePlayerView: View {
     
     private var loadingOverlayV2: some View {
         PlayerLoadingOverlay(
-            isLoading: engine.isBuffering,
+            isLoading: engine.isPreparing || engine.isBuffering,
             loadError: engine.error
         )
     }
