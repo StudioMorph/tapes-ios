@@ -477,28 +477,26 @@ struct TapeCompositionBuilder {
         options.deliveryMode = .automatic  // OLD CODE USED .automatic
         options.isNetworkAccessAllowed = true
         
-        // Match old working approach: use continuation but ensure we're on main queue
-        // Old code worked - let's use same pattern
+        // Match old working approach exactly - simple continuation without DispatchQueue wrapper
+        // The old code used semaphore synchronously - we use async continuation instead
+        // But keep it simple - no nested async contexts
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAsset, Error>) in
-            // Ensure Photos API is called on main queue (like old working code)
-            DispatchQueue.main.async {
-                TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestAVAsset on main queue...")
-                PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
-                    TapesLog.player.info("TapeCompositionBuilder: Photos callback fired - asset: \(asset != nil), info: \(info != nil)")
-                    if let asset = asset {
-                        TapesLog.player.info("TapeCompositionBuilder: Photos returned asset successfully")
-                        continuation.resume(returning: asset)
-                    } else if let info = info,
-                              let error = info[PHImageErrorKey] as? Error {
-                        TapesLog.player.error("TapeCompositionBuilder: Photos error: \(error.localizedDescription)")
-                        continuation.resume(throwing: error)
-                    } else {
-                        TapesLog.player.error("TapeCompositionBuilder: Photos returned nil asset with no error")
-                        continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
-                    }
+            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestAVAsset...")
+            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
+                TapesLog.player.info("TapeCompositionBuilder: Photos callback fired - asset: \(asset != nil), info: \(info != nil)")
+                if let asset = asset {
+                    TapesLog.player.info("TapeCompositionBuilder: Photos returned asset successfully")
+                    continuation.resume(returning: asset)
+                } else if let info = info,
+                          let error = info[PHImageErrorKey] as? Error {
+                    TapesLog.player.error("TapeCompositionBuilder: Photos error: \(error.localizedDescription)")
+                    continuation.resume(throwing: error)
+                } else {
+                    TapesLog.player.error("TapeCompositionBuilder: Photos returned nil asset with no error")
+                    continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
                 }
-                TapesLog.player.info("TapeCompositionBuilder: requestAVAsset call completed, waiting for callback...")
             }
+            TapesLog.player.info("TapeCompositionBuilder: requestAVAsset call completed, waiting for callback...")
         }
     }
 
@@ -1121,29 +1119,26 @@ private extension TapeCompositionBuilder {
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
         
-        // Match old working approach: use continuation but ensure we're on main queue
+        // Match old working approach exactly - simple continuation without DispatchQueue wrapper
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UIImage, Error>) in
-            // Ensure Photos API is called on main queue (like old working code)
-            DispatchQueue.main.async {
-                TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestImageDataAndOrientation on main queue...")
-                PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
-                    TapesLog.player.info("TapeCompositionBuilder: Image callback fired - data: \(data != nil), info: \(info != nil)")
-                    if let data = data, let image = UIImage(data: data) {
-                        TapesLog.player.info("TapeCompositionBuilder: Photos returned image successfully")
-                        continuation.resume(returning: image)
-                    } else if let error = info?[PHImageErrorKey] as? Error {
-                        TapesLog.player.error("TapeCompositionBuilder: Image error: \(error.localizedDescription)")
-                        continuation.resume(throwing: error)
-                    } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
-                        TapesLog.player.warning("TapeCompositionBuilder: Image request cancelled")
-                        continuation.resume(throwing: BuilderError.photosAssetMissing)
-                    } else {
-                        TapesLog.player.error("TapeCompositionBuilder: Image returned nil with no error")
-                        continuation.resume(throwing: BuilderError.photosAssetMissing)
-                    }
+            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestImageDataAndOrientation...")
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
+                TapesLog.player.info("TapeCompositionBuilder: Image callback fired - data: \(data != nil), info: \(info != nil)")
+                if let data = data, let image = UIImage(data: data) {
+                    TapesLog.player.info("TapeCompositionBuilder: Photos returned image successfully")
+                    continuation.resume(returning: image)
+                } else if let error = info?[PHImageErrorKey] as? Error {
+                    TapesLog.player.error("TapeCompositionBuilder: Image error: \(error.localizedDescription)")
+                    continuation.resume(throwing: error)
+                } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
+                    TapesLog.player.warning("TapeCompositionBuilder: Image request cancelled")
+                    continuation.resume(throwing: BuilderError.photosAssetMissing)
+                } else {
+                    TapesLog.player.error("TapeCompositionBuilder: Image returned nil with no error")
+                    continuation.resume(throwing: BuilderError.photosAssetMissing)
                 }
-                TapesLog.player.info("TapeCompositionBuilder: requestImageDataAndOrientation call completed, waiting for callback...")
             }
+            TapesLog.player.info("TapeCompositionBuilder: requestImageDataAndOrientation call completed, waiting for callback...")
         }
     }
 

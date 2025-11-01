@@ -382,11 +382,9 @@ actor HybridAssetLoader {
         
         do {
             // Use builder's Photos resolution
-            // IMPORTANT: Hop off the actor to call Photos API (actor isolation can block callbacks)
+            // Builder is NOT an actor, so we can call it directly from actor (no blocking)
             TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for Photos asset \(index)")
-            let context = try await Task { @MainActor in
-                try await builder.resolveClipContext(for: clip, index: index)
-            }.value
+            let context = try await builder.resolveClipContext(for: clip, index: index)
             TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for Photos asset \(index)")
             
             let elapsed = Date().timeIntervalSince(startTime)
@@ -474,11 +472,9 @@ actor HybridAssetLoader {
         
         do {
             // Use builder's image encoding
-            // IMPORTANT: Hop off the actor to call Photos API (actor isolation can block callbacks)
+            // Builder is NOT an actor, so we can call it directly from actor (no blocking)
             TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for image \(index)")
-            let context = try await Task { @MainActor in
-                try await builder.resolveClipContext(for: clip, index: index)
-            }.value
+            let context = try await builder.resolveClipContext(for: clip, index: index)
             TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for image \(index)")
             
             let elapsed = Date().timeIntervalSince(startTime)
