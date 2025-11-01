@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import AVKit
+import Combine
 
 private final class PlaybackCoordinatorHolder: ObservableObject {
     let coordinator = PlaybackPreparationCoordinator()
@@ -126,20 +127,6 @@ struct TapePlayerView: View {
             if FeatureFlags.playbackEngineV2Phase1 {
                 Task { await preparePlayerV2() }
                 setupControlsTimerV2()
-                // Listen for auto-hide notification
-                // Capture engine reference for observer
-                let engineRef = engine
-                autoHideObserver = NotificationCenter.default.addObserver(
-                    forName: .autoHideControls,
-                    object: nil,
-                    queue: .main
-                ) { _ in
-                    // Check conditions - if playing and no errors, trigger hide
-                    if engineRef.isPlaying && engineRef.error == nil && !engineRef.isPreparing && !engineRef.isBuffering {
-                        // Post a user info update to trigger SwiftUI state change
-                        // We'll observe engine.isPlaying changes instead
-                    }
-                }
             } else {
                 Task { await preparePlayer() }
                 setupControlsTimer()
