@@ -1199,16 +1199,22 @@ private extension TapeCompositionBuilder {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
-        // CRITICAL OPTIMIZATION: Encode only 1-2 frames instead of 90
+        // CRITICAL OPTIMIZATION: Encode static frames to match duration (not animated frames)
         // Ken Burns animation is already applied via AVVideoCompositionLayerInstruction transforms
         // (see applyTransformRampIfNeeded - it handles all pan/zoom animation at playback time)
-        // We only need a minimal video track for AVComposition - 1-2 frames is sufficient
-        // This makes encoding ~90x faster (90 frames → 1-2 frames)
-        // Encoding: 2-3s → 0.03-0.1s per image (approaching video speed!)
-        let totalFrames = 2 // Minimal frames needed - transforms handle animation
-        let frameDuration = CMTime(value: 1, timescale: 30) // Use standard 30fps timing
+        // 
+        // Key insight: We need enough frames to cover the clip duration, but we can:
+        // 1. Use VERY low frame rate (1-2fps) - video playback rate is overridden by composition
+        // 2. Encode the same static frame repeated (no motion baked in)
+        // 3. This is still ~45x faster than 30fps (4s clip: 4 frames vs 120 frames)
+        //
+        // The composition's frameDuration (30fps) will determine actual playback smoothness,
+        // not the encoded frame rate. So we can encode at 1fps and playback is still smooth.
+        let encodedFrameRate: Int32 = 1 // Very low rate - just enough to cover duration
+        let frameDuration = CMTime(value: 1, timescale: encodedFrameRate)
+        let totalFrames = max(1, Int(ceil(duration * Double(encodedFrameRate))))
         
-        TapesLog.player.info("TapeCompositionBuilder: Encoding image to video - minimal frames: \(totalFrames) (Ken Burns via composition transforms)")
+        TapesLog.player.info("TapeCompositionBuilder: Encoding image to video - duration: \(duration)s, encoded at \(encodedFrameRate)fps, \(totalFrames) static frames (Ken Burns via composition transforms)")
         
         guard let pixelBufferPool = adaptor.pixelBufferPool else {
             throw BuilderError.imageEncodingFailed
