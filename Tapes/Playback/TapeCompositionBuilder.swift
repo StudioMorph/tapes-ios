@@ -308,10 +308,14 @@ struct TapeCompositionBuilder {
     }
 
     func resolveClipContext(for clip: Clip, index: Int) async throws -> ClipAssetContext {
+        TapesLog.player.info("TapeCompositionBuilder: resolveClipContext started for clip \(index)")
         let contexts = try await loadAssets(for: [clip], startIndex: index)
+        TapesLog.player.info("TapeCompositionBuilder: loadAssets completed for clip \(index), got \(contexts.count) contexts")
         guard let context = contexts.first else {
+            TapesLog.player.error("TapeCompositionBuilder: No context returned for clip \(index)")
             throw BuilderError.assetUnavailable(clipID: clip.id)
         }
+        TapesLog.player.info("TapeCompositionBuilder: resolveClipContext completed for clip \(index)")
         return context
     }
 
@@ -435,14 +439,19 @@ struct TapeCompositionBuilder {
     }
 
     private func resolveAsset(for clip: Clip) async throws -> ResolvedAsset {
+        TapesLog.player.info("TapeCompositionBuilder: resolveAsset started for clip type: \(clip.clipType)")
         switch clip.clipType {
         case .video:
+            TapesLog.player.info("TapeCompositionBuilder: Resolving video asset")
             let asset = try await resolveVideoAsset(for: clip)
+            TapesLog.player.info("TapeCompositionBuilder: Video asset resolved")
             return ResolvedAsset(asset: asset, isTemporary: false, motionEffect: nil)
         case .image:
+            TapesLog.player.info("TapeCompositionBuilder: Resolving image asset")
             let image = try await loadImage(for: clip)
             let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
             let asset = try createVideoAsset(from: image, clip: clip, duration: durationSeconds)
+            TapesLog.player.info("TapeCompositionBuilder: Image asset encoded to video")
             return ResolvedAsset(
                 asset: asset,
                 isTemporary: true,
@@ -458,12 +467,15 @@ struct TapeCompositionBuilder {
         }
 
         // Add timeout to prevent indefinite hangs
+        TapesLog.player.info("TapeCompositionBuilder: fetchAVAssetFromPhotos starting with timeout for \(localIdentifier)")
         return try await withThrowingTaskGroup(of: AVAsset.self) { group in
             // Task to fetch from Photos
             group.addTask {
+                TapesLog.player.info("TapeCompositionBuilder: Photos fetch task started")
                 return try await withCheckedThrowingContinuation { continuation in
                     let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
                     guard let phAsset = fetchResult.firstObject else {
+                        TapesLog.player.warning("TapeCompositionBuilder: Photos asset not found")
                         continuation.resume(throwing: BuilderError.photosAssetMissing)
                         return
                     }
@@ -472,10 +484,16 @@ struct TapeCompositionBuilder {
                     options.deliveryMode = .highQualityFormat
                     options.isNetworkAccessAllowed = true
 
-                    PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, _ in
+                    TapesLog.player.info("TapeCompositionBuilder: Requesting AVAsset from Photos...")
+                    PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, error in
                         if let asset = asset {
+                            TapesLog.player.info("TapeCompositionBuilder: Photos AVAsset received")
                             continuation.resume(returning: asset)
+                        } else if let error = error {
+                            TapesLog.player.error("TapeCompositionBuilder: Photos request failed: \(error.localizedDescription)")
+                            continuation.resume(throwing: error)
                         } else {
+                            TapesLog.player.error("TapeCompositionBuilder: Photos request returned nil asset")
                             continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
                         }
                     }
@@ -484,16 +502,20 @@ struct TapeCompositionBuilder {
             
             // Timeout task (15 seconds - match loading window)
             group.addTask {
+                TapesLog.player.info("TapeCompositionBuilder: Timeout task started (15s)")
                 try await Task.sleep(nanoseconds: 15_000_000_000)
                 TapesLog.player.warning("TapeCompositionBuilder: Photos video fetch timeout after 15s for \(localIdentifier)")
                 throw BuilderError.assetUnavailable(clipID: UUID()) // Timeout error
             }
             
             // Return first result (either success or timeout)
+            TapesLog.player.info("TapeCompositionBuilder: Waiting for first task result...")
             guard let result = try await group.next() else {
+                TapesLog.player.error("TapeCompositionBuilder: No result from task group")
                 throw BuilderError.assetUnavailable(clipID: UUID())
             }
             
+            TapesLog.player.info("TapeCompositionBuilder: Got result, canceling remaining tasks")
             // Cancel remaining tasks
             group.cancelAll()
             
@@ -522,20 +544,25 @@ struct TapeCompositionBuilder {
 
         if let localURL = clip.localURL {
             if fileManager.fileExists(atPath: localURL.path) {
+                TapesLog.player.info("TapeCompositionBuilder: Using local file for video")
                 let accessibleURL = try Self.accessibleURL(for: clip, url: localURL)
                 return AVURLAsset(url: accessibleURL)
             } else {
+                TapesLog.player.info("TapeCompositionBuilder: Local file not found, checking cache")
                 let cachedURL = Self.cachedURL(for: clip, originalURL: localURL)
                 if fileManager.fileExists(atPath: cachedURL.path) {
+                    TapesLog.player.info("TapeCompositionBuilder: Using cached file for video")
                     return AVURLAsset(url: cachedURL)
                 }
             }
         }
 
         if let assetLocalId = clip.assetLocalId {
+            TapesLog.player.info("TapeCompositionBuilder: Fetching video from Photos: \(assetLocalId)")
             return try await Self.fetchAVAssetFromPhotos(localIdentifier: assetLocalId)
         }
 
+        TapesLog.player.error("TapeCompositionBuilder: No video asset available for clip")
         throw BuilderError.assetUnavailable(clipID: clip.id)
     }
 
