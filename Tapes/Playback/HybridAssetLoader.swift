@@ -7,7 +7,11 @@ import UIKit
 /// 1. Fast Queue: Parallel loading for local files
 /// 2. Sequential Queue: Photos/iCloud assets with overlap
 /// 3. CPU Queue: Limited parallel (max 2) for image encodings
-actor HybridAssetLoader {
+/// 
+/// NOTE: Regular class (not actor) to avoid blocking Photos API callbacks.
+/// Actor isolation was preventing Photos API callbacks from firing.
+/// The old PlaybackPreparationCoordinator (regular class) worked perfectly.
+final class HybridAssetLoader {
     
     // MARK: - Configuration
     
@@ -333,10 +337,10 @@ actor HybridAssetLoader {
             }
             
             // Create task for this clip (starts immediately)
-            // Use Task.detached like old PlaybackPreparationCoordinator - Photos API needs non-actor context
+            // No Task.detached needed - we're a regular class now, Photos API callbacks work fine
             TapesLog.player.info("HybridAssetLoader: Sequential queue - starting task for clip \(offset)")
-            let builder = self.builder  // Capture builder outside actor
-            let task = Task.detached(priority: .userInitiated) { [weak self] in
+            let builder = self.builder
+            let task = Task { [weak self] in
                 guard let self = self else {
                     TapesLog.player.warning("HybridAssetLoader: Sequential queue - self deallocated for clip \(offset)")
                     return (offset, LoadingResult.skipped(.cancelled))
@@ -384,8 +388,8 @@ actor HybridAssetLoader {
         let startTime = Date()
         
         do {
-            // Use builder's Photos resolution - called from detached task (non-actor context)
-            // This matches old PlaybackPreparationCoordinator pattern
+            // Use builder's Photos resolution - we're a regular class now, no actor blocking
+            // This matches old PlaybackPreparationCoordinator pattern exactly
             TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for Photos asset \(index)")
             let context = try await builder.resolveClipContext(for: clip, index: index)
             TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for Photos asset \(index)")
@@ -442,17 +446,14 @@ actor HybridAssetLoader {
                     continue
                 }
                 
-                // Use Task.detached inside group.addTask to escape actor context for Photos API
+                // No Task.detached needed - we're a regular class now, Photos API callbacks work fine
                 group.addTask { [weak self] in
                     guard let self = self else { return (offset, .skipped(.cancelled)) }
                     
                     await semaphore.wait()
                     defer { semaphore.signal() }
                     
-                    // Run Photos API call in detached context (images also use Photos)
-                    let result = await Task.detached(priority: .userInitiated) {
-                        await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
-                    }.value
+                    let result = await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
                     return (offset, result)
                 }
             }
@@ -480,8 +481,8 @@ actor HybridAssetLoader {
         }
         
         do {
-            // Use builder's image encoding - called from detached task (non-actor context)
-            // This matches old PlaybackPreparationCoordinator pattern
+            // Use builder's image encoding - we're a regular class now, no actor blocking
+            // This matches old PlaybackPreparationCoordinator pattern exactly
             TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for image \(index)")
             let context = try await builder.resolveClipContext(for: clip, index: index)
             TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for image \(index)")
