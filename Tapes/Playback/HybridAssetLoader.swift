@@ -337,10 +337,11 @@ final class HybridAssetLoader {
             }
             
             // Create task for this clip (starts immediately)
-            // No Task.detached needed - we're a regular class now, Photos API callbacks work fine
+            // Use Task.detached to escape MainActor context (PlaybackEngine is @MainActor)
+            // Photos API callbacks need to execute freely without MainActor blocking
             TapesLog.player.info("HybridAssetLoader: Sequential queue - starting task for clip \(offset)")
             let builder = self.builder
-            let task = Task { [weak self] in
+            let task = Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self = self else {
                     TapesLog.player.warning("HybridAssetLoader: Sequential queue - self deallocated for clip \(offset)")
                     return (offset, LoadingResult.skipped(.cancelled))
@@ -446,14 +447,17 @@ final class HybridAssetLoader {
                     continue
                 }
                 
-                // No Task.detached needed - we're a regular class now, Photos API callbacks work fine
+                // Use Task.detached to escape MainActor context (PlaybackEngine is @MainActor)
+                // Photos API callbacks need to execute freely without MainActor blocking
                 group.addTask { [weak self] in
                     guard let self = self else { return (offset, .skipped(.cancelled)) }
                     
-                    await semaphore.wait()
-                    defer { semaphore.signal() }
-                    
-                    let result = await self.encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
+                    // Run Photos API call in detached context (images also use Photos)
+                    let result = await Task.detached(priority: .userInitiated) {
+                        await semaphore.wait()
+                        defer { semaphore.signal() }
+                        return await encodeImage(clip: clip, index: offset, deadline: deadline, builder: builder)
+                    }.value
                     return (offset, result)
                 }
             }
