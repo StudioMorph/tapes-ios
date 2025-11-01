@@ -3,6 +3,10 @@ import AVFoundation
 import AVKit
 import Combine
 
+extension Notification.Name {
+    static let autoHideControls = Notification.Name("autoHideControls")
+}
+
 private final class PlaybackCoordinatorHolder: ObservableObject {
     let coordinator = PlaybackPreparationCoordinator()
 }
