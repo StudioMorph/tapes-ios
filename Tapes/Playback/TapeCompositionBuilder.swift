@@ -74,7 +74,7 @@ struct TapeCompositionBuilder {
         let baseScaleMode: ScaleMode
 
         static let `default` = ImageClipConfiguration(
-            defaultDuration: 4.0,
+            defaultDuration: 6.0,
             defaultMotionEffect: MotionEffect.defaultKenBurns,
             baseScaleMode: .fill
         )
