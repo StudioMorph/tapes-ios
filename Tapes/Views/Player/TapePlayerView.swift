@@ -134,9 +134,20 @@ struct TapePlayerView: View {
                 }
                 
                 // Check if engine is still preparing (hasn't started playing yet)
+                // Use a longer timeout - preparation can take 15+ seconds
                 if engine.player == nil && engine.error == nil {
-                    TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still preparing (no player yet)")
-                    return
+                    if let appearanceTime = appearanceTime {
+                        let timeSinceAppearance = Date().timeIntervalSince(appearanceTime)
+                        // Allow up to 20 seconds for preparation before allowing teardown
+                        if timeSinceAppearance < 20.0 {
+                            TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still preparing (only \(String(format: "%.1f", timeSinceAppearance))s since appearance)")
+                            return
+                        }
+                    } else {
+                        // No appearance time but no player - still preparing
+                        TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still preparing (no player yet, no appearanceTime)")
+                        return
+                    }
                 }
                 
                 if let appearanceTime = appearanceTime {
