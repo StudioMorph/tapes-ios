@@ -506,7 +506,7 @@ struct TapeCompositionBuilder {
             // Photos fetch task
             group.addTask {
                 do {
-                    let asset = try await withCheckedThrowingContinuation { continuation in
+                    let asset = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAsset, Error>) in
                         TapesLog.player.info("TapeCompositionBuilder: Requesting AVAsset from Photos...")
                         let reqID = PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
                             // Clear request ID since it completed
