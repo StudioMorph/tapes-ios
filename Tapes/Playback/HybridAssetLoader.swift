@@ -350,8 +350,8 @@ actor HybridAssetLoader {
             // Overlap: Wait delay before starting next (if not last clip)
             // This creates overlap - next starts while current is still loading
             if offset < clips.count - 1 {
-                TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting \(overlapDelay)s before starting clip \(offset + 1)")
-                try? await Task.sleep(nanoseconds: UInt64(overlapDelay * 1_000_000_000))
+                TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting \(self.overlapDelay)s before starting clip \(offset + 1)")
+                try? await Task.sleep(nanoseconds: UInt64(self.overlapDelay * 1_000_000_000))
             }
         }
         
