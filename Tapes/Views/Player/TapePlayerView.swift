@@ -49,22 +49,20 @@ struct TapePlayerView: View {
 
             // Phase 1: New engine path
             if FeatureFlags.playbackEngineV2Phase1 {
+                // Video player (if exists)
                 if let player = engine.player {
                     VideoPlayer(player: player)
                         .disabled(true)
                         .overlay(tapCatcherV2)
                         .onDisappear { player.pause() }
                 } else {
-                    // Show loading overlay when there's no player yet (during preparation)
-                    if engine.isPreparing || engine.isBuffering {
-                        loadingOverlayV2
-                    }
+                    // No player yet - show tap catcher for controls
                     tapCatcherV2
                 }
                 
-                // Loading overlay (on top of player when it exists)
-                // Show loading overlay when actually loading/preparing (no fake delays)
-                if (engine.isPreparing || engine.isBuffering) && engine.player != nil {
+                // Loading overlay - show whenever actually loading/preparing (no fake delays)
+                // Place at top level of ZStack to ensure visibility
+                if engine.isPreparing || engine.isBuffering {
                     loadingOverlayV2
                         .zIndex(100)
                 }
