@@ -302,6 +302,12 @@ final class PlaybackEngine: ObservableObject {
             return
         }
         
+        // Prevent seeking to same clip (would restart it)
+        guard index != currentClipIndex else {
+            TapesLog.player.info("PlaybackEngine: Already at clip \(index), skipping seek")
+            return
+        }
+        
         // Find segment with matching clipIndex (not segment index)
         guard let segment = timeline.segments.first(where: { $0.clipIndex == index }) else {
             TapesLog.player.warning("PlaybackEngine: Clip \(index) not found in timeline")
@@ -311,8 +317,9 @@ final class PlaybackEngine: ObservableObject {
         let seekTime = segment.timeRange.start
         let seconds = CMTimeGetSeconds(seekTime)
         
-        seek(to: seconds)
+        // Update clip index BEFORE seeking to prevent updateCurrentClipIndex from overriding it
         currentClipIndex = index
+        seek(to: seconds)
         TapesLog.player.info("PlaybackEngine: Seek to clip \(index) at time \(String(format: "%.2f", seconds))s")
     }
     

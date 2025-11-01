@@ -284,24 +284,50 @@ struct TapePlayerView: View {
                     },
                     onPrevious: {
                         // Find previous playable clip (accounting for skips)
-                        if let skipHandler = engine.skipHandler, skipHandler.shouldSkip(clipIndex: engine.currentClipIndex - 1) {
+                        let prevIndex = engine.currentClipIndex - 1
+                        
+                        guard prevIndex >= 0 else {
+                            // Already at first clip
+                            return
+                        }
+                        
+                        if let skipHandler = engine.skipHandler {
+                            // Use skipHandler to find previous ready clip (handles skipped clips)
                             if let prevReady = skipHandler.previousReadyClip(before: engine.currentClipIndex) {
                                 engine.seekToClip(at: prevReady)
+                            } else {
+                                // No previous ready clip found, but try previous index if not skipped
+                                if !skipHandler.shouldSkip(clipIndex: prevIndex) {
+                                    engine.seekToClip(at: prevIndex)
+                                }
                             }
                         } else {
-                            engine.seekToClip(at: engine.currentClipIndex - 1)
+                            // No skipHandler - just go to previous clip
+                            engine.seekToClip(at: prevIndex)
                         }
                     },
                     onNext: {
                         // Find next playable clip (accounting for skips)
-                        if let skipHandler = engine.skipHandler, engine.currentClipIndex + 1 < tape.clips.count {
-                            if skipHandler.shouldSkip(clipIndex: engine.currentClipIndex + 1) {
-                                if let nextReady = skipHandler.nextReadyClip(after: engine.currentClipIndex) {
-                                    engine.seekToClip(at: nextReady)
-                                }
+                        let nextIndex = engine.currentClipIndex + 1
+                        
+                        guard nextIndex < tape.clips.count else {
+                            // Already at last clip
+                            return
+                        }
+                        
+                        if let skipHandler = engine.skipHandler {
+                            // Use skipHandler to find next ready clip (handles skipped clips)
+                            if let nextReady = skipHandler.nextReadyClip(after: engine.currentClipIndex) {
+                                engine.seekToClip(at: nextReady)
                             } else {
-                                engine.seekToClip(at: engine.currentClipIndex + 1)
+                                // No next ready clip found, but try next index if not skipped
+                                if !skipHandler.shouldSkip(clipIndex: nextIndex) {
+                                    engine.seekToClip(at: nextIndex)
+                                }
                             }
+                        } else {
+                            // No skipHandler - just go to next clip
+                            engine.seekToClip(at: nextIndex)
                         }
                     },
                     onSpeedChange: { speed in
@@ -325,24 +351,50 @@ struct TapePlayerView: View {
                     },
                     onPrevious: {
                         // Find previous playable clip (accounting for skips)
-                        if let skipHandler = engine.skipHandler, skipHandler.shouldSkip(clipIndex: engine.currentClipIndex - 1) {
+                        let prevIndex = engine.currentClipIndex - 1
+                        
+                        guard prevIndex >= 0 else {
+                            // Already at first clip
+                            return
+                        }
+                        
+                        if let skipHandler = engine.skipHandler {
+                            // Use skipHandler to find previous ready clip (handles skipped clips)
                             if let prevReady = skipHandler.previousReadyClip(before: engine.currentClipIndex) {
                                 engine.seekToClip(at: prevReady)
+                            } else {
+                                // No previous ready clip found, but try previous index if not skipped
+                                if !skipHandler.shouldSkip(clipIndex: prevIndex) {
+                                    engine.seekToClip(at: prevIndex)
+                                }
                             }
                         } else {
-                            engine.seekToClip(at: engine.currentClipIndex - 1)
+                            // No skipHandler - just go to previous clip
+                            engine.seekToClip(at: prevIndex)
                         }
                     },
                     onNext: {
                         // Find next playable clip (accounting for skips)
-                        if let skipHandler = engine.skipHandler, engine.currentClipIndex + 1 < tape.clips.count {
-                            if skipHandler.shouldSkip(clipIndex: engine.currentClipIndex + 1) {
-                                if let nextReady = skipHandler.nextReadyClip(after: engine.currentClipIndex) {
-                                    engine.seekToClip(at: nextReady)
-                                }
+                        let nextIndex = engine.currentClipIndex + 1
+                        
+                        guard nextIndex < tape.clips.count else {
+                            // Already at last clip
+                            return
+                        }
+                        
+                        if let skipHandler = engine.skipHandler {
+                            // Use skipHandler to find next ready clip (handles skipped clips)
+                            if let nextReady = skipHandler.nextReadyClip(after: engine.currentClipIndex) {
+                                engine.seekToClip(at: nextReady)
                             } else {
-                                engine.seekToClip(at: engine.currentClipIndex + 1)
+                                // No next ready clip found, but try next index if not skipped
+                                if !skipHandler.shouldSkip(clipIndex: nextIndex) {
+                                    engine.seekToClip(at: nextIndex)
+                                }
                             }
+                        } else {
+                            // No skipHandler - just go to next clip
+                            engine.seekToClip(at: nextIndex)
                         }
                     }
                 )
