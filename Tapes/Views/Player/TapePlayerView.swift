@@ -128,8 +128,8 @@ struct TapePlayerView: View {
             // Prevent premature teardown during SwiftUI lifecycle transitions
             if FeatureFlags.playbackEngineV2Phase1 {
                 // Don't tear down if we just appeared or are actively buffering or preparing
-                if engine.isBuffering {
-                    TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still buffering")
+                if engine.isBuffering || engine.isPreparing {
+                    TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still buffering (\(engine.isBuffering)) or preparing (\(engine.isPreparing))")
                     return
                 }
                 
@@ -138,8 +138,8 @@ struct TapePlayerView: View {
                 if engine.player == nil && engine.error == nil {
                     if let appearanceTime = appearanceTime {
                         let timeSinceAppearance = Date().timeIntervalSince(appearanceTime)
-                        // Allow up to 20 seconds for preparation before allowing teardown
-                        if timeSinceAppearance < 20.0 {
+                        // Allow up to 30 seconds for preparation before allowing teardown (Photos can be slow)
+                        if timeSinceAppearance < 30.0 {
                             TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still preparing (only \(String(format: "%.1f", timeSinceAppearance))s since appearance)")
                             return
                         }

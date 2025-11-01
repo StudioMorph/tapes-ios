@@ -468,24 +468,32 @@ struct TapeCompositionBuilder {
 
         // Add timeout to prevent indefinite hangs
         TapesLog.player.info("TapeCompositionBuilder: fetchAVAssetFromPhotos starting with timeout for \(localIdentifier)")
+        
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+        guard let phAsset = fetchResult.firstObject else {
+            TapesLog.player.warning("TapeCompositionBuilder: Photos asset not found")
+            throw BuilderError.photosAssetMissing
+        }
+
+        let options = PHVideoRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+
+        // Use Task.withTimeout pattern - more reliable than TaskGroup for this case
         return try await withThrowingTaskGroup(of: AVAsset.self) { group in
-            // Task to fetch from Photos
+            var requestID: PHImageRequestID?
+            
+            // Photos fetch task
             group.addTask {
-                TapesLog.player.info("TapeCompositionBuilder: Photos fetch task started")
                 return try await withCheckedThrowingContinuation { continuation in
-                    let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
-                    guard let phAsset = fetchResult.firstObject else {
-                        TapesLog.player.warning("TapeCompositionBuilder: Photos asset not found")
-                        continuation.resume(throwing: BuilderError.photosAssetMissing)
-                        return
-                    }
-
-                    let options = PHVideoRequestOptions()
-                    options.deliveryMode = .highQualityFormat
-                    options.isNetworkAccessAllowed = true
-
                     TapesLog.player.info("TapeCompositionBuilder: Requesting AVAsset from Photos...")
-                    PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
+                    let reqID = PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
+                        // Check if task was cancelled
+                        if Task.isCancelled {
+                            TapesLog.player.warning("TapeCompositionBuilder: Photos request cancelled")
+                            return
+                        }
+                        
                         if let asset = asset {
                             TapesLog.player.info("TapeCompositionBuilder: Photos AVAsset received")
                             continuation.resume(returning: asset)
@@ -501,6 +509,7 @@ struct TapeCompositionBuilder {
                             }
                         }
                     }
+                    requestID = reqID
                 }
             }
             
@@ -509,21 +518,40 @@ struct TapeCompositionBuilder {
                 TapesLog.player.info("TapeCompositionBuilder: Timeout task started (15s)")
                 try await Task.sleep(nanoseconds: 15_000_000_000)
                 TapesLog.player.warning("TapeCompositionBuilder: Photos video fetch timeout after 15s for \(localIdentifier)")
+                // Cancel the Photos request if it's still pending
+                if let reqID = requestID {
+                    PHImageManager.default().cancelImageRequest(reqID)
+                    TapesLog.player.info("TapeCompositionBuilder: Cancelled Photos request")
+                }
                 throw BuilderError.assetUnavailable(clipID: UUID()) // Timeout error
             }
             
             // Return first result (either success or timeout)
             TapesLog.player.info("TapeCompositionBuilder: Waiting for first task result...")
-            guard let result = try await group.next() else {
-                TapesLog.player.error("TapeCompositionBuilder: No result from task group")
-                throw BuilderError.assetUnavailable(clipID: UUID())
+            do {
+                guard let result = try await group.next() else {
+                    TapesLog.player.error("TapeCompositionBuilder: No result from task group")
+                    throw BuilderError.assetUnavailable(clipID: UUID())
+                }
+                
+                TapesLog.player.info("TapeCompositionBuilder: Got result, canceling remaining tasks")
+                // Cancel remaining tasks
+                group.cancelAll()
+                
+                // Cancel Photos request if it's still pending
+                if let reqID = requestID {
+                    PHImageManager.default().cancelImageRequest(reqID)
+                }
+                
+                return result
+            } catch {
+                // Ensure Photos request is cancelled on error/timeout
+                if let reqID = requestID {
+                    PHImageManager.default().cancelImageRequest(reqID)
+                }
+                group.cancelAll()
+                throw error
             }
-            
-            TapesLog.player.info("TapeCompositionBuilder: Got result, canceling remaining tasks")
-            // Cancel remaining tasks
-            group.cancelAll()
-            
-            return result
         }
     }
 

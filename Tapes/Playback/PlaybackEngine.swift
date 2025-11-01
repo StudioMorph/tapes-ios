@@ -40,7 +40,7 @@ final class PlaybackEngine: ObservableObject {
     private var playerEndObserver: NSObjectProtocol?
     private var playerStallObserver: NSObjectProtocol?
     
-    private var isPreparing = false
+    @Published private(set) var isPreparing = false
     private var currentPrepareTask: Task<Void, Never>?
     private var extensionCheckTask: Task<Void, Never>?
     
