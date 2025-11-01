@@ -44,6 +44,9 @@ final class PlaybackEngine: ObservableObject {
     private var currentPrepareTask: Task<Void, Never>?
     private var extensionCheckTask: Task<Void, Never>?
     
+    // Flag to prevent index updates during explicit seek operations
+    private var isSeekingToClip = false
+    
     // MARK: - Initialization
     
     init() {
@@ -267,12 +270,14 @@ final class PlaybackEngine: ObservableObject {
         TapesLog.player.info("PlaybackEngine: Speed set to \(String(format: "%.1f", clampedSpeed))x")
     }
     
-    func seek(to time: Double) {
+    func seek(to time: Double, skipIndexUpdate: Bool = false) {
         guard let player = player else { return }
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
         player.seek(to: cmTime)
         currentTime = time
-        updateCurrentClipIndex()
+        if !skipIndexUpdate {
+            updateCurrentClipIndex()
+        }
         TapesLog.player.info("PlaybackEngine: Seek to \(String(format: "%.2f", time))s")
     }
     
@@ -317,9 +322,21 @@ final class PlaybackEngine: ObservableObject {
         let seekTime = segment.timeRange.start
         let seconds = CMTimeGetSeconds(seekTime)
         
+        // Set flag to prevent time observer from updating index during seek
+        isSeekingToClip = true
+        
         // Update clip index BEFORE seeking to prevent updateCurrentClipIndex from overriding it
         currentClipIndex = index
-        seek(to: seconds)
+        
+        // Seek without triggering index update (we already set it explicitly)
+        seek(to: seconds, skipIndexUpdate: true)
+        
+        // Clear flag after a brief delay to allow seek to complete
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms delay
+            isSeekingToClip = false
+        }
+        
         TapesLog.player.info("PlaybackEngine: Seek to clip \(index) at time \(String(format: "%.2f", seconds))s")
     }
     
@@ -436,7 +453,10 @@ final class PlaybackEngine: ObservableObject {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self = self else { return }
             self.currentTime = CMTimeGetSeconds(time)
-            self.updateCurrentClipIndex()
+            // Don't update index during explicit seek operations (prevents counter jumpiness)
+            if !self.isSeekingToClip {
+                self.updateCurrentClipIndex()
+            }
             self.checkSkipBehavior()
         }
         
