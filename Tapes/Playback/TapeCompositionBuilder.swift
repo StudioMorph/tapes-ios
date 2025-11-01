@@ -1114,7 +1114,7 @@ private extension TapeCompositionBuilder {
         
         // Use same options as old working code
         let options = PHImageRequestOptions()
-        options.deliveryMode = .automatic  // Match old code pattern
+        options.deliveryMode = .highQualityFormat  // Images use highQualityFormat, not automatic
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
         
