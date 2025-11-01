@@ -1215,11 +1215,9 @@ private extension TapeCompositionBuilder {
         }
         let colorSpace = CGColorSpaceCreateDeviceRGB()
 
-        // OPTIMIZATION: Pre-render image once, reuse for all frames
-        // Since we're only encoding 1-2 frames and transforms handle animation,
-        // we can render once and reuse the buffer (minimal overhead for 2 frames)
-        var renderedBuffer: CVPixelBuffer?
-        
+        // OPTIMIZATION: Only 2 frames needed (minimal video track for AVComposition)
+        // Ken Burns animation handled by AVVideoCompositionLayerInstruction transforms
+        // Rendering same image twice is fast (~0.01s total) - negligible overhead
         for frameIndex in 0..<totalFrames {
             let time = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
             
@@ -1230,31 +1228,21 @@ private extension TapeCompositionBuilder {
             }
 
             var pixelBuffer: CVPixelBuffer?
-            
-            // Reuse pre-rendered buffer if available (for frame 1), otherwise create new
-            if frameIndex == 0 {
-                let status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
-                guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
-                    continue
-                }
-                render(
-                    cgImage: cgImage,
-                    into: buffer,
-                    targetSize: targetSize,
-                    rotationTurns: rotationTurns,
-                    colorSpace: colorSpace
-                )
-                renderedBuffer = buffer
-            } else {
-                // Frame 1: Reuse the same rendered buffer (just different timestamp)
-                // This is safe because transforms will animate it during playback
-                guard let buffer = renderedBuffer else {
-                    continue
-                }
-                pixelBuffer = buffer
+            let status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+            guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+                continue
             }
 
-            adaptor.append(pixelBuffer!, withPresentationTime: time)
+            // Render same image (static frame) - transforms will animate during playback
+            render(
+                cgImage: cgImage,
+                into: buffer,
+                targetSize: targetSize,
+                rotationTurns: rotationTurns,
+                colorSpace: colorSpace
+            )
+
+            adaptor.append(buffer, withPresentationTime: time)
         }
 
         input.markAsFinished()
