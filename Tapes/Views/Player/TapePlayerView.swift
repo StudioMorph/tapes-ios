@@ -132,6 +132,14 @@ struct TapePlayerView: View {
                 setupControlsTimer()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .autoHideControls)) { _ in
+            // Hide controls when timer fires (if conditions are met)
+            if engine.isPlaying && engine.error == nil && !engine.isPreparing && !engine.isBuffering {
+                withAnimation {
+                    showingControlsV2 = false
+                }
+            }
+        }
         .onDisappear {
             TapesLog.player.info("TapePlayerView: onDisappear called (appearanceTime: \(appearanceTime != nil ? "set" : "nil"), buffering: \(engine.isBuffering))")
             
