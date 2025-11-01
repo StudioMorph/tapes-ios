@@ -35,6 +35,8 @@ struct PlayerHeader: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(.ultraThinMaterial, in: Capsule())
+                .contentTransition(.numericText()) // Smooth numeric text updates
+                .animation(.easeOut(duration: 0.2), value: currentClipIndex) // Smooth counter updates
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
