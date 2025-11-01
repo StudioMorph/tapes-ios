@@ -448,11 +448,12 @@ struct TapePlayerView: View {
     private func setupControlsTimerV2() {
         controlsTimerV2?.invalidate()
         // Timer will auto-hide controls after 3 seconds
-        // Use a binding approach - create a local binding to update state
-        controlsTimerV2 = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [engine] _ in
+        // Capture engine reference (it's a @StateObject, so it's a reference type)
+        let engineRef = engine
+        controlsTimerV2 = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { _ in
             Task { @MainActor in
                 // Check conditions on main thread
-                if engine.isPlaying && engine.error == nil && !engine.isPreparing && !engine.isBuffering {
+                if engineRef.isPlaying && engineRef.error == nil && !engineRef.isPreparing && !engineRef.isBuffering {
                     // Post notification to trigger state update
                     NotificationCenter.default.post(name: .autoHideControls, object: nil)
                 }
