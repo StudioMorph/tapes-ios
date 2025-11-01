@@ -479,15 +479,37 @@ struct TapeCompositionBuilder {
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
 
-        // Use Task.withTimeout pattern - more reliable than TaskGroup for this case
-        return try await withThrowingTaskGroup(of: AVAsset.self) { group in
+        // Use shared state for request ID to enable cancellation
+        final class RequestState {
             var requestID: PHImageRequestID?
+            let lock = NSLock()
             
+            func set(_ id: PHImageRequestID) {
+                lock.lock()
+                requestID = id
+                lock.unlock()
+            }
+            
+            func getAndClear() -> PHImageRequestID? {
+                lock.lock()
+                defer { lock.unlock() }
+                let id = requestID
+                requestID = nil
+                return id
+            }
+        }
+        
+        let requestState = RequestState()
+        
+        return try await withThrowingTaskGroup(of: AVAsset.self) { group in
             // Photos fetch task
             group.addTask {
                 return try await withCheckedThrowingContinuation { continuation in
                     TapesLog.player.info("TapeCompositionBuilder: Requesting AVAsset from Photos...")
                     let reqID = PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
+                        // Clear request ID since it completed
+                        _ = requestState.getAndClear()
+                        
                         // Check if task was cancelled
                         if Task.isCancelled {
                             TapesLog.player.warning("TapeCompositionBuilder: Photos request cancelled")
@@ -509,7 +531,7 @@ struct TapeCompositionBuilder {
                             }
                         }
                     }
-                    requestID = reqID
+                    requestState.set(reqID)
                 }
             }
             
@@ -519,9 +541,9 @@ struct TapeCompositionBuilder {
                 try await Task.sleep(nanoseconds: 15_000_000_000)
                 TapesLog.player.warning("TapeCompositionBuilder: Photos video fetch timeout after 15s for \(localIdentifier)")
                 // Cancel the Photos request if it's still pending
-                if let reqID = requestID {
+                if let reqID = requestState.getAndClear() {
                     PHImageManager.default().cancelImageRequest(reqID)
-                    TapesLog.player.info("TapeCompositionBuilder: Cancelled Photos request")
+                    TapesLog.player.info("TapeCompositionBuilder: Cancelled Photos request \(reqID)")
                 }
                 throw BuilderError.assetUnavailable(clipID: UUID()) // Timeout error
             }
@@ -539,14 +561,14 @@ struct TapeCompositionBuilder {
                 group.cancelAll()
                 
                 // Cancel Photos request if it's still pending
-                if let reqID = requestID {
+                if let reqID = requestState.getAndClear() {
                     PHImageManager.default().cancelImageRequest(reqID)
                 }
                 
                 return result
             } catch {
                 // Ensure Photos request is cancelled on error/timeout
-                if let reqID = requestID {
+                if let reqID = requestState.getAndClear() {
                     PHImageManager.default().cancelImageRequest(reqID)
                 }
                 group.cancelAll()
