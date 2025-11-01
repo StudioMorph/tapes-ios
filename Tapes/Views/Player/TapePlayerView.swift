@@ -127,15 +127,21 @@ struct TapePlayerView: View {
             
             // Prevent premature teardown during SwiftUI lifecycle transitions
             if FeatureFlags.playbackEngineV2Phase1 {
-                // Don't tear down if we just appeared or are actively buffering
+                // Don't tear down if we just appeared or are actively buffering or preparing
                 if engine.isBuffering {
                     TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still buffering")
                     return
                 }
                 
+                // Check if engine is still preparing (hasn't started playing yet)
+                if engine.player == nil && engine.error == nil {
+                    TapesLog.player.warning("TapePlayerView: Ignoring onDisappear - engine is still preparing (no player yet)")
+                    return
+                }
+                
                 if let appearanceTime = appearanceTime {
                     let timeSinceAppearance = Date().timeIntervalSince(appearanceTime)
-                    if timeSinceAppearance < 2.0 {
+                    if timeSinceAppearance < 3.0 {
                         TapesLog.player.warning("TapePlayerView: Ignoring premature onDisappear (only \(String(format: "%.2f", timeSinceAppearance))s since appearance)")
                         return
                     }
