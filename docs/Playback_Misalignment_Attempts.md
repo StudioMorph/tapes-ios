@@ -47,14 +47,38 @@ The issue is NOT with resetting translation. The issue is likely:
 
 ---
 
-## Attempt #2: [Future Attempt]
+## Attempt #2: Option A - Match TapeExporter Transform Approach ✅ SUCCESS
 
-**Date:** [TBD]  
-**Commit:** [TBD]  
-**What We Tried:** [TBD]  
-**Did It Work?** [TBD]  
-**Why It Failed:** [TBD]  
-**Key Learning:** [TBD]
+**Date:** [Current Date]  
+**Commit:** `1d034f9`  
+**Attempted By:** Systematic fix attempt
+
+**What We Tried:**
+- Changed `scaledBy()` to `concatenating()` for scale transform (matches TapeExporter.swift:36)
+- Changed `translatedBy()` to `concatenating()` for translation transform (matches TapeExporter.swift:39)
+- Removed division by scale on translation (matches TapeExporter exactly)
+- Applied same fix to both `baseTransform()` and diagnostic `computeFinalTransform()`
+
+**Code Location:**
+- `TapeCompositionBuilder.swift:1086-1093` (baseTransform method)
+- `PlaybackEngine.swift:688-696` (computeFinalTransform method)
+
+**Did It Work?**
+✅ **YES - Complete success**
+
+**Why It Worked:**
+- `concatenating()` handles transform composition differently than `scaledBy()` + `translatedBy()`
+- The division by scale was incorrect - translations should be in render coordinate space, not scaled space
+- TapeExporter already had the correct approach; playback code was using incorrect method
+- All misaligned clips (0, 3, 4, 5) now render correctly
+- All previously working clips (1, 2, 6, 7, 8, 9) still work correctly
+
+**Key Learning:**
+- When composing transforms with rotation + scale + translation, `concatenating()` is more reliable than chaining `scaledBy()` + `translatedBy()`
+- Transform translations should be in the final render coordinate space, not scaled intermediate space
+- Always check existing working code (TapeExporter) for proven patterns before inventing new approaches
+
+**Status:** ✅ RESOLVED - All videos now render correctly centred
 
 ---
 
@@ -221,5 +245,7 @@ transform = transform.translatedBy(x: translatedX, y: translatedY)  // No divisi
 ---
 
 **Last Updated:** [Current Date]  
-**Current Status:** Back to original code (working but with known misalignment on clips 0, 3, 4, 5)
+**Current Status:** ✅ RESOLVED - Option A (Match TapeExporter) fixed all misalignment issues. All clips render correctly.
+
+**Resolution:** Use `concatenating()` for transform composition instead of `scaledBy()` + `translatedBy()`, and do NOT divide translation by scale. This matches the working TapeExporter approach.
 
