@@ -257,6 +257,10 @@ struct TapePlayerView: View {
             }
         }
     }
-
-
+    
+    private func tearDown() {
+        engine.teardown()
+        controlsTimer?.invalidate()
+        controlsTimer = nil
+    }
 }
