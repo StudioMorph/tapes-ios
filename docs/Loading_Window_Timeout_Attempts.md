@@ -60,15 +60,28 @@ BackgroundAssetService: Clip 12 loaded in background
 - `Tapes/Playback/HybridAssetLoader.swift:298-415` (loadSequentialQueue method)
 
 **Did It Work?**
-- ⏳ **TESTING REQUIRED** - Waiting for user feedback
+- ⚠️ **PARTIALLY** - Fixed the skipping issue, but revealed separate problem
 
 **Why It Failed/Succeeded:**
-- [TBD after testing]
+- ✅ **Fixed:** Clips 11 & 12 (and clip 9) are NO LONGER marked as skipped
+- ✅ **Fixed:** All 3 clips (9, 11, 12) load successfully in background
+- ❌ **Revealed:** Composition extension doesn't actually work - `ExtendableCompositionStrategy.extendComposition()` returns `nil`
+- ❌ **Result:** Background-loaded clips never get added to playback composition
+- **Evidence from logs:**
+  - `skipped: []` - No clips marked as skipped ✅
+  - `BackgroundAssetService: Clip 9 loaded in background` ✅
+  - `BackgroundAssetService: Clip 11 loaded in background` ✅
+  - `BackgroundAssetService: Clip 12 loaded in background` ✅
+  - **BUT:** No log "PlaybackEngine: Composition extended" - extension never happens ❌
+  - **Result:** Playback jumps from clip 8 → clip 10, skipping clip 9 (not in composition)
 
 **Key Learning:**
-- [TBD after testing]
+- The timeout fix works correctly - prevents unnecessary skipping
+- Composition extension is not implemented - `extendComposition()` returns `nil`
+- This is a separate issue that needs to be fixed for background loading to work
+- The window timeout fix successfully exposed that extension wasn't working
 
-**Status:** ✅ Implemented - Ready for Testing
+**Status:** ⚠️ **PARTIALLY SUCCESSFUL** - Timeout fix works, but composition extension doesn't
 
 ---
 
@@ -168,13 +181,16 @@ BackgroundAssetService: Clip 12 loaded in background
 ---
 
 **Last Updated:** [Current Date]  
-**Current Status:** ✅ Attempt #1 implemented (commit `f1aa6ff`) - Ready for testing
+**Current Status:** ⚠️ Attempt #1 partially successful - Timeout fix works, but composition extension is not implemented
 
-**Testing Instructions:**
-1. Create tape with 14+ Photos assets (clips 11+ should be Photos videos)
-2. Play tape and observe logs
-3. Check if clips 11 & 12 are marked as skipped or handled by background loading
-4. Verify playback starts with available clips
-5. Verify background loading completes clips 11 & 12
-6. If fails, revert commit `f1aa6ff` and mark as failed in this document
+**Findings:**
+- Timeout fix successfully prevents clips from being incorrectly marked as skipped
+- Background loading successfully loads clips 9, 11, 12
+- **BUT:** Composition extension doesn't work (`ExtendableCompositionStrategy.extendComposition()` returns `nil`)
+- Result: Background-loaded clips never get added to playback
+
+**Next Steps:**
+1. Fix composition extension implementation (separate issue)
+2. OR: Mark this attempt as successful for the timeout fix itself
+3. Document composition extension as a separate issue/task
 
