@@ -36,6 +36,9 @@ final class PlaybackEngine: ObservableObject {
     private let backgroundService: BackgroundAssetService
     private let extensionManager: CompositionExtensionManager
     
+    // Store tape for diagnostics
+    private var currentTape: Tape?
+    
     private var timeObserver: Any?
     private var playerEndObserver: NSObjectProtocol?
     private var playerStallObserver: NSObjectProtocol?
@@ -73,6 +76,9 @@ final class PlaybackEngine: ObservableObject {
     func prepare(tape: Tape) async {
         // Cancel any existing preparation
         currentPrepareTask?.cancel()
+        
+        // Store tape for diagnostics
+        currentTape = tape
         
         guard !tape.clips.isEmpty else {
             setError("This tape has no clips to play.")
@@ -229,6 +235,12 @@ final class PlaybackEngine: ObservableObject {
         // Set initial clip index based on first segment in timeline (not always 0 if clips are skipped)
         if let firstSegment = composition.timeline.segments.first {
             currentClipIndex = firstSegment.clipIndex
+            
+            // Diagnostic: Log clip 0 immediately when playback starts
+            if PlaybackDiagnostics.isEnabled {
+                logClipStartDiagnostics(for: firstSegment, at: 0.0)
+            }
+            
             TapesLog.player.info("PlaybackEngine: Starting playback at clip \(self.currentClipIndex)")
         } else {
             currentClipIndex = 0
@@ -539,6 +551,8 @@ final class PlaybackEngine: ObservableObject {
     private func updateCurrentClipIndex() {
         guard let timeline = timeline else { return }
         
+        let previousClipIndex = currentClipIndex
+        
         // Find which segment contains current time
         for (index, segment) in timeline.segments.enumerated() {
             let segmentStart = CMTimeGetSeconds(segment.timeRange.start)
@@ -546,6 +560,11 @@ final class PlaybackEngine: ObservableObject {
             
             if currentTime >= segmentStart && currentTime < segmentEnd {
                 currentClipIndex = segment.clipIndex
+                
+                // Diagnostic: Log clip change
+                if PlaybackDiagnostics.isEnabled && previousClipIndex != currentClipIndex {
+                    logClipStartDiagnostics(for: segment, at: segmentStart)
+                }
                 return
             }
         }
@@ -554,6 +573,127 @@ final class PlaybackEngine: ObservableObject {
         if !timeline.segments.isEmpty {
             currentClipIndex = timeline.segments.last!.clipIndex
         }
+    }
+    
+    // Diagnostic: Log clip start with all metadata
+    private func logClipStartDiagnostics(for segment: TapeCompositionBuilder.Segment, at segmentStart: Double) {
+        guard PlaybackDiagnostics.isEnabled else { return }
+        
+        let context = segment.assetContext
+        let clip = context.clip
+        
+        // Compute display size from transform
+        let displaySize = PlaybackDiagnostics.ClipDiagnostics.computeDisplaySize(
+            natural: context.naturalSize,
+            transform: context.preferredTransform
+        )
+        
+        // Get PHAsset metadata if available
+        var isEdited = false
+        var isCloudPlaceholder = false
+        var assetIDHash: String? = nil
+        
+        if let assetLocalId = clip.assetLocalId {
+            assetIDHash = String(assetLocalId.prefix(8)) + "..."
+            if let phAsset = clip.fetchAsset() {
+                // Check if edited (has adjustments)
+                // Note: PHAsset doesn't directly expose isEdited, but we can check for adjustments
+                // For now, assume false - this requires PHLivePhotoEditingInput or checking adjustment data
+                isEdited = false // TODO: Proper detection if needed
+                
+                // Check if cloud placeholder (not fully downloaded)
+                // PHAsset doesn't directly expose this, but we can infer from resource availability
+                // For now, assume false - would need to check PHAssetResource
+                isCloudPlaceholder = false // TODO: Proper detection if needed
+            }
+        }
+        
+        // Get file URL basename
+        let fileURLBasename = clip.localURL?.lastPathComponent
+        
+        // Get render size from timeline
+        let timelineRenderSize = timeline?.renderSize ?? CGSize(width: 1080, height: 1920)
+        
+        // Get scale mode (effective: clip override or tape default)
+        let tapeScaleMode = currentTape?.scaleMode ?? .fit
+        let effectiveScaleMode = clip.overrideScaleMode ?? tapeScaleMode
+        let scaleModeStr = clip.overrideScaleMode?.rawValue ?? tapeScaleMode.rawValue
+        
+        // Compute actual final transform using same logic as baseTransform()
+        let finalTransform = computeFinalTransform(
+            context: context,
+            renderSize: timelineRenderSize,
+            scaleMode: effectiveScaleMode
+        )
+        
+        // Get instruction count from composition if available
+        let instructionCount = player?.currentItem?.videoComposition?.instructions.count ?? 0
+        
+        // Create diagnostic entry
+        let diagnostics = PlaybackDiagnostics.ClipDiagnostics(
+            clipIndex: context.index,
+            clipID: clip.id.uuidString,
+            assetID: assetIDHash,
+            fileURL: fileURLBasename,
+            clipType: clip.clipType.rawValue,
+            naturalSize: context.naturalSize,
+            preferredTransform: context.preferredTransform,
+            computedDisplaySize: displaySize,
+            cleanAperture: context.cleanAperture,
+            pixelAspectRatio: context.pixelAspectRatio,
+            renderSize: timelineRenderSize,
+            instructionCount: instructionCount,
+            finalTransform: finalTransform,
+            videoGravity: nil, // VideoPlayer doesn't expose this - would need UIViewRepresentable
+            layerBounds: nil, // Would need to get from UI layer
+            containerSize: nil, // Would need to get from SwiftUI
+            safeAreaInsets: nil, // Would need to get from SwiftUI
+            scaleMode: scaleModeStr,
+            timeToFirstFrame: nil, // Would need to track first frame render via AVPlayerItem observers
+            layoutStabilisedTime: nil, // Would need to track layout via GeometryReader
+            isCloudPlaceholder: isCloudPlaceholder,
+            isEdited: isEdited
+        )
+        
+        PlaybackDiagnostics.logClipStart(diagnostics)
+    }
+    
+    // Diagnostic: Compute final transform using same logic as TapeCompositionBuilder.baseTransform()
+    private func computeFinalTransform(
+        context: TapeCompositionBuilder.ClipAssetContext,
+        renderSize: CGSize,
+        scaleMode: ScaleMode
+    ) -> CGAffineTransform {
+        let preferred = context.preferredTransform
+        // Basic scaling to fit render size - same logic as baseTransform
+        let naturalSize = context.naturalSize.applying(preferred)
+        let absWidth = abs(naturalSize.width)
+        let absHeight = abs(naturalSize.height)
+        guard absWidth > 0, absHeight > 0 else { return preferred }
+        
+        let renderWidth = renderSize.width
+        let renderHeight = renderSize.height
+        
+        let scaleX = renderWidth / absWidth
+        let scaleY = renderHeight / absHeight
+        
+        let scale: CGFloat
+        switch scaleMode {
+        case .fit:
+            scale = min(scaleX, scaleY)
+        case .fill:
+            scale = max(scaleX, scaleY)
+        }
+        
+        // OPTION A: Match TapeExporter approach - use concatenating() instead of scaledBy()
+        // This matches the working export code exactly (for diagnostics)
+        var transform = preferred
+        transform = transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        let translatedX = (renderWidth - absWidth * scale) / 2
+        let translatedY = (renderHeight - absHeight * scale) / 2
+        transform = transform.concatenating(CGAffineTransform(translationX: translatedX, y: translatedY))
+        
+        return transform
     }
 }
 

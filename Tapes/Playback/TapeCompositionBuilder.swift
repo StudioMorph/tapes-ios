@@ -92,6 +92,10 @@ struct TapeCompositionBuilder {
         let audioTrack: AVAssetTrack?
         let motionEffect: MotionEffect?
         let isTemporaryAsset: Bool
+        
+        // Diagnostic metadata (only populated if diagnostics enabled)
+        var cleanAperture: CGRect? = nil
+        var pixelAspectRatio: CGSize? = nil
     }
 
     struct Segment {
@@ -407,10 +411,49 @@ struct TapeCompositionBuilder {
                     let duration = try await asset.load(.duration)
                     let naturalSize = try await videoTrack.load(.naturalSize)
                     let preferredTransform = try await videoTrack.load(.preferredTransform)
+                    
+                    // Diagnostic: Load clean aperture and pixel aspect ratio if available
+                    var cleanAperture: CGRect? = nil
+                    var pixelAspectRatio: CGSize? = nil
+                    if PlaybackDiagnostics.isEnabled {
+                        do {
+                            let formatDescriptions = try await videoTrack.load(.formatDescriptions)
+                            if let formatDesc = formatDescriptions.first {
+                                // Clean aperture extraction
+                                if let cleanApertureDict = CMFormatDescriptionGetExtension(formatDesc, extensionKey: kCMFormatDescriptionExtension_CleanAperture) as? [String: Any] {
+                                    if let width = cleanApertureDict["Width"] as? CGFloat,
+                                       let height = cleanApertureDict["Height"] as? CGFloat,
+                                       let horizontalOffset = cleanApertureDict["HorizontalOffset"] as? CGFloat,
+                                       let verticalOffset = cleanApertureDict["VerticalOffset"] as? CGFloat {
+                                        cleanAperture = CGRect(
+                                            x: horizontalOffset,
+                                            y: verticalOffset,
+                                            width: width,
+                                            height: height
+                                        )
+                                    }
+                                }
+                                
+                                // Pixel aspect ratio extraction
+                                if let parDict = CMFormatDescriptionGetExtension(formatDesc, extensionKey: kCMFormatDescriptionExtension_PixelAspectRatio) as? [String: Any] {
+                                    let parWidth = (parDict["HorizontalSpacing"] as? Int) ?? 1
+                                    let parHeight = (parDict["VerticalSpacing"] as? Int) ?? 1
+                                    pixelAspectRatio = CGSize(width: CGFloat(parWidth), height: CGFloat(parHeight))
+                                }
+                                // Default to 1:1 if not found
+                                if pixelAspectRatio == nil {
+                                    pixelAspectRatio = CGSize(width: 1, height: 1)
+                                }
+                            }
+                        } catch {
+                            // Silently fail - these are diagnostic only
+                        }
+                    }
+                    
                     let audioTracks = try await asset.loadTracks(withMediaType: .audio)
                     let audioTrack = audioTracks.first
                     let hasAudio = !audioTracks.isEmpty
-                    return ClipAssetContext(
+                    var context = ClipAssetContext(
                         index: index,
                         clip: clip,
                         asset: asset,
@@ -423,6 +466,10 @@ struct TapeCompositionBuilder {
                         motionEffect: resolved.motionEffect,
                         isTemporaryAsset: resolved.isTemporary
                     )
+                    // Set diagnostic metadata
+                    context.cleanAperture = cleanAperture
+                    context.pixelAspectRatio = pixelAspectRatio
+                    return context
                 }
             }
 
@@ -1015,7 +1062,6 @@ struct TapeCompositionBuilder {
         renderSize: CGSize,
         scaleMode: ScaleMode
     ) -> CGAffineTransform {
-        // TODO: refine scaling/rotation handling; for now rely on preferredTransform.
         let preferred = context.preferredTransform
         // Basic scaling to fit render size.
         let naturalSize = context.naturalSize.applying(preferred)
@@ -1037,11 +1083,13 @@ struct TapeCompositionBuilder {
             scale = max(scaleX, scaleY)
         }
 
-        var transform = preferred.scaledBy(x: scale, y: scale)
-        // Center the video.
+        // OPTION A: Match TapeExporter approach - use concatenating() instead of scaledBy()
+        // This matches the working export code exactly
+        var transform = preferred
+        transform = transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
         let translatedX = (renderWidth - absWidth * scale) / 2
         let translatedY = (renderHeight - absHeight * scale) / 2
-        transform = transform.translatedBy(x: translatedX / scale, y: translatedY / scale)
+        transform = transform.concatenating(CGAffineTransform(translationX: translatedX, y: translatedY))
         return transform
     }
 
