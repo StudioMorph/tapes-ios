@@ -37,37 +37,38 @@ BackgroundAssetService: Clip 12 loaded in background
 ## Attempt #1: Early Return on Deadline with Task Tracking (Option B)
 
 **Date:** [Current Date]  
-**Commit:** [Will be added after implementation]  
+**Commit:** `f1aa6ff`  
 **Attempted By:** Loading window timeout fix
 
 **What We Tried:**
-- Return immediately from `loadSequentialQueue()` when deadline expires
+- Return immediately from `loadSequentialQueue()` when deadline expires (break from loop)
 - Don't block waiting for in-progress loads to complete
-- Track which tasks have started loading vs never started
-- Populate `loadingAssets` array with clip indices that started but haven't finished
-- Mark only clips that never started as `.skipped(.timeout)`
-- Let background service handle both skipped AND loading assets
+- Track current task and try to collect result with short timeout (0.3s)
+- If timeout occurs, let task continue in background
+- Don't mark remaining clips as `.skipped(.timeout)` - they haven't started yet
+- Let background service handle clips that never started (via `startBackgroundLoading`)
 
 **Approach:**
-1. Before starting each clip, check deadline (keep existing check)
-2. If deadline expired, return immediately with current results
-3. Track started tasks separately from completed results
-4. When returning, include in-progress clips in `loadingAssets` array
-5. Background service already handles non-ready clips, so it will pick up both
+1. Check deadline before starting each clip (line 322)
+2. If deadline expired, break immediately - don't mark remaining as skipped
+3. Track `currentTask` for in-progress loads
+4. Before starting next clip, try to collect previous task result with 0.3s timeout
+5. If timeout, task continues in background
+6. Background service already handles all non-ready clips
 
 **Code Location:**
-- `Tapes/Playback/HybridAssetLoader.swift:312-345` (loadSequentialQueue method)
+- `Tapes/Playback/HybridAssetLoader.swift:298-415` (loadSequentialQueue method)
 
 **Did It Work?**
-- [TBD - will be marked after testing]
+- ⏳ **TESTING REQUIRED** - Waiting for user feedback
 
 **Why It Failed/Succeeded:**
-- [TBD]
+- [TBD after testing]
 
 **Key Learning:**
-- [TBD]
+- [TBD after testing]
 
-**Status:** In Progress - Implementation starting
+**Status:** ✅ Implemented - Ready for Testing
 
 ---
 
@@ -167,5 +168,13 @@ BackgroundAssetService: Clip 12 loaded in background
 ---
 
 **Last Updated:** [Current Date]  
-**Current Status:** Attempt #1 in progress - implementing non-blocking sequential queue
+**Current Status:** ✅ Attempt #1 implemented (commit `f1aa6ff`) - Ready for testing
+
+**Testing Instructions:**
+1. Create tape with 14+ Photos assets (clips 11+ should be Photos videos)
+2. Play tape and observe logs
+3. Check if clips 11 & 12 are marked as skipped or handled by background loading
+4. Verify playback starts with available clips
+5. Verify background loading completes clips 11 & 12
+6. If fails, revert commit `f1aa6ff` and mark as failed in this document
 
