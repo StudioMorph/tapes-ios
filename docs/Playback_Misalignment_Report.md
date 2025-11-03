@@ -8,7 +8,9 @@
 
 ## Executive Summary
 
-[One paragraph: frequency observed, affected asset types, whether images are unaffected, primary hypothesis]
+**Status:** ✅ **RESOLVED**
+
+Video misalignment affected clips with 180° rotations and unusual aspect ratios. Images were always unaffected. Root cause was incorrect transform composition method (`scaledBy()` + `translatedBy()` with division by scale) instead of using `concatenating()` matching the working TapeExporter approach. Fixed in commit `1d034f9` (Option A - Match TapeExporter).
 
 ---
 
@@ -406,7 +408,15 @@
 
 ## Conclusion
 
-[Summary of findings, primary root cause identified (if any), recommended first fix to try]
+**Root Cause Identified:** Incorrect transform composition method in `baseTransform()`. The code used `scaledBy()` + `translatedBy()` with division by scale, which applied translations in the wrong coordinate space (scaled space instead of render space).
+
+**Solution Applied:** Changed to use `concatenating()` for both scale and translation transforms, matching the working `TapeExporter.swift` approach exactly. Removed division by scale on translation.
+
+**Result:** All clips (including 180° rotations and unusual aspect ratios) now render correctly centred. No regression on previously working clips.
+
+**Key Takeaway:** Always reference existing working code (`TapeExporter`) for proven patterns rather than inventing new approaches.
+
+**Fixed in Commit:** `1d034f9` (Option A from `Playback_Misalignment_Attempts.md`)
 
 ---
 
