@@ -18,7 +18,6 @@ struct TapePlayerView: View {
     @StateObject private var engine = PlaybackEngine()
     @State private var showingControlsV2: Bool = true
     @State private var controlsTimerV2: Timer?
-    @State private var autoHideObserver: NSObjectProtocol?
     @State private var hasAppeared = false
     @State private var appearanceTime: Date?
     
@@ -230,13 +229,6 @@ struct TapePlayerView: View {
         PlayerLoadingOverlay(
             isLoading: isLoading,
             loadError: loadError
-        )
-    }
-    
-    private var loadingOverlayV2: some View {
-        PlayerLoadingOverlay(
-            isLoading: engine.isPreparing || engine.isBuffering,
-            loadError: engine.error
         )
     }
 

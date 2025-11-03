@@ -274,14 +274,12 @@ final class PlaybackEngine: ObservableObject {
         TapesLog.player.info("PlaybackEngine: Speed set to \(String(format: "%.1f", clampedSpeed))x")
     }
     
-    func seek(to time: Double, skipIndexUpdate: Bool = false) {
+    func seek(to time: Double) {
         guard let player = player else { return }
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
         player.seek(to: cmTime)
         currentTime = time
-        if !skipIndexUpdate {
-            updateCurrentClipIndex()
-        }
+        updateCurrentClipIndex()
         TapesLog.player.info("PlaybackEngine: Seek to \(String(format: "%.2f", time))s")
     }
     
