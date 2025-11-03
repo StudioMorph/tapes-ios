@@ -20,7 +20,7 @@ final class CompositionExtensionManager {
         strategy: CompositionStrategy? = nil
     ) {
         self.builder = builder
-        self.strategy = strategy ?? (FeatureFlags.playbackEngineV2Phase2 ? ExtendableCompositionStrategy() : SingleCompositionStrategy())
+        self.strategy = strategy ?? ExtendableCompositionStrategy()
     }
     
     // MARK: - Public API
@@ -53,9 +53,6 @@ final class CompositionExtensionManager {
         currentPlaybackTime: Double,
         player: AVPlayer?
     ) async -> TapeCompositionBuilder.PlayerComposition? {
-        guard FeatureFlags.playbackEngineV2Phase2 else {
-            return nil
-        }
         
         guard let currentComposition = currentComposition else {
             return nil

@@ -18,42 +18,40 @@ struct AdvancedPlayerControls: View {
     var body: some View {
         VStack(spacing: 24) {
             // Speed control
-            if FeatureFlags.playbackEngineV2Phase3 {
-                HStack(spacing: 16) {
-                    Text("Speed")
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(.white.opacity(0.8))
-                    
-                    Button(action: { showingSpeedMenu.toggle() }) {
-                        Text(formatSpeed(playbackSpeed))
-                            .font(Tokens.Typography.body)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial, in: Capsule())
-                    }
-                    .actionSheet(isPresented: $showingSpeedMenu) {
-                        speedMenu
-                    }
-                    
-                    // Frame-by-frame controls
-                    Button(action: { onFrameStep(-1) }) {
-                        Image(systemName: "arrow.left.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.white)
-                    }
-                    .disabled(!canGoBack)
-                    .accessibilityLabel("Step backward one frame")
-                    
-                    Button(action: { onFrameStep(1) }) {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.white)
-                    }
-                    .disabled(!canGoForward)
-                    .accessibilityLabel("Step forward one frame")
+            HStack(spacing: 16) {
+                Text("Speed")
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+                
+                Button(action: { showingSpeedMenu.toggle() }) {
+                    Text(formatSpeed(playbackSpeed))
+                        .font(Tokens.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
                 }
+                .actionSheet(isPresented: $showingSpeedMenu) {
+                    speedMenu
+                }
+                
+                // Frame-by-frame controls
+                Button(action: { onFrameStep(-1) }) {
+                    Image(systemName: "arrow.left.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white)
+                }
+                .disabled(!canGoBack)
+                .accessibilityLabel("Step backward one frame")
+                
+                Button(action: { onFrameStep(1) }) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white)
+                }
+                .disabled(!canGoForward)
+                .accessibilityLabel("Step forward one frame")
             }
             
             // Standard controls

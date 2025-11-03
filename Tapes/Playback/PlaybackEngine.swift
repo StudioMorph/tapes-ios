@@ -159,21 +159,12 @@ final class PlaybackEngine: ObservableObject {
                     return
                 }
                 
-                // Build initial composition using extension manager (Phase 2) or builder directly (Phase 1)
-                let initialComposition: TapeCompositionBuilder.PlayerComposition
-                if FeatureFlags.playbackEngineV2Phase2 {
-                    initialComposition = try await extensionManager.buildInitial(
-                        for: tape,
-                        readyAssets: windowResult.readyAssets,
-                        skippedIndices: skippedIndices
-                    )
-                } else {
-                    initialComposition = try await builder.buildPlayerItem(
-                        for: tape,
-                        readyAssets: windowResult.readyAssets,
-                        skippedIndices: skippedIndices
-                    )
-                }
+                // Build initial composition using extension manager
+                let initialComposition = try await extensionManager.buildInitial(
+                    for: tape,
+                    readyAssets: windowResult.readyAssets,
+                    skippedIndices: skippedIndices
+                )
                 
                 // Check if task was cancelled after building
                 guard !Task.isCancelled else {
@@ -187,11 +178,9 @@ final class PlaybackEngine: ObservableObject {
                 // Install composition
                 await install(composition: initialComposition)
                 
-                // Phase 2: Start background loading and extension checks
-                if FeatureFlags.playbackEngineV2Phase2 {
-                    await startBackgroundLoading(tape: tape, skippedIndices: skippedIndices, windowResult: windowResult)
-                    startExtensionChecking(tape: tape)
-                }
+                // Start background loading and extension checks
+                await startBackgroundLoading(tape: tape, skippedIndices: skippedIndices, windowResult: windowResult)
+                startExtensionChecking(tape: tape)
                 
                 // Calculate TTFMP
                 let ttfmp = Date().timeIntervalSince(startTime)
@@ -262,9 +251,8 @@ final class PlaybackEngine: ObservableObject {
         TapesLog.player.info("PlaybackEngine: Pause")
     }
     
-    /// Set playback speed (Phase 3)
+    /// Set playback speed
     func setPlaybackSpeed(_ speed: Float) {
-        guard FeatureFlags.playbackEngineV2Phase3 else { return }
         guard let player = player else { return }
         
         let clampedSpeed = max(0.5, min(2.0, speed))
@@ -283,9 +271,8 @@ final class PlaybackEngine: ObservableObject {
         TapesLog.player.info("PlaybackEngine: Seek to \(String(format: "%.2f", time))s")
     }
     
-    /// Step one frame forward or backward (Phase 3)
+    /// Step one frame forward or backward
     func stepFrame(direction: Int) {
-        guard FeatureFlags.playbackEngineV2Phase3 else { return }
         guard let player = player, let timeline = timeline else { return }
         
         let currentCMTime = CMTime(seconds: currentTime, preferredTimescale: 600)
@@ -527,8 +514,7 @@ final class PlaybackEngine: ObservableObject {
     // MARK: - Skip Behavior
     
     private func checkSkipBehavior() {
-        guard FeatureFlags.playbackEngineV2SkipBehavior,
-              let skipHandler = _skipHandler,
+        guard let skipHandler = _skipHandler,
               let timeline = timeline else {
             return
         }
