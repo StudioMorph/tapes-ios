@@ -2,6 +2,7 @@ import Foundation
 import PhotosUI
 import UniformTypeIdentifiers
 import AVFoundation
+import Photos
 import os
 
 enum MediaLoaderError: Error {
@@ -13,7 +14,7 @@ enum MediaLoaderError: Error {
 }
 
 public enum PickedMedia {
-    case video(url: URL, duration: TimeInterval, assetIdentifier: String?)
+    case video(url: URL?, duration: TimeInterval, assetIdentifier: String?) // url is nil for Photos assets
     case photo(image: UIImage, assetIdentifier: String?)
 }
 
@@ -138,12 +139,20 @@ func loadImage(from result: PHPickerResult) async throws -> UIImage {
 }
 
 func resolvePickedMedia(from result: PHPickerResult) async throws -> PickedMedia {
+    // If Photos asset, use PHAsset metadata directly (no AVAsset, no file copy)
+    if let assetIdentifier = result.assetIdentifier {
+        if let photosMedia = try? await resolvePhotosAsset(assetIdentifier: assetIdentifier, result: result) {
+            return photosMedia
+        }
+    }
+    
+    // Fallback to file-based handling (camera captures, etc.)
     if result.itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+        // For local files, still copy (needed for playback), but defer duration
         let url = try await loadMovieURL(from: result)
-        let asset = AVURLAsset(url: url)
-        let duration = try? await asset.load(.duration)
-        let seconds = duration?.seconds ?? 0
-        return .video(url: url, duration: seconds, assetIdentifier: result.assetIdentifier)
+        // Don't create AVAsset here - duration can be 0 initially, resolved later if needed
+        // For Photos assets, this path shouldn't be reached (handled above)
+        return .video(url: url, duration: 0, assetIdentifier: result.assetIdentifier)
     }
 
     if result.itemProvider.canLoadObject(ofClass: UIImage.self) ||
@@ -153,6 +162,77 @@ func resolvePickedMedia(from result: PHPickerResult) async throws -> PickedMedia
     }
 
     throw MediaLoaderError.loadFailed(nil)
+}
+
+/// Resolve Photos asset using PHAsset metadata (no AVAsset creation).
+private func resolvePhotosAsset(assetIdentifier: String, result: PHPickerResult) async throws -> PickedMedia {
+    let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil)
+    guard let phAsset = fetchResult.firstObject else {
+        throw MediaLoaderError.loadFailed(nil) // Not a Photos asset or not found
+    }
+    
+    #if DEBUG
+    let assetPrefix = String(assetIdentifier.prefix(8))
+    TapesLog.mediaPicker.info("[INTAKE] asset=\(assetPrefix)... type=\(phAsset.mediaType.rawValue) duration=\(phAsset.duration)s size=\(phAsset.pixelWidth)x\(phAsset.pixelHeight) source=photos network=false")
+    #endif
+    
+    switch phAsset.mediaType {
+    case .video:
+        // For Photos videos, don't copy file - use assetIdentifier only
+        // Duration from PHAsset (no AVAsset needed)
+        // URL will be nil (Photos assets don't have localURL in timeline)
+        return .video(url: nil, duration: phAsset.duration, assetIdentifier: assetIdentifier)
+        
+    case .image:
+        // Request thumbnail only (no full image load)
+        // Use @2x scale for Retina: 150x84 display → 300x168 @2x
+        let scale = UIScreen.main.scale
+        let thumbnailSize = CGSize(width: 300 * scale, height: 168 * scale)
+        let thumbnail = await requestPhotosThumbnail(for: phAsset, targetSize: thumbnailSize)
+        return .photo(image: thumbnail ?? UIImage(), assetIdentifier: assetIdentifier)
+        
+    default:
+        throw MediaLoaderError.loadFailed(nil)
+    }
+}
+
+/// Request thumbnail from Photos asset (no network access).
+private func requestPhotosThumbnail(for asset: PHAsset, targetSize: CGSize) async -> UIImage? {
+    return await withCheckedContinuation { continuation in
+        var hasResumed = false
+        
+        // Use @2x scale for Retina displays
+        let scale = UIScreen.main.scale
+        let scaledSize = CGSize(width: targetSize.width * scale, height: targetSize.height * scale)
+        
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = false // ✅ Timeline only - no network
+        options.deliveryMode = .fastFormat // ✅ Fastest - returns immediately
+        options.resizeMode = .fast
+        options.isSynchronous = false
+        
+        PHImageManager.default().requestImage(
+            for: asset,
+            targetSize: scaledSize,
+            contentMode: .aspectFill,
+            options: options
+        ) { image, info in
+            guard !hasResumed else { return } // Guard against multiple resumes
+            
+            // Check if request was cancelled or failed
+            let cancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+            let error = info?[PHImageErrorKey] as? Error
+            if cancelled || error != nil {
+                hasResumed = true
+                continuation.resume(returning: nil)
+                return
+            }
+            
+            // With .fastFormat, we get whatever is available immediately (no degraded callback)
+            hasResumed = true
+            continuation.resume(returning: image)
+        }
+    }
 }
 
 /// Preserve selection order, loading items concurrently but returning in-order.

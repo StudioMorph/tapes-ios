@@ -362,15 +362,26 @@ struct TapeCardView: View {
         for item in picked {
             switch item {
             case let .video(url, duration, assetIdentifier):
-                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-                if clip.duration <= 0 {
-                    let asset = AVURLAsset(url: url)
-                    let seconds = CMTimeGetSeconds(asset.duration)
-                    if seconds > 0 {
-                        clip.duration = seconds
-                    }
+                // Remove AVAsset fallback - duration from PHAsset or defer to background
+                if let url = url {
+                    var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                    // Duration may be 0 - defer to background if needed
+                    clips.append(clip)
+                } else if let assetIdentifier = assetIdentifier {
+                    // Photos video - no localURL
+                    clips.append(Clip(
+                        assetLocalId: assetIdentifier,
+                        localURL: nil,
+                        clipType: .video,
+                        duration: duration,
+                        thumbnail: nil,
+                        rotateQuarterTurns: 0,
+                        overrideScaleMode: nil,
+                        createdAt: Date(),
+                        updatedAt: Date(),
+                        isPlaceholder: false
+                    ))
                 }
-                clips.append(clip)
             case let .photo(image, assetIdentifier):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
                     clips.append(

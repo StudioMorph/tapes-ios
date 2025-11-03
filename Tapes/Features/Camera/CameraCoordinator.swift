@@ -89,12 +89,19 @@ class CameraCoordinator: NSObject, ObservableObject {
             
             switch item {
             case let .video(url, duration, assetIdentifier):
+                guard let url = url else {
+                    TapesLog.camera.error("Video PickedMedia has nil URL")
+                    group.leave()
+                    continue
+                }
                 var placeholderId: String?
                 PHPhotoLibrary.shared().performChanges({
                     if let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url) {
                         placeholderId = request.placeholderForCreatedAsset?.localIdentifier
                     }
                 }) { success, error in
+                    defer { group.leave() }
+                    
                     if !success {
                         TapesLog.camera.error("Failed to save video \(url.lastPathComponent): \(error?.localizedDescription ?? "Unknown error")")
                     } else {
@@ -109,7 +116,6 @@ class CameraCoordinator: NSObject, ObservableObject {
                         let savedItem = PickedMedia.video(url: url, duration: savedDuration, assetIdentifier: placeholderId ?? assetIdentifier)
                         savedMedia.append(savedItem)
                     }
-                    group.leave()
                 }
                 continue
             case let .photo(image, assetIdentifier):

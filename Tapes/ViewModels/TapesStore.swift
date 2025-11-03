@@ -431,10 +431,22 @@ public class TapesStore: ObservableObject {
         associateClipsWithAlbum(tapeID: tapeID, clips: [resolvedClip])
 
         switch media {
-        case let .video(url, _, _):
-            generateThumbAndDuration(for: url, clipID: resolvedClip.id, tapeID: tapeID)
-        case .photo:
-            break
+        case let .video(url, _, assetIdentifier):
+            if let url = url {
+                // Local file - generate thumbnail/duration in background
+                generateThumbAndDuration(for: url, clipID: resolvedClip.id, tapeID: tapeID)
+            } else if let assetIdentifier = assetIdentifier {
+                // Photos asset - request thumbnail only (no AVAsset)
+                // Carousel display size: 150x84 points, will be scaled to @2x/3x in requestThumbnailOnly
+                requestThumbnailOnly(for: resolvedClip.id, assetLocalId: assetIdentifier, targetSize: CGSize(width: 150, height: 84), tapeID: tapeID)
+                // Duration already set from PHAsset metadata
+            }
+        case let .photo(image, assetIdentifier):
+            // Thumbnail already set from PickedMedia.image
+            // If assetIdentifier exists, request higher quality thumbnail
+            if let assetIdentifier = assetIdentifier {
+                requestThumbnailOnly(for: resolvedClip.id, assetLocalId: assetIdentifier, targetSize: CGSize(width: 150, height: 84), tapeID: tapeID)
+            }
         }
     }
 
@@ -459,13 +471,29 @@ private func evaluateBatchCompletion(for tapeID: UUID) {
     private func buildClip(from media: PickedMedia) -> Clip? {
         switch media {
         case let .video(url, duration, assetIdentifier):
-            var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-            if clip.duration <= 0 {
-                let asset = AVURLAsset(url: url)
-                let seconds = CMTimeGetSeconds(asset.duration)
-                clip.duration = seconds > 0 ? seconds : 0
+            // For Photos assets, url is nil - create clip with assetLocalId only
+            if let url = url {
+                // Local file (camera capture) - still needs URL for playback
+                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                // Duration may be 0 for local files - defer to background if needed
+                return clip
+            } else if let assetIdentifier = assetIdentifier {
+                // Photos video - no localURL, use assetLocalId only
+                // Duration comes from PHAsset (already set in resolvePickedMedia)
+                return Clip(
+                    assetLocalId: assetIdentifier,
+                    localURL: nil, // ✅ No file copy for Photos assets
+                    clipType: .video,
+                    duration: duration,
+                    thumbnail: nil, // Will be loaded via TimelineThumbnailProvider
+                    rotateQuarterTurns: 0,
+                    overrideScaleMode: nil,
+                    createdAt: Date(),
+                    updatedAt: Date(),
+                    isPlaceholder: false
+                )
             }
-            return clip
+            return nil
         case let .photo(image, assetIdentifier):
             guard let data = image.jpegData(compressionQuality: 0.85) else { return nil }
             return Clip.fromImage(
@@ -738,18 +766,32 @@ extension TapesStore {
         // Convert picked media to clips
         var newClips: [Clip] = []
         for item in items {
-            let clip: Clip
+            let clip: Clip?
             switch item {
             case let .video(url, duration, assetIdentifier):
-                var videoClip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-                if videoClip.duration <= 0 {
-                    let asset = AVURLAsset(url: url)
-                    let seconds = CMTimeGetSeconds(asset.duration)
-                    if seconds > 0 {
-                        videoClip.duration = seconds
-                    }
+                // Remove AVAsset fallback - duration from PHAsset or defer to background
+                if let url = url {
+                    var videoClip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                    // Duration may be 0 - defer to background if needed
+                    clip = videoClip
+                } else if let assetIdentifier = assetIdentifier {
+                    // Photos video - no localURL
+                    clip = Clip(
+                        assetLocalId: assetIdentifier,
+                        localURL: nil,
+                        clipType: .video,
+                        duration: duration,
+                        thumbnail: nil,
+                        rotateQuarterTurns: 0,
+                        overrideScaleMode: nil,
+                        createdAt: Date(),
+                        updatedAt: Date(),
+                        isPlaceholder: false
+                    )
+                } else {
+                    TapesLog.store.warning("Video clip has neither url nor assetIdentifier, skipping")
+                    continue // Skip invalid video
                 }
-                clip = videoClip
             case let .photo(image, assetIdentifier):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
                     clip = Clip.fromImage(
@@ -762,7 +804,9 @@ extension TapesStore {
                     continue // Skip invalid image
                 }
             }
-            newClips.append(clip)
+            if let clip = clip {
+                newClips.append(clip)
+            }
         }
         
         // Insert clips in order
@@ -794,15 +838,26 @@ extension TapesStore {
         for m in picked {
             switch m {
             case let .video(url, duration, assetIdentifier):
-                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-                if clip.duration <= 0 {
-                    let asset = AVURLAsset(url: url)
-                    let seconds = CMTimeGetSeconds(asset.duration)
-                    if seconds > 0 {
-                        clip.duration = seconds
-                    }
+                // Remove AVAsset fallback - duration from PHAsset or defer to background
+                if let url = url {
+                    var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                    // Duration may be 0 - defer to background if needed
+                    newClips.append(clip)
+                } else if let assetIdentifier = assetIdentifier {
+                    // Photos video - no localURL
+                    newClips.append(Clip(
+                        assetLocalId: assetIdentifier,
+                        localURL: nil,
+                        clipType: .video,
+                        duration: duration,
+                        thumbnail: nil,
+                        rotateQuarterTurns: 0,
+                        overrideScaleMode: nil,
+                        createdAt: Date(),
+                        updatedAt: Date(),
+                        isPlaceholder: false
+                    ))
                 }
-                newClips.append(clip)
             case let .photo(image, assetIdentifier):
                 // Convert image to data and use default duration
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
@@ -837,10 +892,17 @@ extension TapesStore {
         autoSave()
         associateClipsWithAlbum(tapeID: tapeID, clips: newClips)
         
-        // Generate thumbnails and duration for video clips asynchronously
+        // Generate thumbnails/durations for clips
         for clip in newClips {
-            if clip.clipType == .video, let url = clip.localURL {
-                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
+            if clip.clipType == .video {
+                if let url = clip.localURL {
+                    // Local file - generate thumbnail/duration in background
+                    generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
+                } else if let assetIdentifier = clip.assetLocalId {
+                    // Photos asset - request thumbnail only (no AVAsset)
+                    // Carousel display size: 150x84 points, will be scaled to @2x/3x in requestThumbnailOnly
+                    requestThumbnailOnly(for: clip.id, assetLocalId: assetIdentifier, targetSize: CGSize(width: 150, height: 84), tapeID: tapeID)
+                }
             }
         }
     }
@@ -854,15 +916,26 @@ extension TapesStore {
         for item in picked {
             switch item {
             case let .video(url, duration, assetIdentifier):
-                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-                if clip.duration <= 0 {
-                    let asset = AVURLAsset(url: url)
-                    let seconds = CMTimeGetSeconds(asset.duration)
-                    if seconds > 0 {
-                        clip.duration = seconds
-                    }
+                // Remove AVAsset fallback - duration from PHAsset or defer to background
+                if let url = url {
+                    var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+                    // Duration may be 0 - defer to background if needed
+                    newClips.append(clip)
+                } else if let assetIdentifier = assetIdentifier {
+                    // Photos video - no localURL
+                    newClips.append(Clip(
+                        assetLocalId: assetIdentifier,
+                        localURL: nil,
+                        clipType: .video,
+                        duration: duration,
+                        thumbnail: nil,
+                        rotateQuarterTurns: 0,
+                        overrideScaleMode: nil,
+                        createdAt: Date(),
+                        updatedAt: Date(),
+                        isPlaceholder: false
+                    ))
                 }
-                newClips.append(clip)
             case let .photo(image, assetIdentifier):
                 if let imageData = image.jpegData(compressionQuality: 0.8) {
                     let clip = Clip.fromImage(
@@ -887,8 +960,14 @@ extension TapesStore {
         associateClipsWithAlbum(tapeID: tape.wrappedValue.id, clips: newClips)
         
         for clip in newClips {
-            if clip.clipType == .video, let url = clip.localURL {
-                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tape.wrappedValue.id)
+            if clip.clipType == .video {
+                if let url = clip.localURL {
+                    // Local file - generate thumbnail/duration in background
+                    generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tape.wrappedValue.id)
+                } else if let assetIdentifier = clip.assetLocalId {
+                    // Photos asset - request thumbnail only (no AVAsset)
+                    requestThumbnailOnly(for: clip.id, assetLocalId: assetIdentifier, targetSize: CGSize(width: 400, height: 400), tapeID: tape.wrappedValue.id)
+                }
             }
         }
     }
@@ -905,8 +984,15 @@ extension TapesStore {
         autoSave()
         
         for clip in newClips {
-            if clip.clipType == .video, let url = clip.localURL {
-                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
+            if clip.clipType == .video {
+                if let url = clip.localURL {
+                    // Local file - generate thumbnail/duration in background
+                    generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
+                } else if let assetIdentifier = clip.assetLocalId {
+                    // Photos asset - request thumbnail only (no AVAsset)
+                    // Carousel display size: 150x84 points, will be scaled to @2x/3x in requestThumbnailOnly
+                    requestThumbnailOnly(for: clip.id, assetLocalId: assetIdentifier, targetSize: CGSize(width: 150, height: 84), tapeID: tapeID)
+                }
             }
         }
     }
@@ -951,6 +1037,56 @@ extension TapesStore {
     func generateThumbAndDuration(for url: URL, clipID: UUID, tapeID: UUID) {
         let asset = AVURLAsset(url: url)
         processAssetMetadata(asset, clipID: clipID, tapeID: tapeID)
+    }
+    
+    /// Request thumbnail only for Photos assets (no AVAsset creation, no network access).
+    func requestThumbnailOnly(for clipID: UUID, assetLocalId: String, targetSize: CGSize, tapeID: UUID) {
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
+        guard let asset = fetchResult.firstObject else {
+            TapesLog.store.warning("requestThumbnailOnly: Asset not found: \(assetLocalId)")
+            return
+        }
+        
+        // Use @2x scale for Retina displays (300x168 display → 600x336 thumbnail)
+        let scale = UIScreen.main.scale
+        let scaledSize = CGSize(width: targetSize.width * scale, height: targetSize.height * scale)
+        
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = false // ✅ Timeline only - no network
+        options.deliveryMode = .fastFormat // ✅ Fastest - returns immediately with whatever is available
+        options.resizeMode = .fast
+        options.isSynchronous = false
+        
+        #if DEBUG
+        let assetPrefix = String(assetLocalId.prefix(8))
+        TapesLog.store.info("[THUMB] asset=\(assetPrefix)... targetSize=\(Int(scaledSize.width))x\(Int(scaledSize.height)) scale=\(scale) network=false")
+        #endif
+        
+        PHImageManager.default().requestImage(
+            for: asset,
+            targetSize: scaledSize,
+            contentMode: .aspectFill,
+            options: options
+        ) { [weak self] image, info in
+            guard let self = self else { return }
+            
+            #if DEBUG
+            if let info = info {
+                let isCached = (info[PHImageResultIsInCloudKey] as? Bool) == false
+                let isDegraded = (info[PHImageResultIsDegradedKey] as? Bool) == true
+                let assetPrefix = String(assetLocalId.prefix(8))
+                TapesLog.store.info("[THUMB] asset=\(assetPrefix)... cached=\(isCached) degraded=\(isDegraded)")
+            }
+            #endif
+            
+            guard let image = image else { return }
+            
+            Task { @MainActor in
+                self.updateClip(clipID, transform: {
+                    $0.thumbnail = image.jpegData(compressionQuality: 0.85)
+                }, in: tapeID)
+            }
+        }
     }
 
     private func processAssetMetadata(_ asset: AVAsset, clipID: UUID, tapeID: UUID) {
@@ -1100,39 +1236,23 @@ extension TapesStore {
                     clip.updatedAt = Date()
                 }, in: tapeID)
             }
+            // Request thumbnail only (no AVAsset)
+            // Carousel display size: 150x84 points, will be scaled to @2x/3x in requestThumbnailOnly
+            requestThumbnailOnly(for: clipID, assetLocalId: assetLocalId, targetSize: CGSize(width: 150, height: 84), tapeID: tapeID)
             return
         }
 
-        let options = PHVideoRequestOptions()
-        options.deliveryMode = .automatic
-        options.isNetworkAccessAllowed = true
-
-        PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
-            guard let avAsset else { return }
-            let durationSeconds = CMTimeGetSeconds(avAsset.duration)
-
-            Task { @MainActor in
-                self.updateClip(clipID, transform: { clip in
-                    clip.duration = durationSeconds
-                    clip.updatedAt = Date()
-                }, in: tapeID)
-            }
-
-            if let urlAsset = avAsset as? AVURLAsset {
-                self.generateThumbAndDuration(for: urlAsset.url, clipID: clipID, tapeID: tapeID)
-            } else {
-                let generator = AVAssetImageGenerator(asset: avAsset)
-                generator.appliesPreferredTrackTransform = true
-                let time = CMTime(seconds: 0.1, preferredTimescale: 600)
-                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cg, _, _, _ in
-                    guard let cg else { return }
-                    let ui = UIImage(cgImage: cg)
-                    Task { @MainActor in
-                        self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }, in: tapeID)
-                    }
-                }
-            }
+        // For videos: Use PHAsset.duration directly (no AVAsset needed)
+        Task { @MainActor in
+            self.updateClip(clipID, transform: { clip in
+                clip.duration = asset.duration // ✅ Direct from PHAsset
+                clip.updatedAt = Date()
+            }, in: tapeID)
         }
+        
+        // Request thumbnail only (no AVAsset, no network access)
+        // Carousel display size: 150x84 points, will be scaled to @2x/3x in requestThumbnailOnly
+        requestThumbnailOnly(for: clipID, assetLocalId: assetLocalId, targetSize: CGSize(width: 150, height: 84), tapeID: tapeID)
     }
 
     private func processAlbumAssociation(tapeID: UUID, tape: Tape, assetIdentifiers: [String]) async {

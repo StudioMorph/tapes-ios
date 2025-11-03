@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import AVFoundation
+import Photos
 import UIKit
 
 // MARK: - Models
@@ -67,18 +68,21 @@ public struct PhotoImportCoordinator: View {
         
         for item in items {
             do {
-                // Try to load as video first
+                // For Photos assets, use PHAsset directly (no AVAsset, no file copy)
+                if let assetIdentifier = item.itemIdentifier {
+                    if let photosMedia = await resolvePhotosAsset(assetIdentifier: assetIdentifier, item: item) {
+                        pickedMedia.append(photosMedia)
+                        continue
+                    }
+                }
+                
+                // Fallback: Try to load as video file (camera captures, etc.)
                 if let movie = try await item.loadTransferable(type: Movie.self) {
-                    let thumbnail = await generateThumbnail(from: movie.url)
-                    let duration = await getVideoDuration(url: movie.url)
-                    
-                    pickedMedia.append(.video(url: movie.url, duration: duration, assetIdentifier: item.itemIdentifier))
+                    // Don't create AVAsset here - duration can be 0, resolved later if needed
+                    pickedMedia.append(.video(url: movie.url, duration: 0, assetIdentifier: item.itemIdentifier))
                 } else if let image = try await item.loadTransferable(type: Data.self) {
                     // Load as image
                     if let uiImage = UIImage(data: image) {
-                        let thumbnail = uiImage
-                        let duration = Tokens.Timing.photoDefaultDuration
-                        
                         pickedMedia.append(.photo(image: uiImage, assetIdentifier: item.itemIdentifier))
                     }
                 }
@@ -90,25 +94,71 @@ public struct PhotoImportCoordinator: View {
         return pickedMedia
     }
     
-    private func generateThumbnail(from url: URL) async -> UIImage? {
-        let asset = AVAsset(url: url)
-        let imageGenerator = AVAssetImageGenerator(asset: asset)
-        imageGenerator.appliesPreferredTrackTransform = true
-        imageGenerator.maximumSize = CGSize(width: 320, height: 320)
+    /// Resolve Photos asset using PHAsset metadata (no AVAsset creation, no file copy).
+    private func resolvePhotosAsset(assetIdentifier: String, item: PhotosPickerItem) async -> PickedMedia? {
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil)
+        guard let phAsset = fetchResult.firstObject else { return nil }
         
-        do {
-            let cgImage = try await imageGenerator.image(at: .zero).image
-            return UIImage(cgImage: cgImage)
-        } catch {
-            TapesLog.mediaPicker.error("Failed to generate thumbnail: \(error.localizedDescription)")
+        #if DEBUG
+        let assetPrefix = String(assetIdentifier.prefix(8))
+        TapesLog.mediaPicker.info("[INTAKE] asset=\(assetPrefix)... type=\(phAsset.mediaType.rawValue) duration=\(phAsset.duration)s size=\(phAsset.pixelWidth)x\(phAsset.pixelHeight) source=photos network=false")
+        #endif
+        
+        switch phAsset.mediaType {
+        case .video:
+            // For Photos videos, don't copy file - use assetIdentifier only
+            // Duration from PHAsset (no AVAsset needed)
+            return .video(url: nil, duration: phAsset.duration, assetIdentifier: assetIdentifier)
+            
+        case .image:
+            // Request thumbnail only (no full image load)
+            // Use @2x scale for Retina: 150x84 display → 300x168 @2x
+            let scale = UIScreen.main.scale
+            let thumbnailSize = CGSize(width: 300 * scale, height: 168 * scale)
+            let thumbnail = await requestPhotosThumbnail(for: phAsset, targetSize: thumbnailSize)
+            return .photo(image: thumbnail ?? UIImage(), assetIdentifier: assetIdentifier)
+            
+        default:
             return nil
         }
     }
     
-    private func getVideoDuration(url: URL) async -> TimeInterval {
-        let asset = AVAsset(url: url)
-        let duration = try? await asset.load(.duration)
-        return CMTimeGetSeconds(duration ?? .zero)
+    /// Request thumbnail from Photos asset (no network access).
+    private func requestPhotosThumbnail(for asset: PHAsset, targetSize: CGSize) async -> UIImage? {
+        return await withCheckedContinuation { continuation in
+            var hasResumed = false
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = false // ✅ Timeline only - no network
+            options.deliveryMode = .opportunistic
+            options.resizeMode = .fast
+            options.isSynchronous = false
+            
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFill,
+                options: options
+            ) { image, info in
+                guard !hasResumed else { return } // Guard against multiple resumes
+                
+                // Check if request was cancelled or failed
+                let cancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let error = info?[PHImageErrorKey] as? Error
+                if cancelled || error != nil {
+                    hasResumed = true
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                // Only resume once - wait for final image (not degraded)
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                if !isDegraded {
+                    hasResumed = true
+                    continuation.resume(returning: image)
+                }
+                // If degraded, wait for the next callback with final image
+            }
+        }
     }
 }
 
