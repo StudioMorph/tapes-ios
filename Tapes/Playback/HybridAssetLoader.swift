@@ -334,11 +334,10 @@ final class HybridAssetLoader {
                     // Try to get result, but don't wait too long
                     // This is a race - task might finish or we might time out
                     do {
-                        // Use async let with timeout pattern
-                        async let taskResult = task.value
+                        // Use TaskGroup with timeout pattern - await task.value directly in closure
                         try await withThrowingTaskGroup(of: (Int, LoadingResult).self) { group in
                             group.addTask {
-                                await taskResult
+                                await task.value
                             }
                             group.addTask {
                                 try await Task.sleep(nanoseconds: UInt64(0.3 * 1_000_000_000))
@@ -385,10 +384,10 @@ final class HybridAssetLoader {
             if timeRemaining > 0.2 {
                 // Try to collect final task result
                 do {
-                    async let taskResult = task.value
+                    // Use TaskGroup with timeout pattern - await task.value directly in closure
                     try await withThrowingTaskGroup(of: (Int, LoadingResult).self) { group in
                         group.addTask {
-                            await taskResult
+                            await task.value
                         }
                         group.addTask {
                             try await Task.sleep(nanoseconds: UInt64(0.3 * 1_000_000_000))
