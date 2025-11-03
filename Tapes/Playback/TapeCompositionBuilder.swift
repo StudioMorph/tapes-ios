@@ -308,14 +308,11 @@ struct TapeCompositionBuilder {
     }
 
     func resolveClipContext(for clip: Clip, index: Int) async throws -> ClipAssetContext {
-        TapesLog.player.info("TapeCompositionBuilder: resolveClipContext started for clip \(index)")
         let contexts = try await loadAssets(for: [clip], startIndex: index)
-        TapesLog.player.info("TapeCompositionBuilder: loadAssets completed for clip \(index), got \(contexts.count) contexts")
         guard let context = contexts.first else {
             TapesLog.player.error("TapeCompositionBuilder: No context returned for clip \(index)")
             throw BuilderError.assetUnavailable(clipID: clip.id)
         }
-        TapesLog.player.info("TapeCompositionBuilder: resolveClipContext completed for clip \(index)")
         return context
     }
 
@@ -439,19 +436,14 @@ struct TapeCompositionBuilder {
     }
 
     private func resolveAsset(for clip: Clip) async throws -> ResolvedAsset {
-        TapesLog.player.info("TapeCompositionBuilder: resolveAsset started for clip type: \(String(describing: clip.clipType))")
         switch clip.clipType {
         case .video:
-            TapesLog.player.info("TapeCompositionBuilder: Resolving video asset")
             let asset = try await resolveVideoAsset(for: clip)
-            TapesLog.player.info("TapeCompositionBuilder: Video asset resolved")
             return ResolvedAsset(asset: asset, isTemporary: false, motionEffect: nil)
         case .image:
-            TapesLog.player.info("TapeCompositionBuilder: Resolving image asset")
             let image = try await loadImage(for: clip)
             let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
             let asset = try await createVideoAsset(from: image, clip: clip, duration: durationSeconds)
-            TapesLog.player.info("TapeCompositionBuilder: Image asset encoded to video")
             return ResolvedAsset(
                 asset: asset,
                 isTemporary: true,
@@ -481,11 +473,8 @@ struct TapeCompositionBuilder {
         // The old code used semaphore synchronously - we use async continuation instead
         // But keep it simple - no nested async contexts
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAsset, Error>) in
-            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestAVAsset...")
             PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
-                TapesLog.player.info("TapeCompositionBuilder: Photos callback fired - asset: \(asset != nil), info: \(info != nil)")
                 if let asset = asset {
-                    TapesLog.player.info("TapeCompositionBuilder: Photos returned asset successfully")
                     continuation.resume(returning: asset)
                 } else if let info = info,
                           let error = info[PHImageErrorKey] as? Error {
@@ -496,7 +485,6 @@ struct TapeCompositionBuilder {
                     continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
                 }
             }
-            TapesLog.player.info("TapeCompositionBuilder: requestAVAsset call completed, waiting for callback...")
         }
     }
 
@@ -1132,29 +1120,24 @@ private extension TapeCompositionBuilder {
         // Can specify target size, Photos Framework handles resizing efficiently
         // Returns orientation-corrected UIImage directly (avoids manual normalization)
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UIImage, Error>) in
-            TapesLog.player.info("TapeCompositionBuilder: Calling PHImageManager.requestImage (targetSize: \(targetSize.width)x\(targetSize.height))...")
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: targetSize,
                 contentMode: .aspectFit,
                 options: options
             ) { image, info in
-                TapesLog.player.info("TapeCompositionBuilder: Image callback fired - image: \(image != nil), info: \(info != nil)")
                 if let image = image {
-                    TapesLog.player.info("TapeCompositionBuilder: Photos returned image successfully (size: \(image.size.width)x\(image.size.height))")
                     continuation.resume(returning: image)
                 } else if let error = info?[PHImageErrorKey] as? Error {
                     TapesLog.player.error("TapeCompositionBuilder: Image error: \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                 } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
-                    TapesLog.player.warning("TapeCompositionBuilder: Image request cancelled")
                     continuation.resume(throwing: BuilderError.photosAssetMissing)
                 } else {
                     TapesLog.player.error("TapeCompositionBuilder: Image returned nil with no error")
                     continuation.resume(throwing: BuilderError.photosAssetMissing)
                 }
             }
-            TapesLog.player.info("TapeCompositionBuilder: requestImage call completed, waiting for callback...")
         }
     }
 
@@ -1214,7 +1197,7 @@ private extension TapeCompositionBuilder {
         let frameDuration = CMTime(value: 1, timescale: encodedFrameRate)
         let totalFrames = max(1, Int(ceil(duration * Double(encodedFrameRate))))
         
-        TapesLog.player.info("TapeCompositionBuilder: Encoding image to video - duration: \(duration)s, encoded at \(encodedFrameRate)fps, \(totalFrames) static frames (Ken Burns via composition transforms)")
+        // Encoding image to video (Ken Burns via composition transforms)
         
         guard let pixelBufferPool = adaptor.pixelBufferPool else {
             throw BuilderError.imageEncodingFailed

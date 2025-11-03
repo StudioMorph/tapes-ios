@@ -105,31 +105,18 @@ final class HybridAssetLoader {
         }
         
         // Load all queues
-        TapesLog.player.info("HybridAssetLoader: Starting parallel queue loading")
-        
         let loadStartTime = Date()
         async let fastResults = loadFastQueue(localClips, deadline: deadline)
         async let sequentialResults = loadSequentialQueue(photosClips, deadline: deadline)
         async let cpuResults = loadCPUQueue(imageClips, deadline: deadline)
         
-        // Collect all results
-        TapesLog.player.info("HybridAssetLoader: Waiting for queue results...")
-        
-        // Collect results one by one with logging
-        TapesLog.player.info("HybridAssetLoader: Waiting for fast queue...")
+        // Wait for all queues
         let fast = await fastResults
-        TapesLog.player.info("HybridAssetLoader: Fast queue completed with \(fast.count) results")
-        
-        TapesLog.player.info("HybridAssetLoader: Waiting for sequential queue...")
         let sequential = await sequentialResults
-        TapesLog.player.info("HybridAssetLoader: Sequential queue completed with \(sequential.count) results")
-        
-        TapesLog.player.info("HybridAssetLoader: Waiting for CPU queue...")
         let cpu = await cpuResults
-        TapesLog.player.info("HybridAssetLoader: CPU queue completed with \(cpu.count) results")
         
         let loadElapsed = Date().timeIntervalSince(loadStartTime)
-        TapesLog.player.info("HybridAssetLoader: All queues completed in \(String(format: "%.2f", loadElapsed))s - processing results")
+        TapesLog.player.info("HybridAssetLoader: Queues completed in \(String(format: "%.2f", loadElapsed))s (fast: \(fast.count), sequential: \(sequential.count), cpu: \(cpu.count))")
         
         // Combine results (all queues now return (Int, LoadingResult))
         var readyAssets: [(Int, ResolvedAsset)] = []
@@ -236,7 +223,7 @@ final class HybridAssetLoader {
         }
         
         let startTime = Date()
-        TapesLog.player.info("HybridAssetLoader: Resolving local file \(index) from \(localURL.lastPathComponent)")
+            // Resolve local file
         
         do {
             let fileManager = FileManager.default
@@ -270,20 +257,16 @@ final class HybridAssetLoader {
             
             let asset = AVURLAsset(url: assetURL)
             
-            // Load required properties with timeout protection
-            TapesLog.player.info("HybridAssetLoader: Loading properties for local file \(index)")
+            // Load required properties
             let duration = try await asset.load(.duration)
-            TapesLog.player.info("HybridAssetLoader: Duration loaded for local file \(index)")
             
             guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
                 return .skipped(.error(NSError(domain: "HybridAssetLoader", code: -3, userInfo: [NSLocalizedDescriptionKey: "No video track"])))
             }
-            TapesLog.player.info("HybridAssetLoader: Video track loaded for local file \(index)")
             
             let naturalSize = try await videoTrack.load(.naturalSize)
             let preferredTransform = try await videoTrack.load(.preferredTransform)
             let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-            TapesLog.player.info("HybridAssetLoader: All properties loaded for local file \(index)")
             
             let elapsed = Date().timeIntervalSince(startTime)
             TapesLog.player.info("HybridAssetLoader: Local file \(index) resolved in \(String(format: "%.2f", elapsed))s")
@@ -318,7 +301,7 @@ final class HybridAssetLoader {
     ) async -> [(Int, LoadingResult)] {
         guard !clips.isEmpty else { return [] }
         
-        TapesLog.player.info("HybridAssetLoader: Sequential queue - loading \(clips.count) Photos assets with overlap")
+        TapesLog.player.info("HybridAssetLoader: Sequential queue - loading \(clips.count) Photos assets")
         
         // CRITICAL FIX: Load sequentially with overlap (not all at once)
         // Photos framework has limits - creating 5+ requests simultaneously exhausts it
@@ -340,14 +323,11 @@ final class HybridAssetLoader {
             }
             
             // Load this clip in detached context (escape MainActor)
-            TapesLog.player.info("HybridAssetLoader: Sequential queue - loading clip \(offset)")
             let result = await Task.detached(priority: .userInitiated) { [weak self] in
                 guard let self = self else {
                     return (offset, LoadingResult.skipped(.cancelled))
                 }
-                TapesLog.player.info("HybridAssetLoader: Sequential queue - task executing for clip \(offset)")
                 let loadingResult = await self.resolvePhotosAsset(clip: clip, index: offset, deadline: deadline, builder: builder)
-                TapesLog.player.info("HybridAssetLoader: Sequential queue - task completed for clip \(offset)")
                 return (offset, loadingResult)
             }.value
             
@@ -356,12 +336,11 @@ final class HybridAssetLoader {
             // Overlap: Wait delay before starting next (if not last clip)
             // This creates overlap - next starts while current is still loading (if it takes longer than delay)
             if offset < clips.count - 1 {
-                TapesLog.player.info("HybridAssetLoader: Sequential queue - waiting \(self.overlapDelay)s before starting clip \(offset + 1)")
                 try? await Task.sleep(nanoseconds: UInt64(self.overlapDelay * 1_000_000_000))
             }
         }
         
-        TapesLog.player.info("HybridAssetLoader: Sequential queue - all \(results.count) clips completed")
+        // Summary logged by caller
         return results
     }
     
@@ -380,9 +359,7 @@ final class HybridAssetLoader {
         do {
             // Use builder's Photos resolution - we're a regular class now, no actor blocking
             // This matches old PlaybackPreparationCoordinator pattern exactly
-            TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for Photos asset \(index)")
             let context = try await builder.resolveClipContext(for: clip, index: index)
-            TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for Photos asset \(index)")
             
             let elapsed = Date().timeIntervalSince(startTime)
             
@@ -394,7 +371,7 @@ final class HybridAssetLoader {
                 return .skipped(.timeout)
             }
             
-            TapesLog.player.info("HybridAssetLoader: Photos asset \(index) resolved in \(String(format: "%.2f", elapsed))s")
+            // Success - logged at summary level
             
             return .ready(ResolvedAsset(
                 clipIndex: index,
@@ -508,9 +485,7 @@ final class HybridAssetLoader {
         do {
             // Use builder's image encoding - we're a regular class now, no actor blocking
             // This matches old PlaybackPreparationCoordinator pattern exactly
-            TapesLog.player.info("HybridAssetLoader: Calling resolveClipContext for image \(index)")
             let context = try await builder.resolveClipContext(for: clip, index: index)
-            TapesLog.player.info("HybridAssetLoader: resolveClipContext completed for image \(index)")
             
             let elapsed = Date().timeIntervalSince(startTime)
             
@@ -522,7 +497,7 @@ final class HybridAssetLoader {
                 return .skipped(.timeout)
             }
             
-            TapesLog.player.info("HybridAssetLoader: Image \(index) encoded in \(String(format: "%.2f", elapsed))s")
+            // Success - logged at summary level
             
             return .ready(ResolvedAsset(
                 clipIndex: index,
