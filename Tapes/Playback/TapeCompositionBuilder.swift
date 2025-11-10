@@ -592,22 +592,44 @@ struct TapeCompositionBuilder {
         // Log asset properties to understand what we're fetching
         let mediaType = phAsset.mediaType == .video ? "video" : "unknown"
         let duration = phAsset.duration
-        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Starting fetch - type: \(mediaType), duration: \(String(format: "%.2f", duration))s")
+        let creationDate = phAsset.creationDate?.description ?? "unknown"
+        let modificationDate = phAsset.modificationDate?.description ?? "unknown"
+        let pixelWidth = phAsset.pixelWidth
+        let pixelHeight = phAsset.pixelHeight
+        let isInCloud = phAsset.location == nil ? "likely_iCloud" : "local"
+
+        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Starting fetch - type: \(mediaType), duration: \(String(format: "%.2f", duration))s, size: \(pixelWidth)x\(pixelHeight), created: \(creationDate), modified: \(modificationDate), location: \(isInCloud)")
 
         // Use high quality delivery mode for better resolution
         let options = PHVideoRequestOptions()
         options.version = .current
         options.deliveryMode = .highQualityFormat  // Full quality, not fast format
         options.isNetworkAccessAllowed = true
-        
+
+        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Initiating PHImageManager request...")
+
         // Match old working approach exactly - simple continuation without DispatchQueue wrapper
         // The old code used semaphore synchronously - we use async continuation instead
         // But keep it simple - no nested async contexts
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAsset, Error>) in
             var hasResumed = false
             var firstCallbackTime: Date?
-            
+            var callbackCount = 0
+
+            // Set up a timer to detect slow requests
+            let slowRequestTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { timer in
+                let elapsed = Date().timeIntervalSince(fetchStartTime)
+                if !hasResumed && callbackCount == 0 {
+                    TapesLog.player.warning("TapeCompositionBuilder: [\(localIdentifier)] Still no callbacks after \(String(format: "%.1f", elapsed))s - possible slow asset or sandbox issue")
+                } else if !hasResumed {
+                    TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Received \(callbackCount) callbacks, still waiting after \(String(format: "%.1f", elapsed))s")
+                } else {
+                    timer.invalidate()
+                }
+            }
+
             PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, audioMix, info in
+                callbackCount += 1
                 guard !hasResumed else { return }
                 
                 let callbackTime = Date()
@@ -644,8 +666,9 @@ struct TapeCompositionBuilder {
                 
                 if let asset = asset {
                     hasResumed = true
+                    slowRequestTimer.invalidate()
                     let totalTime = callbackTime.timeIntervalSince(fetchStartTime)
-                    
+
                     // Log asset properties
                     if let urlAsset = asset as? AVURLAsset {
                         let fileName = urlAsset.url.lastPathComponent
@@ -655,11 +678,12 @@ struct TapeCompositionBuilder {
                     } else {
                         TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] ✓ Success in \(String(format: "%.2f", totalTime))s")
                     }
-                    
+
                     continuation.resume(returning: asset)
                 } else if let info = info,
                           let error = info[PHImageErrorKey] as? Error {
                     hasResumed = true
+                    slowRequestTimer.invalidate()
                     let totalTime = callbackTime.timeIntervalSince(fetchStartTime)
                     let errorCode = (error as NSError).code
                     TapesLog.player.error("TapeCompositionBuilder: [\(localIdentifier)] ✗ Failed after \(String(format: "%.2f", totalTime))s - error code: \(errorCode), description: \(error.localizedDescription)")
@@ -675,6 +699,7 @@ struct TapeCompositionBuilder {
                     }
                     
                     hasResumed = true
+                    slowRequestTimer.invalidate()
                     let totalTime = callbackTime.timeIntervalSince(fetchStartTime)
                     TapesLog.player.error("TapeCompositionBuilder: [\(localIdentifier)] ✗ Failed after \(String(format: "%.2f", totalTime))s - Photos returned nil asset with no error")
                     continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
@@ -1020,8 +1045,19 @@ struct TapeCompositionBuilder {
             guard let track = videoTrackMap[segment.clipIndex] else { continue }
             let segmentScaleMode = effectiveScaleMode(for: segment, tapeScaleMode: tapeScaleMode)
 
-            let incomingDuration = segment.incomingTransition?.duration ?? .zero
-            let outgoingDuration = segment.outgoingTransition?.duration ?? .zero
+            // CRITICAL FIX: Clamp transition durations to prevent overlaps
+            let maxTransitionDuration: Double = 0.25 // Conservative limit based on testing
+
+            // CRITICAL FIX: Clamp incoming transition duration to prevent overlaps
+            let rawIncomingDuration = segment.incomingTransition?.duration ?? .zero
+            let incomingDuration = CMTimeCompare(rawIncomingDuration, .zero) > 0 ?
+                CMTime(seconds: min(CMTimeGetSeconds(rawIncomingDuration), maxTransitionDuration), preferredTimescale: 600) :
+                .zero
+            // CRITICAL FIX: Clamp outgoing transition duration to prevent overlaps
+            let rawOutgoingDuration = segment.outgoingTransition?.duration ?? .zero
+            let outgoingDuration = CMTimeCompare(rawOutgoingDuration, .zero) > 0 ?
+                CMTime(seconds: min(CMTimeGetSeconds(rawOutgoingDuration), maxTransitionDuration), preferredTimescale: 600) :
+                .zero
             var passThroughStart = segment.timeRange.start
             var passThroughDuration = segment.timeRange.duration
 
@@ -1032,6 +1068,13 @@ struct TapeCompositionBuilder {
             if CMTimeCompare(outgoingDuration, .zero) > 0 {
                 passThroughDuration = CMTimeSubtract(passThroughDuration, outgoingDuration)
             }
+
+            // Log pass-through calculation for debugging
+            let segmentStartSec = CMTimeGetSeconds(segment.timeRange.start)
+            let segmentDurationSec = CMTimeGetSeconds(segment.timeRange.duration)
+            let passThroughStartSec = CMTimeGetSeconds(passThroughStart)
+            let passThroughDurationSec = CMTimeGetSeconds(passThroughDuration)
+            TapesLog.player.info("TapeCompositionBuilder: Pass-through for segment \(segment.clipIndex) - segment: \(String(format: "%.2f", segmentStartSec))s-\(String(format: "%.2f", segmentStartSec + segmentDurationSec))s, pass-through: \(String(format: "%.2f", passThroughStartSec))s-\(String(format: "%.2f", passThroughStartSec + passThroughDurationSec))s, incoming: \(String(format: "%.2f", CMTimeGetSeconds(incomingDuration)))s, outgoing: \(String(format: "%.2f", CMTimeGetSeconds(outgoingDuration)))s")
 
             if CMTimeCompare(passThroughDuration, .zero) > 0 {
                 let instruction = AVMutableVideoCompositionInstruction()
@@ -1045,6 +1088,12 @@ struct TapeCompositionBuilder {
                     at: passThroughStart
                 )
                 let passThroughEnd = CMTimeAdd(passThroughStart, passThroughDuration)
+                
+                // CRITICAL FIX: Set opacity for the entire time range, not just at start
+                // AVFoundation requires opacity to be set for the full instruction duration
+                layerInstruction.setOpacity(1.0, at: passThroughStart)
+                layerInstruction.setOpacity(1.0, at: passThroughEnd)
+                
                 applyTransformRampIfNeeded(
                     on: layerInstruction,
                     for: segment,
@@ -1061,26 +1110,34 @@ struct TapeCompositionBuilder {
                let nextSegment = timeline.segments[safe: index + 1],
                let nextTrack = videoTrackMap[nextSegment.clipIndex] {
 
-                let transitionStart = CMTimeSubtract(CMTimeAdd(segment.timeRange.start, segment.timeRange.duration), transition.duration)
-                let transitionRange = CMTimeRange(start: transitionStart, duration: transition.duration)
+                // CRITICAL FIX: Clamp transition duration to prevent excessive overlap
+                // AVFoundation may struggle with transitions longer than certain thresholds
+                // User reported 0.2s works but 0.3s fails, suggesting a specific threshold
+                let requestedDuration = CMTimeGetSeconds(transition.duration)
+                let maxDuration: Double = 0.25 // Very conservative limit based on user's testing
+                let clampedDuration = CMTime(seconds: min(requestedDuration, maxDuration), preferredTimescale: 600)
 
-                let fromLayer = baseLayerInstruction(
-                    for: segment,
-                    track: track,
-                    renderSize: renderSize,
-                    scaleMode: segmentScaleMode,
-                    at: transitionRange.start
-                )
+                if requestedDuration > maxDuration {
+                    TapesLog.player.warning("TapeCompositionBuilder: Clamping transition duration from \(String(format: "%.2f", requestedDuration))s to \(String(format: "%.2f", maxDuration))s to prevent black screen")
+                }
 
+                // Calculate transition timing - transition starts at end of segment minus clamped transition duration
+                let transitionStart = CMTimeSubtract(CMTimeAdd(segment.timeRange.start, segment.timeRange.duration), clampedDuration)
+                let transitionRange = CMTimeRange(start: transitionStart, duration: clampedDuration)
+
+                // Log transition details for debugging
+                let transitionStartSec = CMTimeGetSeconds(transitionStart)
+                let segmentEndSec = CMTimeGetSeconds(CMTimeAdd(segment.timeRange.start, segment.timeRange.duration))
+                TapesLog.player.info("TapeCompositionBuilder: Transition for segment \(segment.clipIndex) - range: \(String(format: "%.2f", transitionStartSec))s to \(String(format: "%.2f", segmentEndSec))s, requested: \(String(format: "%.2f", CMTimeGetSeconds(transition.duration)))s, clamped: \(String(format: "%.2f", CMTimeGetSeconds(clampedDuration)))s")
+
+                // CRITICAL FIX: Create layer instructions directly without baseLayerInstruction
+                // baseLayerInstruction sets opacity to 1.0, which conflicts with transition ramps
+                // (e.g., crossfade toLayer should start at 0.0, not 1.0)
+                let fromLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+                let toLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: nextTrack)
+                
                 let nextScaleMode = effectiveScaleMode(for: nextSegment, tapeScaleMode: tapeScaleMode)
-                let toLayer = baseLayerInstruction(
-                    for: nextSegment,
-                    track: nextTrack,
-                    renderSize: renderSize,
-                    scaleMode: nextScaleMode,
-                    at: transitionRange.start
-                )
-
+                
                 configureTransition(
                     transition,
                     fromSegment: segment,
@@ -1101,6 +1158,58 @@ struct TapeCompositionBuilder {
         }
 
         instructions.sort { CMTimeCompare($0.timeRange.start, $1.timeRange.start) < 0 }
+        
+        // Log instruction count for diagnostics (especially for large tapes with transitions)
+        let passThroughCount = instructions.filter { $0.layerInstructions.count == 1 }.count
+        let transitionCount = instructions.filter { $0.layerInstructions.count > 1 }.count
+        TapesLog.player.info("TapeCompositionBuilder: Created \(instructions.count) video instructions (\(passThroughCount) pass-through, \(transitionCount) transitions) for \(timeline.segments.count) segments")
+        
+        // Validate instruction coverage (check for gaps AND overlaps)
+        if !instructions.isEmpty {
+            var lastEnd = CMTime.zero
+            var gaps: [CMTimeRange] = []
+            var overlaps: [CMTimeRange] = []
+
+            for instruction in instructions {
+                let start = instruction.timeRange.start
+                let end = CMTimeAdd(start, instruction.timeRange.duration)
+
+                // Check for gaps (instruction starts after previous ended)
+                if CMTimeCompare(start, lastEnd) > 0 {
+                    let gapDuration = CMTimeSubtract(start, lastEnd)
+                    gaps.append(CMTimeRange(start: lastEnd, duration: gapDuration))
+                }
+                // Check for overlaps (instruction starts before previous ended)
+                else if CMTimeCompare(start, lastEnd) < 0 {
+                    let overlapDuration = CMTimeSubtract(lastEnd, start)
+                    overlaps.append(CMTimeRange(start: start, duration: overlapDuration))
+                }
+
+                // Update lastEnd to the maximum of lastEnd and end
+                if CMTimeCompare(end, lastEnd) > 0 {
+                    lastEnd = end
+                }
+            }
+
+            if !gaps.isEmpty {
+                TapesLog.player.warning("TapeCompositionBuilder: Found \(gaps.count) gaps in video instructions (may cause black screen)")
+                for (index, gap) in gaps.prefix(5).enumerated() {
+                    let gapStart = CMTimeGetSeconds(gap.start)
+                    let gapDuration = CMTimeGetSeconds(gap.duration)
+                    TapesLog.player.warning("TapeCompositionBuilder: Gap \(index + 1): start=\(String(format: "%.2f", gapStart))s, duration=\(String(format: "%.2f", gapDuration))s")
+                }
+            }
+
+            if !overlaps.isEmpty {
+                TapesLog.player.error("TapeCompositionBuilder: Found \(overlaps.count) overlaps in video instructions (will cause black screen)")
+                for (index, overlap) in overlaps.prefix(5).enumerated() {
+                    let overlapStart = CMTimeGetSeconds(overlap.start)
+                    let overlapDuration = CMTimeGetSeconds(overlap.duration)
+                    TapesLog.player.error("TapeCompositionBuilder: Overlap \(index + 1): start=\(String(format: "%.2f", overlapStart))s, duration=\(String(format: "%.2f", overlapDuration))s")
+                }
+            }
+        }
+        
         return instructions
     }
 
@@ -1114,6 +1223,9 @@ struct TapeCompositionBuilder {
         let instruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
         let transform = transform(for: segment, renderSize: renderSize, scaleMode: scaleMode, at: time)
         instruction.setTransform(transform, at: time)
+        // CRITICAL FIX: Set opacity to 1.0 at the time point
+        // For transitions, configureTransition will override this with ramps
+        // For pass-through, opacity is set at both start and end in buildVideoInstructions
         instruction.setOpacity(1.0, at: time)
         return instruction
     }
@@ -1137,18 +1249,32 @@ struct TapeCompositionBuilder {
 
         switch descriptor.style {
         case .crossfade:
+            // CRITICAL FIX: Match exporter approach - only handle opacity, transforms stay static
+            // If transforms change during transition (motion effects), we need to animate them
+            // Set opacity ramps (toLayer starts at 0.0, fromLayer starts at 1.0)
             fromLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.0, timeRange: transitionRange)
             toLayer.setOpacityRamp(fromStartOpacity: 0.0, toEndOpacity: 1.0, timeRange: transitionRange)
+            
+            // CRITICAL: Set transforms at BOTH start and end explicitly
+            // This ensures AVFoundation knows the full transform range, even if no motion effects
+            let transitionEnd = CMTimeAdd(transitionRange.start, transitionRange.duration)
+            
+            // Set transforms at start
             fromLayer.setTransform(fromStartTransform, at: transitionRange.start)
             toLayer.setTransform(toStartTransform, at: transitionRange.start)
-
-            if CMTimeCompare(transitionRange.duration, .zero) > 0 {
-                if fromStartTransform != fromEndTransform {
-                    fromLayer.setTransformRamp(fromStart: fromStartTransform, toEnd: fromEndTransform, timeRange: transitionRange)
-                }
-                if toStartTransform != toEndTransform {
-                    toLayer.setTransformRamp(fromStart: toStartTransform, toEnd: toEndTransform, timeRange: transitionRange)
-                }
+            
+            // If transforms change during transition (motion effects), animate them
+            // Otherwise, just set at end to ensure AVFoundation has explicit boundary values
+            if fromStartTransform != fromEndTransform {
+                fromLayer.setTransformRamp(fromStart: fromStartTransform, toEnd: fromEndTransform, timeRange: transitionRange)
+            } else {
+                fromLayer.setTransform(fromStartTransform, at: transitionEnd)
+            }
+            
+            if toStartTransform != toEndTransform {
+                toLayer.setTransformRamp(fromStart: toStartTransform, toEnd: toEndTransform, timeRange: transitionRange)
+            } else {
+                toLayer.setTransform(toStartTransform, at: transitionEnd)
             }
         case .slideLR:
             applySlideTransition(
@@ -1189,20 +1315,27 @@ struct TapeCompositionBuilder {
         renderSize: CGSize,
         direction: SlideDirection
     ) {
-        let offset = direction == .leftToRight ? renderSize.width : -renderSize.width
-        let outgoingEndTransform = prependTranslation(to: fromTransform, dx: -offset, dy: 0)
-        let incomingStartTransform = prependTranslation(to: toTransform, dx: offset, dy: 0)
-
-        fromLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 1.0, timeRange: transitionRange)
-        toLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 1.0, timeRange: transitionRange)
-
+        // CRITICAL FIX: Match exporter approach exactly
+        // Exporter only animates incoming layer, outgoing stays in place
+        // Use proper concatenating() instead of prependTranslation (which just adds to tx/ty)
+        let width = renderSize.width
+        let startX: CGFloat = direction == .leftToRight ? -width : width
+        let transitionEnd = CMTimeAdd(transitionRange.start, transitionRange.duration)
+        
+        // Calculate incoming start transform (off-screen position)
+        let incomingStartTransform = toTransform.concatenating(CGAffineTransform(translationX: startX, y: 0))
+        
+        // Outgoing layer: stays in place, just fades out (like exporter)
+        fromLayer.setOpacityRamp(fromStartOpacity: 1.0, toEndOpacity: 0.85, timeRange: transitionRange)
         fromLayer.setTransform(fromTransform, at: transitionRange.start)
-        toLayer.setTransform(incomingStartTransform, at: transitionRange.start)
-
-        if CMTimeCompare(transitionRange.duration, .zero) > 0 {
-            fromLayer.setTransformRamp(fromStart: fromTransform, toEnd: outgoingEndTransform, timeRange: transitionRange)
-            toLayer.setTransformRamp(fromStart: incomingStartTransform, toEnd: toTransform, timeRange: transitionRange)
-        }
+        fromLayer.setTransform(fromTransform, at: transitionEnd) // Explicitly set at end too
+        
+        // Incoming layer: slides in from off-screen to final position (like exporter)
+        // CRITICAL: Set transform at start explicitly, then ramp to final position
+        toLayer.setOpacityRamp(fromStartOpacity: 0.85, toEndOpacity: 1.0, timeRange: transitionRange)
+        toLayer.setTransform(incomingStartTransform, at: transitionRange.start) // Explicit start position
+        toLayer.setTransformRamp(fromStart: incomingStartTransform, toEnd: toTransform, timeRange: transitionRange)
+        toLayer.setTransform(toTransform, at: transitionEnd) // Explicit end position
     }
 
     private func baseTransform(

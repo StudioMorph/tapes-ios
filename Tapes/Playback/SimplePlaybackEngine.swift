@@ -222,8 +222,19 @@ final class SimplePlaybackEngine: ObservableObject {
         prepareTask?.cancel()
         backgroundTask?.cancel()
         removeObservers()
+        
+        // CRITICAL MEMORY FIX: Explicitly release player item before clearing player
+        // AVPlayerItem holds references to AVComposition and AVVideoComposition
+        // which can retain large amounts of memory, especially with many instructions
+        if let playerItem = player?.currentItem {
+            playerItem.cancelPendingSeeks()
+            playerItem.asset.cancelLoading()
+        }
+        
         player?.pause()
+        player?.replaceCurrentItem(with: nil) // Explicitly clear player item
         player = nil
+        
         isPlaying = false
         isBuffering = false
         isFinished = false
@@ -233,7 +244,17 @@ final class SimplePlaybackEngine: ObservableObject {
         error = nil
         timeline = nil
         currentTape = nil
+        
+        // CRITICAL MEMORY FIX: Clear loaded assets dictionary to release AVAsset references
+        // These can hold significant memory, especially for large tapes
         loadedAssets.removeAll()
+        
+        // Force memory cleanup
+        autoreleasepool {
+            // Trigger ARC cleanup
+        }
+        
+        TapesLog.player.info("SimplePlaybackEngine: Teardown complete - memory should be released")
     }
     
     // MARK: - Private Methods

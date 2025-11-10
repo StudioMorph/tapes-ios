@@ -15,9 +15,12 @@ final class HybridAssetLoader {
     
     // MARK: - Configuration
     
-    let windowDuration: TimeInterval = 15.0
-    let overlapDelay: TimeInterval = 1.5 // Start next Photos asset after 1.5s
+    // CRITICAL FIX: Reduced from 15.0s to 5.0s for faster playback startup
+    // Background loading continues after window expires, so we don't need to wait for everything
+    let windowDuration: TimeInterval = 5.0
+    let overlapDelay: TimeInterval = 0.5 // Start next Photos asset after 0.5s (reduced from 1.5s)
     let maxConcurrentEncodings: Int = 2
+    let maxConcurrentPhotos: Int = 4 // Increased from 1 (sequential) to 4 concurrent
     
     // MARK: - Types
     
@@ -301,116 +304,57 @@ final class HybridAssetLoader {
     ) async -> [(Int, LoadingResult)] {
         guard !clips.isEmpty else { return [] }
         
-        TapesLog.player.info("HybridAssetLoader: Sequential queue - loading \(clips.count) Photos assets")
+        TapesLog.player.info("HybridAssetLoader: Sequential queue - loading \(clips.count) Photos assets with \(self.maxConcurrentPhotos) concurrent")
         
-        // CRITICAL FIX: Load sequentially with overlap (not all at once)
-        // Photos framework has limits - creating 5+ requests simultaneously exhausts it
-        // Load one at a time with overlap delay to prevent framework exhaustion
-        // ATTEMPT #1: Don't block waiting for in-progress loads - break immediately when deadline expires
+        // Phase 3: Concurrent loading with semaphore (up to maxConcurrentPhotos)
+        let semaphore = AsyncSemaphore(value: self.maxConcurrentPhotos)
         let builder = self.builder
-        var results: [(Int, LoadingResult)] = []
-        var currentTask: Task<(Int, LoadingResult), Never>?
         
-        for (offset, clip) in clips {
-            guard !cancelled else {
-                TapesLog.player.info("HybridAssetLoader: Sequential queue cancelled, skipping clip \(offset)")
-                results.append((offset, .skipped(.cancelled)))
-                continue
-            }
-            
-            // Check deadline before starting - if expired, return immediately with what we have
-            guard Date() < deadline else {
-                TapesLog.player.warning("HybridAssetLoader: Window expired - returning \(results.count) ready assets")
-                // Don't mark remaining clips as skipped - they haven't started yet
-                // Background service will handle them
-                break
-            }
-            
-            // If we have a previous task still running, try to collect it quickly
-            // Don't block too long - if deadline is close, let it finish in background
-            if let task = currentTask {
-                let timeRemaining = deadline.timeIntervalSince(Date())
-                if timeRemaining > 0.3 {
-                    // Try to get result, but don't wait too long
-                    // This is a race - task might finish or we might time out
-                    do {
-                        // Use TaskGroup with timeout pattern - await task.value directly in closure
-                        try await withThrowingTaskGroup(of: (Int, LoadingResult).self) { group in
-                            group.addTask {
-                                await task.value
-                            }
-                            group.addTask {
-                                try await Task.sleep(nanoseconds: UInt64(0.3 * 1_000_000_000))
-                                throw CancellationError()
-                            }
-                            
-                            if let result = try? await group.next() {
-                                group.cancelAll()
-                                results.append(result)
-                            } else {
-                                group.cancelAll()
-                                TapesLog.player.info("HybridAssetLoader: Previous task timeout, continuing in background")
-                            }
-                        }
-                    } catch {
-                        // Task still loading - will continue in background
-                        TapesLog.player.info("HybridAssetLoader: Previous task still loading, continuing in background")
+        return await withTaskGroup(of: (Int, LoadingResult).self) { group in
+            for (offset, clip) in clips {
+                guard !self.cancelled else {
+                    group.addTask { (offset, LoadingResult.skipped(.cancelled)) }
+                    continue
+                }
+                
+                // Check deadline before starting
+                guard Date() < deadline else {
+                    TapesLog.player.warning("HybridAssetLoader: Window expired - returning ready assets")
+                    break
+                }
+                
+                group.addTask { [weak self] in
+                    guard let self = self else {
+                        return (offset, LoadingResult.skipped(.cancelled))
                     }
-                } else {
-                    // Deadline too close - don't wait
-                    TapesLog.player.info("HybridAssetLoader: Deadline too close, not waiting for previous task")
+                    
+                    // Wait for semaphore (limit concurrent requests)
+                    await semaphore.wait()
+                    defer { semaphore.signal() }
+                    
+                    // Resolve asset
+                    let result = await self.resolvePhotosAsset(
+                        clip: clip,
+                        index: offset,
+                        deadline: deadline,
+                        builder: builder
+                    )
+                    
+                    return (offset, result)
+                }
+                
+                // Small overlap delay (reduced from 1.5s to 0.5s)
+                if offset < clips.count - 1 {
+                    try? await Task.sleep(nanoseconds: UInt64(self.overlapDelay * 1_000_000_000))
                 }
             }
             
-            // Start loading this clip (don't await - let it run)
-            currentTask = Task.detached(priority: .userInitiated) { [weak self] in
-                guard let self = self else {
-                    return (offset, LoadingResult.skipped(.cancelled))
-                }
-                let loadingResult = await self.resolvePhotosAsset(clip: clip, index: offset, deadline: deadline, builder: builder)
-                return (offset, loadingResult)
+            var results: [(Int, LoadingResult)] = []
+            for await result in group {
+                results.append(result)
             }
-            
-            // Overlap: Wait delay before starting next (if not last clip)
-            // This creates overlap - next starts while current is still loading (if it takes longer than delay)
-            if offset < clips.count - 1 {
-                try? await Task.sleep(nanoseconds: UInt64(self.overlapDelay * 1_000_000_000))
-            }
+            return results
         }
-        
-        // Wait for final task if we still have time
-        if let task = currentTask, Date() < deadline {
-            let timeRemaining = deadline.timeIntervalSince(Date())
-            if timeRemaining > 0.2 {
-                // Try to collect final task result
-                do {
-                    // Use TaskGroup with timeout pattern - await task.value directly in closure
-                    try await withThrowingTaskGroup(of: (Int, LoadingResult).self) { group in
-                        group.addTask {
-                            await task.value
-                        }
-                        group.addTask {
-                            try await Task.sleep(nanoseconds: UInt64(0.3 * 1_000_000_000))
-                            throw CancellationError()
-                        }
-                        
-                        if let result = try? await group.next() {
-                            group.cancelAll()
-                            results.append(result)
-                        } else {
-                            group.cancelAll()
-                            TapesLog.player.info("HybridAssetLoader: Final task timeout, will continue in background")
-                        }
-                    }
-                } catch {
-                    // Task still loading - will continue in background
-                    TapesLog.player.info("HybridAssetLoader: Final task still loading, will continue in background")
-                }
-            }
-        }
-        
-        // Summary logged by caller
-        return results
     }
     
     private func resolvePhotosAsset(

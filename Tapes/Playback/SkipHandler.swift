@@ -5,8 +5,8 @@ final class SkipHandler {
     
     // MARK: - Properties
     
-    private let skippedIndices: Set<Int>
-    private let readyIndices: Set<Int>
+    private var skippedIndices: Set<Int>
+    private var readyIndices: Set<Int>
     private let allClipIndices: [Int]
     
     private var lastSkipTime: Date = .distantPast
@@ -85,6 +85,15 @@ final class SkipHandler {
     /// Get all ready clip indices in order
     func getAllReadyIndices() -> [Int] {
         return allClipIndices.filter { readyIndices.contains($0) }
+    }
+    
+    /// Update ready indices when new assets become available
+    /// This removes newly-ready clips from skippedIndices and adds them to readyIndices
+    func updateReadyIndices(_ newReadyIndices: Set<Int>) {
+        // Remove newly-ready clips from skipped indices
+        skippedIndices.subtract(newReadyIndices)
+        // Add newly-ready clips to ready indices
+        readyIndices.formUnion(newReadyIndices)
     }
 }
 
