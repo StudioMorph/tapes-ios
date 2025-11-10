@@ -1087,7 +1087,10 @@ struct TapeCompositionBuilder {
             let passThroughDurationSec = CMTimeGetSeconds(passThroughDuration)
             TapesLog.player.info("TapeCompositionBuilder: Pass-through for segment \(segment.clipIndex) - segment: \(String(format: "%.2f", segmentStartSec))s-\(String(format: "%.2f", segmentStartSec + segmentDurationSec))s, pass-through: \(String(format: "%.2f", passThroughStartSec))s-\(String(format: "%.2f", passThroughStartSec + passThroughDurationSec))s, incoming: \(String(format: "%.2f", CMTimeGetSeconds(incomingDuration)))s, outgoing: \(String(format: "%.2f", CMTimeGetSeconds(outgoingDuration)))s")
 
-            if CMTimeCompare(passThroughDuration, .zero) > 0 {
+            // Only create pass-through instruction if it has meaningful duration
+            // Avoid creating zero-duration instructions which cause AVFoundation issues
+            let minPassThroughDuration = CMTime(seconds: 0.001, preferredTimescale: 600) // 1ms minimum
+            if CMTimeCompare(passThroughDuration, minPassThroughDuration) >= 0 {
                 let instruction = AVMutableVideoCompositionInstruction()
                 instruction.timeRange = CMTimeRange(start: passThroughStart, duration: passThroughDuration)
 
@@ -1099,12 +1102,12 @@ struct TapeCompositionBuilder {
                     at: passThroughStart
                 )
                 let passThroughEnd = CMTimeAdd(passThroughStart, passThroughDuration)
-                
+
                 // CRITICAL FIX: Set opacity for the entire time range, not just at start
                 // AVFoundation requires opacity to be set for the full instruction duration
                 layerInstruction.setOpacity(1.0, at: passThroughStart)
                 layerInstruction.setOpacity(1.0, at: passThroughEnd)
-                
+
                 applyTransformRampIfNeeded(
                     on: layerInstruction,
                     for: segment,
@@ -1115,6 +1118,9 @@ struct TapeCompositionBuilder {
                 )
                 instruction.layerInstructions = [layerInstruction]
                 instructions.append(instruction)
+            } else if CMTimeCompare(passThroughDuration, .zero) > 0 {
+                // Log when we skip very short pass-through segments
+                TapesLog.player.warning("TapeCompositionBuilder: Skipping pass-through instruction for segment \(segment.clipIndex) - duration \(String(format: "%.6f", CMTimeGetSeconds(passThroughDuration)))s too short")
             }
 
             if let transition = segment.outgoingTransition,
@@ -1132,9 +1138,11 @@ struct TapeCompositionBuilder {
                     TapesLog.player.warning("TapeCompositionBuilder: Clamping transition duration from \(String(format: "%.2f", requestedDuration))s to \(String(format: "%.2f", maxDuration))s to prevent black screen")
                 }
 
-                // Calculate transition timing - transition starts at end of segment minus clamped transition duration
-                let transitionStart = CMTimeSubtract(CMTimeAdd(segment.timeRange.start, segment.timeRange.duration), clampedDuration)
-                let transitionRange = CMTimeRange(start: transitionStart, duration: clampedDuration)
+                // Calculate transition timing - transition starts where pass-through would end (or segment start if no pass-through)
+                let transitionStart = passThroughStart // Start where pass-through starts (accounts for incoming transition)
+                let transitionEnd = CMTimeAdd(segment.timeRange.start, segment.timeRange.duration) // End at segment end
+                let actualTransitionDuration = CMTimeSubtract(transitionEnd, transitionStart)
+                let transitionRange = CMTimeRange(start: transitionStart, duration: actualTransitionDuration)
 
                 // Log transition details for debugging
                 let transitionStartSec = CMTimeGetSeconds(transitionStart)
@@ -1163,7 +1171,7 @@ struct TapeCompositionBuilder {
 
                 let transitionInstruction = AVMutableVideoCompositionInstruction()
                 transitionInstruction.timeRange = transitionRange
-                transitionInstruction.layerInstructions = [toLayer, fromLayer]
+                transitionInstruction.layerInstructions = [toLayer, fromLayer] // Match exporter: [incoming, outgoing]
                 instructions.append(transitionInstruction)
             }
         }
