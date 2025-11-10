@@ -1138,16 +1138,15 @@ struct TapeCompositionBuilder {
                     TapesLog.player.warning("TapeCompositionBuilder: Clamping transition duration from \(String(format: "%.2f", requestedDuration))s to \(String(format: "%.2f", maxDuration))s to prevent black screen")
                 }
 
-                // Calculate transition timing - transition starts where pass-through would end (or segment start if no pass-through)
-                let transitionStart = passThroughStart // Start where pass-through starts (accounts for incoming transition)
-                let transitionEnd = CMTimeAdd(segment.timeRange.start, segment.timeRange.duration) // End at segment end
-                let actualTransitionDuration = CMTimeSubtract(transitionEnd, transitionStart)
-                let transitionRange = CMTimeRange(start: transitionStart, duration: actualTransitionDuration)
+                // Calculate transition timing - transition starts at segment end minus clamped duration
+                // This matches the exporter's approach where transitions overlap at segment boundaries
+                let transitionStart = CMTimeSubtract(CMTimeAdd(segment.timeRange.start, segment.timeRange.duration), clampedDuration)
+                let transitionRange = CMTimeRange(start: transitionStart, duration: clampedDuration)
 
                 // Log transition details for debugging
                 let transitionStartSec = CMTimeGetSeconds(transitionStart)
-                let segmentEndSec = CMTimeGetSeconds(CMTimeAdd(segment.timeRange.start, segment.timeRange.duration))
-                TapesLog.player.info("TapeCompositionBuilder: Transition for segment \(segment.clipIndex) - range: \(String(format: "%.2f", transitionStartSec))s to \(String(format: "%.2f", segmentEndSec))s, requested: \(String(format: "%.2f", CMTimeGetSeconds(transition.duration)))s, clamped: \(String(format: "%.2f", CMTimeGetSeconds(clampedDuration)))s")
+                let transitionEndSec = CMTimeGetSeconds(CMTimeAdd(transitionStart, clampedDuration))
+                TapesLog.player.info("TapeCompositionBuilder: Transition for segment \(segment.clipIndex) - range: \(String(format: "%.2f", transitionStartSec))s to \(String(format: "%.2f", transitionEndSec))s, requested: \(String(format: "%.2f", CMTimeGetSeconds(transition.duration)))s, clamped: \(String(format: "%.2f", CMTimeGetSeconds(clampedDuration)))s")
 
                 // CRITICAL FIX: Create layer instructions directly without baseLayerInstruction
                 // baseLayerInstruction sets opacity to 1.0, which conflicts with transition ramps
