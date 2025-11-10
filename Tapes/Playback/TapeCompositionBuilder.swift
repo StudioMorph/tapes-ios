@@ -33,6 +33,7 @@ struct TapeCompositionBuilder {
         case photosAssetMissing
         case missingVideoTrack
         case imageEncodingFailed
+        case compositionTrackCreationFailed
 
         var errorDescription: String? {
             switch self {
@@ -48,6 +49,8 @@ struct TapeCompositionBuilder {
                 return "Video track is missing from the resolved asset."
             case .imageEncodingFailed:
                 return "Unable to encode still image into video."
+            case .compositionTrackCreationFailed:
+                return "Failed to create composition tracks for video playback."
             }
         }
     }
@@ -404,26 +407,33 @@ struct TapeCompositionBuilder {
         timeline: Timeline
     ) throws -> PlayerComposition {
         let composition = AVMutableComposition()
-        let videoTracks = try createCompositionTracks(for: composition, mediaType: .video)
-        let audioTracks = try createCompositionTracks(for: composition, mediaType: .audio)
+
+        // CRITICAL FIX: Use only 2 tracks like the exporter to prevent overlapping insertions
+        // Multiple tracks with overlapping time ranges cause AVFoundation to fail during playback
+        guard let videoTrackA = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+              let videoTrackB = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+              let audioTrackA = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
+              let audioTrackB = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            throw BuilderError.compositionTrackCreationFailed
+        }
 
         var videoTrackMap: [Int: AVMutableCompositionTrack] = [:]
         var audioTrackMap: [Int: AVMutableCompositionTrack] = [:]
         var audioMixParameters: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
 
-        for segment in timeline.segments {
-            let trackIndex = videoTracks.isEmpty ? 0 : segment.clipIndex % videoTracks.count
-            if trackIndex < videoTracks.count {
-                let videoTrack = videoTracks[trackIndex]
-                let sourceRange = CMTimeRange(start: .zero, duration: segment.assetContext.duration)
-                try videoTrack.insertTimeRange(sourceRange, of: segment.assetContext.videoTrack, at: segment.timeRange.start)
-                videoTrackMap[segment.clipIndex] = videoTrack
-            }
+        // Alternate between A and B tracks to prevent overlapping insertions
+        var useVideoTrackA = true
+        var useAudioTrackA = true
 
-            if segment.assetContext.hasAudio,
-               let sourceAudioTrack = segment.assetContext.audioTrack,
-               trackIndex < audioTracks.count {
-                let audioTrack = audioTracks[trackIndex]
+        for segment in timeline.segments {
+            let videoTrack = useVideoTrackA ? videoTrackA : videoTrackB
+            let sourceRange = CMTimeRange(start: .zero, duration: segment.assetContext.duration)
+            try videoTrack.insertTimeRange(sourceRange, of: segment.assetContext.videoTrack, at: segment.timeRange.start)
+            videoTrackMap[segment.clipIndex] = videoTrack
+            useVideoTrackA.toggle()
+
+            if segment.assetContext.hasAudio, let sourceAudioTrack = segment.assetContext.audioTrack {
+                let audioTrack = useAudioTrackA ? audioTrackA : audioTrackB
                 let sourceRange = CMTimeRange(start: .zero, duration: segment.assetContext.duration)
                 try audioTrack.insertTimeRange(sourceRange, of: sourceAudioTrack, at: segment.timeRange.start)
                 audioTrackMap[segment.clipIndex] = audioTrack
@@ -443,6 +453,7 @@ struct TapeCompositionBuilder {
                 }
 
                 audioMixParameters[key] = params
+                useAudioTrackA.toggle()
             }
         }
 
