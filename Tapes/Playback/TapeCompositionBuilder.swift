@@ -1056,136 +1056,102 @@ struct TapeCompositionBuilder {
             guard let track = videoTrackMap[segment.clipIndex] else { continue }
             let segmentScaleMode = effectiveScaleMode(for: segment, tapeScaleMode: tapeScaleMode)
 
-            // CRITICAL FIX: Clamp transition durations to prevent issues
+            // Clamp transition duration to prevent issues
             let maxTransitionDuration: Double = 0.2 // Based on user testing: 0.2s works, 0.3s fails
-
-            // Clamp incoming transition duration
-            let rawIncomingDuration = segment.incomingTransition?.duration ?? .zero
-            let incomingDuration = CMTimeCompare(rawIncomingDuration, .zero) > 0 ?
-                CMTime(seconds: min(CMTimeGetSeconds(rawIncomingDuration), maxTransitionDuration), preferredTimescale: 600) :
-                .zero
-            // Clamp outgoing transition duration
+            
+            // Get outgoing transition duration (clamped)
             let rawOutgoingDuration = segment.outgoingTransition?.duration ?? .zero
             let outgoingDuration = CMTimeCompare(rawOutgoingDuration, .zero) > 0 ?
                 CMTime(seconds: min(CMTimeGetSeconds(rawOutgoingDuration), maxTransitionDuration), preferredTimescale: 600) :
                 .zero
 
-            // Calculate the effective time range for this segment's instruction
-            // Exclude the incoming transition period from the start and outgoing from the end
-            // This prevents overlapping instructions and matches how the exporter handles it
-            var segmentInstructionStart = segment.timeRange.start
-            var segmentInstructionDuration = segment.timeRange.duration
+            // Check if there's a transition from the previous segment
+            let hasIncomingTransition = index > 0 && timeline.segments[safe: index - 1]?.outgoingTransition != nil
+            let incomingDuration = hasIncomingTransition ?
+                (timeline.segments[safe: index - 1]?.outgoingTransition?.duration ?? .zero) :
+                .zero
+            let clampedIncomingDuration = CMTimeCompare(incomingDuration, .zero) > 0 ?
+                CMTime(seconds: min(CMTimeGetSeconds(incomingDuration), maxTransitionDuration), preferredTimescale: 600) :
+                .zero
 
-            if CMTimeCompare(incomingDuration, .zero) > 0 {
-                segmentInstructionStart = CMTimeAdd(segmentInstructionStart, incomingDuration)
-                segmentInstructionDuration = CMTimeSubtract(segmentInstructionDuration, incomingDuration)
+            // Calculate segment instruction start and duration
+            // If there's an incoming transition, the segment instruction starts after it
+            // If there's an outgoing transition, the segment instruction ends before it
+            var segmentStart = segment.timeRange.start
+            var segmentDuration = segment.timeRange.duration
+
+            if CMTimeCompare(clampedIncomingDuration, .zero) > 0 {
+                segmentStart = CMTimeAdd(segmentStart, clampedIncomingDuration)
+                segmentDuration = CMTimeSubtract(segmentDuration, clampedIncomingDuration)
             }
             if CMTimeCompare(outgoingDuration, .zero) > 0 {
-                segmentInstructionDuration = CMTimeSubtract(segmentInstructionDuration, outgoingDuration)
+                segmentDuration = CMTimeSubtract(segmentDuration, outgoingDuration)
             }
 
-            // Create the main segment instruction (non-overlapping part)
-            if CMTimeCompare(segmentInstructionDuration, CMTime(seconds: 0.001, preferredTimescale: 600)) > 0 {
-                let instruction = AVMutableVideoCompositionInstruction()
-                instruction.timeRange = CMTimeRange(start: segmentInstructionStart, duration: segmentInstructionDuration)
-
-                let layerInstruction = baseLayerInstruction(
-                    for: segment,
-                    track: track,
-                    renderSize: renderSize,
-                    scaleMode: segmentScaleMode,
-                    at: segmentInstructionStart
-                )
-                layerInstruction.setOpacity(1.0, at: segmentInstructionStart)
-                layerInstruction.setOpacity(1.0, at: CMTimeAdd(segmentInstructionStart, segmentInstructionDuration))
-
-                applyTransformRampIfNeeded(
-                    on: layerInstruction,
-                    for: segment,
-                    renderSize: renderSize,
-                    scaleMode: segmentScaleMode,
-                    startTime: segmentInstructionStart,
-                    endTime: CMTimeAdd(segmentInstructionStart, segmentInstructionDuration)
-                )
-                instruction.layerInstructions = [layerInstruction]
-                instructions.append(instruction)
-            }
-
-            // Handle incoming transition (from previous segment)
-            if CMTimeCompare(incomingDuration, .zero) > 0,
+            // Create transition instruction at the boundary (if there's an incoming transition)
+            // This matches the exporter's approach: one transition instruction per boundary
+            if CMTimeCompare(clampedIncomingDuration, .zero) > 0,
                let prevSegment = timeline.segments[safe: index - 1],
-               let prevTrack = videoTrackMap[prevSegment.clipIndex] {
+               let prevTrack = videoTrackMap[prevSegment.clipIndex],
+               let transition = prevSegment.outgoingTransition {
                 let transitionStart = segment.timeRange.start
-                let transitionRange = CMTimeRange(start: transitionStart, duration: incomingDuration)
+                let transitionRange = CMTimeRange(start: transitionStart, duration: clampedIncomingDuration)
 
                 let prevScaleMode = effectiveScaleMode(for: prevSegment, tapeScaleMode: tapeScaleMode)
 
-                // Create transition instruction for incoming transition
                 let fromLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: prevTrack)
                 let toLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
 
-                // Set base transforms for the transition period
+                // Set base transforms
                 let prevTransform = transform(for: prevSegment, renderSize: renderSize, scaleMode: prevScaleMode, at: transitionStart)
                 let currentTransform = transform(for: segment, renderSize: renderSize, scaleMode: segmentScaleMode, at: transitionStart)
                 fromLayer.setTransform(prevTransform, at: transitionStart)
                 toLayer.setTransform(currentTransform, at: transitionStart)
 
                 // Apply transition ramps
-                if let transition = segment.incomingTransition {
-                    configureTransition(
-                        transition,
-                        fromSegment: prevSegment,
-                        toSegment: segment,
-                        fromLayer: fromLayer,
-                        toLayer: toLayer,
-                        transitionRange: transitionRange,
-                        renderSize: renderSize,
-                        fromScaleMode: prevScaleMode,
-                        toScaleMode: segmentScaleMode
-                    )
-                }
-
-                let transitionInstruction = AVMutableVideoCompositionInstruction()
-                transitionInstruction.timeRange = transitionRange
-                transitionInstruction.layerInstructions = [toLayer, fromLayer] // Incoming on top
-                instructions.append(transitionInstruction)
-            }
-
-            // Handle outgoing transition (to next segment) - create separate overlapping instruction
-            if CMTimeCompare(outgoingDuration, .zero) > 0,
-               let transition = segment.outgoingTransition,
-               let nextSegment = timeline.segments[safe: index + 1],
-               let nextTrack = videoTrackMap[nextSegment.clipIndex] {
-                let transitionStart = CMTimeSubtract(CMTimeAdd(segment.timeRange.start, segment.timeRange.duration), outgoingDuration)
-                let transitionRange = CMTimeRange(start: transitionStart, duration: outgoingDuration)
-
-                let nextScaleMode = effectiveScaleMode(for: nextSegment, tapeScaleMode: tapeScaleMode)
-
-                let fromLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-                let toLayer = AVMutableVideoCompositionLayerInstruction(assetTrack: nextTrack)
-
-                // Set base transforms for the transition period
-                let currentTransform = transform(for: segment, renderSize: renderSize, scaleMode: segmentScaleMode, at: transitionStart)
-                let nextTransform = transform(for: nextSegment, renderSize: renderSize, scaleMode: nextScaleMode, at: transitionStart)
-                fromLayer.setTransform(currentTransform, at: transitionStart)
-                toLayer.setTransform(nextTransform, at: transitionStart)
-
                 configureTransition(
                     transition,
-                    fromSegment: segment,
-                    toSegment: nextSegment,
+                    fromSegment: prevSegment,
+                    toSegment: segment,
                     fromLayer: fromLayer,
                     toLayer: toLayer,
                     transitionRange: transitionRange,
                     renderSize: renderSize,
-                    fromScaleMode: segmentScaleMode,
-                    toScaleMode: nextScaleMode
+                    fromScaleMode: prevScaleMode,
+                    toScaleMode: segmentScaleMode
                 )
 
                 let transitionInstruction = AVMutableVideoCompositionInstruction()
                 transitionInstruction.timeRange = transitionRange
-                transitionInstruction.layerInstructions = [toLayer, fromLayer] // Incoming on top
+                transitionInstruction.layerInstructions = [toLayer, fromLayer] // Incoming on top, outgoing on bottom
                 instructions.append(transitionInstruction)
+            }
+
+            // Create segment instruction (non-overlapping part)
+            if CMTimeCompare(segmentDuration, CMTime(seconds: 0.001, preferredTimescale: 600)) > 0 {
+                let instruction = AVMutableVideoCompositionInstruction()
+                instruction.timeRange = CMTimeRange(start: segmentStart, duration: segmentDuration)
+
+                let layerInstruction = baseLayerInstruction(
+                    for: segment,
+                    track: track,
+                    renderSize: renderSize,
+                    scaleMode: segmentScaleMode,
+                    at: segmentStart
+                )
+                layerInstruction.setOpacity(1.0, at: segmentStart)
+                layerInstruction.setOpacity(1.0, at: CMTimeAdd(segmentStart, segmentDuration))
+
+                applyTransformRampIfNeeded(
+                    on: layerInstruction,
+                    for: segment,
+                    renderSize: renderSize,
+                    scaleMode: segmentScaleMode,
+                    startTime: segmentStart,
+                    endTime: CMTimeAdd(segmentStart, segmentDuration)
+                )
+                instruction.layerInstructions = [layerInstruction]
+                instructions.append(instruction)
             }
         }
 
