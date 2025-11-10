@@ -12,6 +12,9 @@ struct TapeCompositionBuilder {
 
     private let assetResolver: AssetResolver
     private let imageConfiguration: ImageClipConfiguration
+    
+    // Placeholder cache: key = "widthxheight-duration" (e.g., "1080x1920-6.0")
+    private static var placeholderCache: [String: AVAsset] = [:]
 
     init(
         assetResolver: @escaping AssetResolver = TapeCompositionBuilder.defaultAssetResolver,
@@ -176,49 +179,124 @@ struct TapeCompositionBuilder {
         return try buildPlayerComposition(for: tape, timeline: timeline)
     }
     
-    /// Build composition with only ready assets (for hybrid loading with skip behavior).
-    /// This method builds a composition with only the provided contexts, handling transitions
-    /// only between consecutive ready clips.
+    /// Build composition with placeholders for missing clips (for hybrid loading with seamless rebuilds).
+    /// This method builds a complete timeline with placeholder assets for missing clips,
+    /// enabling immediate playback and seamless swaps when assets load.
     @MainActor
     func buildPlayerItem(
         for tape: Tape,
         readyAssets: [(Int, HybridAssetLoader.ResolvedAsset)],
         skippedIndices: Set<Int>
     ) async throws -> PlayerComposition {
-        guard !readyAssets.isEmpty else {
-            throw BuilderError.assetUnavailable(clipID: UUID())
-        }
+        let renderSize = renderSize(for: tape.orientation)
+        let readyAssetMap = Dictionary(uniqueKeysWithValues: readyAssets)
         
-        // Convert HybridAssetLoader.ResolvedAsset to ClipAssetContext (load tracks async)
-        var contexts: [ClipAssetContext] = []
-        for (index, resolved) in readyAssets {
-            let videoTracks = try await resolved.asset.loadTracks(withMediaType: .video)
-            guard let videoTrack = videoTracks.first else {
-                throw BuilderError.missingVideoTrack
+        // Build contexts for ALL clips (ready + placeholders)
+        // First, process ready assets in parallel
+        var readyContexts: [(Int, ClipAssetContext)] = []
+        await withTaskGroup(of: (Int, ClipAssetContext?).self) { group in
+            for (index, clip) in tape.clips.enumerated() {
+                if let resolved = readyAssetMap[index] {
+                    group.addTask {
+                        do {
+                            let videoTracks = try await resolved.asset.loadTracks(withMediaType: .video)
+                            guard let videoTrack = videoTracks.first else {
+                                return (index, nil)
+                            }
+                            
+                            let audioTracks = try await resolved.asset.loadTracks(withMediaType: .audio)
+                            
+                            let context = ClipAssetContext(
+                                index: index,
+                                clip: resolved.clip,
+                                asset: resolved.asset,
+                                duration: resolved.duration,
+                                naturalSize: resolved.naturalSize,
+                                preferredTransform: resolved.preferredTransform,
+                                hasAudio: resolved.hasAudio,
+                                videoTrack: videoTrack,
+                                audioTrack: audioTracks.first,
+                                motionEffect: resolved.motionEffect,
+                                isTemporaryAsset: resolved.isTemporary
+                            )
+                            return (index, context)
+                        } catch {
+                            return (index, nil)
+                        }
+                    }
+                }
             }
             
-            let audioTracks = try await resolved.asset.loadTracks(withMediaType: .audio)
-            
-            contexts.append(ClipAssetContext(
-                index: index,
-                clip: resolved.clip,
-                asset: resolved.asset,
-                duration: resolved.duration,
-                naturalSize: resolved.naturalSize,
-                preferredTransform: resolved.preferredTransform,
-                hasAudio: resolved.hasAudio,
-                videoTrack: videoTrack,
-                audioTrack: audioTracks.first,
-                motionEffect: resolved.motionEffect,
-                isTemporaryAsset: resolved.isTemporary
-            ))
+            for await (index, context) in group {
+                if let context = context {
+                    readyContexts.append((index, context))
+                }
+            }
         }
         
-        // Sort by index to maintain order
-        contexts.sort { $0.index < $1.index }
+        // Collect placeholder requirements (group by duration for better caching)
+        var placeholderTasks: [(Int, Double)] = []
+        for (index, clip) in tape.clips.enumerated() {
+            if readyAssetMap[index] == nil {
+                let placeholderDuration = clip.duration > 0 ? clip.duration : (clip.clipType == .image ? imageConfiguration.defaultDuration : 5.0)
+                placeholderTasks.append((index, placeholderDuration))
+            }
+        }
         
-        // Build timeline with only ready assets (transitions only between consecutive ready clips)
-        let timeline = makeTimelineWithSkips(for: tape, contexts: contexts, skippedIndices: skippedIndices)
+        // Create placeholders in parallel (batch of 10 to avoid overwhelming system)
+        var placeholderContexts: [(Int, ClipAssetContext)] = []
+        let batchSize = 10
+        for batchStart in stride(from: 0, to: placeholderTasks.count, by: batchSize) {
+            let batch = Array(placeholderTasks[batchStart..<min(batchStart + batchSize, placeholderTasks.count)])
+            
+            await withTaskGroup(of: (Int, ClipAssetContext?).self) { group in
+                for (index, duration) in batch {
+                    group.addTask {
+                        do {
+                            let placeholderAsset = try await self.createPlaceholderAsset(duration: duration, renderSize: renderSize)
+                            
+                            let videoTracks = try await placeholderAsset.loadTracks(withMediaType: .video)
+                            guard let videoTrack = videoTracks.first else {
+                                return (index, nil)
+                            }
+                            
+                            let placeholderDurationCM = CMTime(seconds: duration, preferredTimescale: 600)
+                            
+                            let context = ClipAssetContext(
+                                index: index,
+                                clip: tape.clips[index],
+                                asset: placeholderAsset,
+                                duration: placeholderDurationCM,
+                                naturalSize: renderSize,
+                                preferredTransform: .identity,
+                                hasAudio: false,
+                                videoTrack: videoTrack,
+                                audioTrack: nil,
+                                motionEffect: nil,
+                                isTemporaryAsset: true
+                            )
+                            return (index, context)
+                        } catch {
+                            return (index, nil)
+                        }
+                    }
+                }
+                
+                for await (index, context) in group {
+                    if let context = context {
+                        placeholderContexts.append((index, context))
+                    }
+                }
+            }
+        }
+        
+        // Combine and sort by index
+        var contexts: [ClipAssetContext] = []
+        let allContexts = readyContexts + placeholderContexts
+        contexts = allContexts.sorted { $0.0 < $1.0 }.map { $0.1 }
+        
+        // Build complete timeline (all clips, no gaps)
+        let timeline = makeTimeline(for: tape, contexts: contexts)
         return try buildPlayerComposition(for: tape, timeline: timeline)
     }
     
@@ -500,6 +578,7 @@ struct TapeCompositionBuilder {
     }
 
     private static func fetchAVAssetFromPhotos(localIdentifier: String) async throws -> AVAsset {
+        let fetchStartTime = Date()
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard status == .authorized || status == .limited else {
             throw BuilderError.photosAccessDenied
@@ -509,26 +588,95 @@ struct TapeCompositionBuilder {
         guard let phAsset = fetchResult.firstObject else {
             throw BuilderError.photosAssetMissing
         }
+        
+        // Log asset properties to understand what we're fetching
+        let mediaType = phAsset.mediaType == .video ? "video" : "unknown"
+        let duration = phAsset.duration
+        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Starting fetch - type: \(mediaType), duration: \(String(format: "%.2f", duration))s")
 
-        // Match old working code exactly
+        // Use high quality delivery mode for better resolution
         let options = PHVideoRequestOptions()
         options.version = .current
-        options.deliveryMode = .automatic  // OLD CODE USED .automatic
+        options.deliveryMode = .highQualityFormat  // Full quality, not fast format
         options.isNetworkAccessAllowed = true
         
         // Match old working approach exactly - simple continuation without DispatchQueue wrapper
         // The old code used semaphore synchronously - we use async continuation instead
         // But keep it simple - no nested async contexts
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AVAsset, Error>) in
-            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
+            var hasResumed = false
+            var firstCallbackTime: Date?
+            
+            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, audioMix, info in
+                guard !hasResumed else { return }
+                
+                let callbackTime = Date()
+                if firstCallbackTime == nil {
+                    firstCallbackTime = callbackTime
+                    let timeToFirstCallback = callbackTime.timeIntervalSince(fetchStartTime)
+                    TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] First callback after \(String(format: "%.2f", timeToFirstCallback))s")
+                }
+                
+                // Log detailed info about the request state
+                if let info = info {
+                    let isInCloud = (info[PHImageResultIsInCloudKey] as? Bool) ?? false
+                    let isDegraded = (info[PHImageResultIsDegradedKey] as? Bool) ?? false
+                    let cancelled = (info[PHImageCancelledKey] as? Bool) ?? false
+                    let requestID = info[PHImageResultRequestIDKey] as? Int32
+                    
+                    if isInCloud {
+                        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Asset is in iCloud, downloading...")
+                    }
+                    if isDegraded {
+                        TapesLog.player.warning("TapeCompositionBuilder: [\(localIdentifier)] Received degraded asset, waiting for full quality...")
+                    }
+                    if cancelled {
+                        TapesLog.player.warning("TapeCompositionBuilder: [\(localIdentifier)] Request was cancelled")
+                    }
+                    
+                    // Log any errors
+                    if let error = info[PHImageErrorKey] as? Error {
+                        let errorCode = (error as NSError).code
+                        let errorDomain = (error as NSError).domain
+                        TapesLog.player.error("TapeCompositionBuilder: [\(localIdentifier)] Photos error - domain: \(errorDomain), code: \(errorCode), description: \(error.localizedDescription)")
+                    }
+                }
+                
                 if let asset = asset {
+                    hasResumed = true
+                    let totalTime = callbackTime.timeIntervalSince(fetchStartTime)
+                    
+                    // Log asset properties
+                    if let urlAsset = asset as? AVURLAsset {
+                        let fileName = urlAsset.url.lastPathComponent
+                        let fileSize = (try? FileManager.default.attributesOfItem(atPath: urlAsset.url.path)[.size] as? Int64) ?? 0
+                        let fileSizeMB = Double(fileSize) / (1024 * 1024)
+                        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] ✓ Success in \(String(format: "%.2f", totalTime))s - file: \(fileName), size: \(String(format: "%.2f", fileSizeMB))MB")
+                    } else {
+                        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] ✓ Success in \(String(format: "%.2f", totalTime))s")
+                    }
+                    
                     continuation.resume(returning: asset)
                 } else if let info = info,
                           let error = info[PHImageErrorKey] as? Error {
-                    TapesLog.player.error("TapeCompositionBuilder: Photos error: \(error.localizedDescription)")
+                    hasResumed = true
+                    let totalTime = callbackTime.timeIntervalSince(fetchStartTime)
+                    let errorCode = (error as NSError).code
+                    TapesLog.player.error("TapeCompositionBuilder: [\(localIdentifier)] ✗ Failed after \(String(format: "%.2f", totalTime))s - error code: \(errorCode), description: \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                 } else {
-                    TapesLog.player.error("TapeCompositionBuilder: Photos returned nil asset with no error")
+                    // Check if this is a degraded callback - wait for full quality
+                    if let info = info,
+                       let isDegraded = info[PHImageResultIsDegradedKey] as? Bool,
+                       isDegraded {
+                        // Don't resume yet - wait for full quality callback
+                        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Degraded callback, waiting for full quality...")
+                        return
+                    }
+                    
+                    hasResumed = true
+                    let totalTime = callbackTime.timeIntervalSince(fetchStartTime)
+                    TapesLog.player.error("TapeCompositionBuilder: [\(localIdentifier)] ✗ Failed after \(String(format: "%.2f", totalTime))s - Photos returned nil asset with no error")
                     continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
                 }
             }
@@ -1126,15 +1274,20 @@ private extension Array {
 
 private extension TapeCompositionBuilder {
     func loadImage(for clip: Clip) async throws -> UIImage {
+        // CRITICAL: For Photos assets, always fetch from Photos to get full resolution
+        // Don't use cached imageData which may be compressed JPEG (0.8 quality)
+        if let assetLocalId = clip.assetLocalId {
+            return try await fetchImageFromPhotos(localIdentifier: assetLocalId)
+        }
+        
+        // For non-Photos images, use cached data or local file
         if let data = clip.imageData, let image = UIImage(data: data) {
             return image
         }
         if let url = clip.localURL, let image = UIImage(contentsOfFile: url.path) {
             return image
         }
-        if let assetLocalId = clip.assetLocalId {
-            return try await fetchImageFromPhotos(localIdentifier: assetLocalId)
-        }
+        
         throw BuilderError.assetUnavailable(clipID: clip.id)
     }
 
@@ -1149,32 +1302,46 @@ private extension TapeCompositionBuilder {
             throw BuilderError.photosAssetMissing
         }
         
-        // OPTIMIZATION: Request image at target video size instead of full resolution
-        // Video target is max 1920x1080, so requesting this size saves 5-10x data transfer
-        // For portrait: 1080x1920, for landscape: 1920x1080
-        // Use slightly larger to account for rotation and ensure quality
-        let targetSize = CGSize(width: 2160, height: 2160) // 2x video size for quality margin
+        // CRITICAL MEMORY FIX: Request reasonable size instead of maximum
+        // Render size is 1080x1920 (portrait) or 1920x1080 (landscape)
+        // Request 2x render size for excellent quality without excessive memory
+        // This caps images at ~2160x3840 instead of 4284x5712, saving ~60% memory
+        let maxTargetSize = CGSize(width: 2160, height: 3840) // 2x portrait render size
         
-        // OPTIMIZATION: Use .opportunistic for faster loading
-        // Returns fast format immediately, upgrades to full quality if available
-        // Much faster for iCloud images (2-5s faster), negligible quality difference at 1920x1080
+        // Use high quality delivery mode but with reasonable target size
         let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic  // Faster than .highQualityFormat
+        options.deliveryMode = .highQualityFormat  // High quality, not opportunistic
         options.isNetworkAccessAllowed = true
         options.isSynchronous = false
-        options.resizeMode = .fast  // Faster resizing
+        options.resizeMode = .fast  // Allow resizing for memory efficiency
         
-        // OPTIMIZATION: Use requestImage instead of requestImageDataAndOrientation
-        // Can specify target size, Photos Framework handles resizing efficiently
-        // Returns orientation-corrected UIImage directly (avoids manual normalization)
+        // Request image at reasonable size (Photos will scale down if larger)
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UIImage, Error>) in
+            var hasResumed = false
+            var finalImage: UIImage?
+            
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: targetSize,
+                targetSize: maxTargetSize,
                 contentMode: .aspectFit,
                 options: options
             ) { image, info in
+                guard !hasResumed else { return }
+                
+                // Check if this is a degraded (low quality) version
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                if isDegraded {
+                    // Store degraded version as fallback, but wait for full quality
+                    finalImage = image
+                    TapesLog.player.info("TapeCompositionBuilder: Received degraded image, waiting for full quality...")
+                    return
+                }
+                
+                // Got full quality version
+                hasResumed = true
                 if let image = image {
+                    let pixelSize = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
+                    TapesLog.player.info("TapeCompositionBuilder: Received image (\(Int(pixelSize.width))x\(Int(pixelSize.height)))")
                     continuation.resume(returning: image)
                 } else if let error = info?[PHImageErrorKey] as? Error {
                     TapesLog.player.error("TapeCompositionBuilder: Image error: \(error.localizedDescription)")
@@ -1182,19 +1349,44 @@ private extension TapeCompositionBuilder {
                 } else if let cancelled = info?[PHImageCancelledKey] as? NSNumber, cancelled.boolValue {
                     continuation.resume(throwing: BuilderError.photosAssetMissing)
                 } else {
-                    TapesLog.player.error("TapeCompositionBuilder: Image returned nil with no error")
-                    continuation.resume(throwing: BuilderError.photosAssetMissing)
+                    // Fallback to degraded if available, otherwise error
+                    if let degraded = finalImage {
+                        TapesLog.player.warning("TapeCompositionBuilder: Using degraded image as fallback")
+                        continuation.resume(returning: degraded)
+                    } else {
+                        TapesLog.player.error("TapeCompositionBuilder: Image returned nil with no error")
+                        continuation.resume(throwing: BuilderError.photosAssetMissing)
+                    }
                 }
             }
         }
     }
 
     func createVideoAsset(from image: UIImage, clip: Clip, duration: Double) async throws -> AVAsset {
+        // CRITICAL MEMORY FIX: Extract CGImage early and allow UIImage to be deallocated
+        // The UIImage can be large (especially Photos assets), so we extract the CGImage
+        // and let the UIImage be freed before encoding starts
         let cgImage = try normalizedCGImage(from: image, clip: clip)
+        // UIImage can now be deallocated - we only need the CGImage for encoding
         let rotationTurns = ((clip.rotateQuarterTurns % 4) + 4) % 4
-        let targetSize = normalizedVideoSize(for: cgImage, rotationTurns: rotationTurns)
-        let targetWidth = Int(targetSize.width)
-        let targetHeight = Int(targetSize.height)
+        
+        // Use high resolution but cap at reasonable maximum (4K) for performance
+        // 2x render size gives excellent quality without overkill
+        // Render size is 1080x1920 (portrait) or 1920x1080 (landscape)
+        let maxRenderSize = CGSize(width: 1920, height: 1920) // Use square max for both orientations
+        let maxEncodeSize = CGSize(width: maxRenderSize.width * 2, height: maxRenderSize.height * 2) // 2x = 3840x3840
+        
+        let swapAxes = rotationTurns % 2 != 0
+        let baseWidth = CGFloat(cgImage.width)
+        let baseHeight = CGFloat(cgImage.height)
+        let rotatedWidth = swapAxes ? baseHeight : baseWidth
+        let rotatedHeight = swapAxes ? baseWidth : baseHeight
+        
+        // Cap at max encode size but preserve aspect ratio
+        let scale = min(1.0, min(maxEncodeSize.width / rotatedWidth, maxEncodeSize.height / rotatedHeight))
+        let targetWidth = makeEvenDimension(rotatedWidth * scale)
+        let targetHeight = makeEvenDimension(rotatedHeight * scale)
+        let targetSize = CGSize(width: CGFloat(targetWidth), height: CGFloat(targetHeight))
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -1203,13 +1395,20 @@ private extension TapeCompositionBuilder {
             try FileManager.default.removeItem(at: url)
         }
 
+        // Calculate bitrate based on resolution (higher for larger images)
+        // Formula: width * height * 0.1 gives good quality for static images
+        let pixelCount = targetWidth * targetHeight
+        let bitrate = max(10_000_000, pixelCount / 100) // At least 10 Mbps, scale with resolution
+
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let settings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: targetWidth,
             AVVideoHeightKey: targetHeight,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 2_000_000
+                AVVideoAverageBitRateKey: bitrate,
+                AVVideoMaxKeyFrameIntervalKey: 30,
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
             ]
         ]
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
@@ -1271,6 +1470,7 @@ private extension TapeCompositionBuilder {
             }
 
             // Render same image (static frame) - transforms will animate during playback
+            // Use high quality rendering
             render(
                 cgImage: cgImage,
                 into: buffer,
@@ -1298,17 +1498,20 @@ private extension TapeCompositionBuilder {
             return cgImage
         }
 
+        // Preserve full resolution - use actual pixel dimensions with scale
         let pixelSize = CGSize(
             width: max(image.size.width * image.scale, 1),
             height: max(image.size.height * image.scale, 1)
         )
         let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
+        format.scale = image.scale  // Preserve original scale for quality
         format.opaque = false
-        format.preferredRange = .standard
+        format.preferredRange = .extended  // Use extended color range for better quality
 
         let renderer = UIGraphicsImageRenderer(size: pixelSize, format: format)
-        let rendered = renderer.image { _ in
+        let rendered = renderer.image { context in
+            // Use high quality rendering
+            context.cgContext.interpolationQuality = .high
             image.draw(in: CGRect(origin: .zero, size: pixelSize))
         }
 
@@ -1316,6 +1519,111 @@ private extension TapeCompositionBuilder {
             throw BuilderError.assetUnavailable(clipID: clip.id)
         }
         return cgImage
+    }
+    
+    // MARK: - Placeholder Asset Creation
+    
+    /// Creates a black video placeholder asset for missing clips.
+    /// Cached by (renderSize, duration) to avoid recreating identical placeholders.
+    func createPlaceholderAsset(duration: Double, renderSize: CGSize) async throws -> AVAsset {
+        let key = "\(Int(renderSize.width))x\(Int(renderSize.height))-\(duration)"
+        
+        // Check cache
+        if let cached = Self.placeholderCache[key] {
+            return cached
+        }
+        
+        // Create black video asset
+        let targetWidth = Int(renderSize.width)
+        let targetHeight = Int(renderSize.height)
+        
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("placeholder-\(key)-\(UUID().uuidString)")
+            .appendingPathExtension("mov")
+        
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let settings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: targetWidth,
+            AVVideoHeightKey: targetHeight,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 2_000_000
+            ]
+        ]
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+        input.expectsMediaDataInRealTime = false
+        
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: targetWidth,
+                kCVPixelBufferHeightKey as String: targetHeight,
+                kCVPixelBufferCGImageCompatibilityKey as String: true,
+                kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+            ]
+        )
+        
+        writer.add(input)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+        
+        // Minimal encoding: 2 frames at 1fps (same as image encoding)
+        let encodedFrameRate: Int32 = 1
+        let frameDuration = CMTime(value: 1, timescale: encodedFrameRate)
+        let totalFrames = max(2, Int(ceil(duration * Double(encodedFrameRate))))
+        
+        guard let pixelBufferPool = adaptor.pixelBufferPool else {
+            throw BuilderError.imageEncodingFailed
+        }
+        
+        // Render black frames
+        for frameIndex in 0..<totalFrames {
+            let time = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
+            
+            while !input.isReadyForMoreMediaData {
+                try await Task.sleep(nanoseconds: 100_000) // 0.1ms yield
+            }
+            
+            var pixelBuffer: CVPixelBuffer?
+            let status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+            guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+                continue
+            }
+            
+            // Fill with black (RGB: 0,0,0)
+            CVPixelBufferLockBaseAddress(buffer, [])
+            defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+            
+            let baseAddress = CVPixelBufferGetBaseAddress(buffer)
+            let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+            let height = CVPixelBufferGetHeight(buffer)
+            
+            // Clear buffer (black = zeros)
+            if let baseAddress = baseAddress {
+                memset(baseAddress, 0, bytesPerRow * height)
+            }
+            
+            adaptor.append(buffer, withPresentationTime: time)
+        }
+        
+        input.markAsFinished()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            writer.finishWriting {
+                continuation.resume()
+            }
+        }
+        
+        let asset = AVURLAsset(url: url)
+        
+        // Cache for reuse
+        Self.placeholderCache[key] = asset
+        
+        return asset
     }
 
     func normalizedVideoSize(for cgImage: CGImage, rotationTurns: Int) -> CGSize {
@@ -1380,7 +1688,7 @@ private extension TapeCompositionBuilder {
         }
 
         context.clear(CGRect(origin: .zero, size: targetSize))
-        context.interpolationQuality = .high
+        context.interpolationQuality = .high  // High quality interpolation
 
         context.saveGState()
         context.translateBy(x: targetSize.width / 2, y: targetSize.height / 2)
