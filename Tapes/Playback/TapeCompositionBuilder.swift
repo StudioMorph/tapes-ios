@@ -80,6 +80,18 @@ struct TapeCompositionBuilder {
         )
     }
 
+    // MARK: - Metadata (Lightweight - for timeline building)
+    
+    struct ClipMetadata {
+        let index: Int
+        let clip: Clip
+        let duration: CMTime
+        let naturalSize: CGSize? // Optional - can be nil for timeline, resolved later for playback
+        let motionEffect: MotionEffect?
+    }
+    
+    // MARK: - Asset Context (Full - for playback building)
+    
     struct ClipAssetContext {
         let index: Int
         let clip: Clip
@@ -96,7 +108,8 @@ struct TapeCompositionBuilder {
 
     struct Segment {
         let clipIndex: Int
-        let assetContext: ClipAssetContext
+        let metadata: ClipMetadata // TIMELINE FIX: Use lightweight metadata instead of full asset context
+        let assetContext: ClipAssetContext? // Optional - only set when building playback
         let timeRange: CMTimeRange
         let incomingTransition: TransitionDescriptor?
         let outgoingTransition: TransitionDescriptor?
@@ -133,12 +146,14 @@ struct TapeCompositionBuilder {
             )
         }
 
-        let contexts = try await loadAssets(for: tape.clips, startIndex: 0)
-        return makeTimeline(for: tape, contexts: contexts)
+        // TIMELINE FIX: Load only metadata (fast) instead of full AVAssets (slow)
+        // This is now synchronous - just reading clip properties, no async work
+        let metadata = loadMetadata(for: tape.clips, startIndex: 0)
+        return makeTimeline(for: tape, metadata: metadata)
     }
 
-    func makeTimeline(for tape: Tape, contexts: [ClipAssetContext]) -> Timeline {
-        guard !contexts.isEmpty else {
+    func makeTimeline(for tape: Tape, metadata: [ClipMetadata]) -> Timeline {
+        guard !metadata.isEmpty else {
             return Timeline(
                 segments: [],
                 renderSize: renderSize(for: tape.orientation),
@@ -147,10 +162,33 @@ struct TapeCompositionBuilder {
             )
         }
 
-        let transitionDescriptors = buildTransitionDescriptors(for: tape, assets: contexts)
-        let segments = buildSegments(for: contexts, transitions: transitionDescriptors)
+        let transitionDescriptors = buildTransitionDescriptors(for: tape, metadata: metadata)
+        let segments = buildSegments(for: metadata, transitions: transitionDescriptors)
         let totalDuration = segments.last.map { CMTimeAdd($0.timeRange.start, $0.timeRange.duration) } ?? .zero
 
+        return Timeline(
+            segments: segments,
+            renderSize: renderSize(for: tape.orientation),
+            totalDuration: totalDuration,
+            transitionSequence: transitionDescriptors
+        )
+    }
+    
+    // Legacy method for backward compatibility - now resolves full contexts
+    func makeTimeline(for tape: Tape, contexts: [ClipAssetContext]) -> Timeline {
+        // Convert contexts to metadata for timeline building
+        let metadata = contexts.map { context in
+            ClipMetadata(
+                index: context.index,
+                clip: context.clip,
+                duration: context.duration,
+                naturalSize: context.naturalSize,
+                motionEffect: context.motionEffect
+            )
+        }
+        let transitionDescriptors = buildTransitionDescriptors(for: tape, metadata: metadata)
+        let segments = buildSegments(for: contexts, transitions: transitionDescriptors)
+        let totalDuration = segments.last.map { CMTimeAdd($0.timeRange.start, $0.timeRange.duration) } ?? .zero
         return Timeline(
             segments: segments,
             renderSize: renderSize(for: tape.orientation),
@@ -163,13 +201,13 @@ struct TapeCompositionBuilder {
     func buildPlayerItem(for tape: Tape) async throws -> PlayerComposition {
         let contexts = try await loadAssets(for: tape.clips, startIndex: 0)
         let timeline = makeTimeline(for: tape, contexts: contexts)
-        return try buildPlayerComposition(for: tape, timeline: timeline)
+        return try await buildPlayerComposition(for: tape, timeline: timeline)
     }
 
     @MainActor
-    func buildPlayerItem(for tape: Tape, contexts: [ClipAssetContext]) throws -> PlayerComposition {
+    func buildPlayerItem(for tape: Tape, contexts: [ClipAssetContext]) async throws -> PlayerComposition {
         let timeline = makeTimeline(for: tape, contexts: contexts)
-        return try buildPlayerComposition(for: tape, timeline: timeline)
+        return try await buildPlayerComposition(for: tape, timeline: timeline)
     }
 
     func resolveClipContext(for clip: Clip, index: Int) async throws -> ClipAssetContext {
@@ -184,7 +222,7 @@ struct TapeCompositionBuilder {
     private func buildPlayerComposition(
         for tape: Tape,
         timeline: Timeline
-    ) throws -> PlayerComposition {
+    ) async throws -> PlayerComposition {
         let composition = AVMutableComposition()
         let videoTracks = try createCompositionTracks(for: composition, mediaType: .video)
         let audioTracks = try createCompositionTracks(for: composition, mediaType: .audio)
@@ -192,21 +230,46 @@ struct TapeCompositionBuilder {
         var videoTrackMap: [Int: AVMutableCompositionTrack] = [:]
         var audioTrackMap: [Int: AVMutableCompositionTrack] = [:]
         var audioMixParameters: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
-
+        
+        // TIMELINE FIX: Resolve all asset contexts on-demand from metadata
+        // Build segments with resolved contexts for video instruction building
+        var segmentsWithContexts: [Segment] = []
+        
         for segment in timeline.segments {
+            // Resolve full asset context if not already available
+            let assetContext: ClipAssetContext
+            if let existing = segment.assetContext {
+                assetContext = existing
+            } else {
+                // Resolve on-demand
+                assetContext = try await resolveClipContext(for: segment.metadata.clip, index: segment.metadata.index)
+            }
+            
+            // Create segment with resolved context
+            let segmentWithContext = Segment(
+                clipIndex: segment.clipIndex,
+                metadata: segment.metadata,
+                assetContext: assetContext,
+                timeRange: segment.timeRange,
+                incomingTransition: segment.incomingTransition,
+                outgoingTransition: segment.outgoingTransition,
+                motionEffect: segment.motionEffect
+            )
+            segmentsWithContexts.append(segmentWithContext)
+            
             let trackIndex = videoTracks.isEmpty ? 0 : segment.clipIndex % videoTracks.count
             if trackIndex < videoTracks.count {
                 let videoTrack = videoTracks[trackIndex]
-                let sourceRange = CMTimeRange(start: .zero, duration: segment.assetContext.duration)
-                try videoTrack.insertTimeRange(sourceRange, of: segment.assetContext.videoTrack, at: segment.timeRange.start)
+                let sourceRange = CMTimeRange(start: .zero, duration: assetContext.duration)
+                try videoTrack.insertTimeRange(sourceRange, of: assetContext.videoTrack, at: segment.timeRange.start)
                 videoTrackMap[segment.clipIndex] = videoTrack
             }
 
-            if segment.assetContext.hasAudio,
-               let sourceAudioTrack = segment.assetContext.audioTrack,
+            if assetContext.hasAudio,
+               let sourceAudioTrack = assetContext.audioTrack,
                trackIndex < audioTracks.count {
                 let audioTrack = audioTracks[trackIndex]
-                let sourceRange = CMTimeRange(start: .zero, duration: segment.assetContext.duration)
+                let sourceRange = CMTimeRange(start: .zero, duration: assetContext.duration)
                 try audioTrack.insertTimeRange(sourceRange, of: sourceAudioTrack, at: segment.timeRange.start)
                 audioTrackMap[segment.clipIndex] = audioTrack
 
@@ -227,9 +290,17 @@ struct TapeCompositionBuilder {
                 audioMixParameters[key] = params
             }
         }
+        
+        // Create timeline with resolved contexts for video instruction building
+        let timelineWithContexts = Timeline(
+            segments: segmentsWithContexts,
+            renderSize: timeline.renderSize,
+            totalDuration: timeline.totalDuration,
+            transitionSequence: timeline.transitionSequence
+        )
 
         let instructions = buildVideoInstructions(
-            for: timeline,
+            for: timelineWithContexts,
             videoTrackMap: videoTrackMap,
             renderSize: timeline.renderSize,
             tapeScaleMode: tape.scaleMode
@@ -259,10 +330,25 @@ struct TapeCompositionBuilder {
     }
 
     private func loadAssets(for clips: [Clip], startIndex: Int) async throws -> [ClipAssetContext] {
-        try await withThrowingTaskGroup(of: ClipAssetContext.self) { group in
+        // MEMORY FIX: Limit concurrent loading to prevent memory exhaustion
+        let maxConcurrentImages = 3
+        let maxConcurrentVideos = 10
+        let imageSemaphore = AsyncSemaphore(count: maxConcurrentImages)
+        let videoSemaphore = AsyncSemaphore(count: maxConcurrentVideos)
+        
+        return try await withThrowingTaskGroup(of: ClipAssetContext.self) { group in
             for (offset, clip) in clips.enumerated() {
                 let index = startIndex + offset
                 group.addTask {
+                    // Acquire semaphore based on clip type
+                    if clip.clipType == .image {
+                        await imageSemaphore.wait()
+                        defer { imageSemaphore.signal() }
+                    } else {
+                        await videoSemaphore.wait()
+                        defer { videoSemaphore.signal() }
+                    }
+                    
                     let resolved = try await resolveAsset(for: clip)
                     let asset = resolved.asset
                     guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
@@ -329,14 +415,71 @@ struct TapeCompositionBuilder {
                 return
             }
 
+            // DIAGNOSTICS: Log asset properties for slow-loading diagnostics
+            let mediaType = phAsset.mediaType
+            let duration = phAsset.duration
+            let pixelWidth = phAsset.pixelWidth
+            let pixelHeight = phAsset.pixelHeight
+            let creationDate = phAsset.creationDate
+            let modificationDate = phAsset.modificationDate
+            
+            TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Starting fetch - type: \(mediaType == .video ? "video" : "unknown"), duration: \(String(format: "%.2f", duration))s, size: \(pixelWidth)x\(pixelHeight), created: \(creationDate?.description ?? "unknown"), modified: \(modificationDate?.description ?? "unknown")")
+            
             let options = PHVideoRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = true
 
-            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, _ in
+            let startTime = Date()
+            var callbackCount = 0
+            var timeToFirstCallback: TimeInterval = 0
+            var isComplete = false
+            
+            // DIAGNOSTICS: Monitor slow requests using Task
+            let monitoringTask = Task {
+                var checkCount = 0
+                while !isComplete && !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                    if isComplete { break }
+                    checkCount += 1
+                    let elapsed = Date().timeIntervalSince(startTime)
+                    if callbackCount == 0 {
+                        TapesLog.player.warning("TapeCompositionBuilder: [\(localIdentifier)] Still no callbacks after \(String(format: "%.1f", elapsed))s - possible slow asset or sandbox issue")
+                    } else {
+                        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Received \(callbackCount) callbacks, still waiting after \(String(format: "%.1f", elapsed))s")
+                    }
+                }
+            }
+
+            TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Initiating PHImageManager request...")
+            
+            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { asset, _, info in
+                callbackCount += 1
+                if callbackCount == 1 {
+                    timeToFirstCallback = Date().timeIntervalSince(startTime)
+                    TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] First callback after \(String(format: "%.2f", timeToFirstCallback))s")
+                }
+                
+                isComplete = true
+                monitoringTask.cancel()
+                
                 if let asset = asset {
+                    let totalTime = Date().timeIntervalSince(startTime)
+                    // Try to get file info if available
+                    if let urlAsset = asset as? AVURLAsset {
+                        let fileName = urlAsset.url.lastPathComponent
+                        if let fileSize = try? FileManager.default.attributesOfItem(atPath: urlAsset.url.path)[.size] as? Int64 {
+                            let fileSizeMB = Double(fileSize) / 1_000_000.0
+                            TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] ✓ Success in \(String(format: "%.2f", totalTime))s - file: \(fileName), size: \(String(format: "%.2f", fileSizeMB))MB")
+                        } else {
+                            TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] ✓ Success in \(String(format: "%.2f", totalTime))s - file: \(urlAsset.url.lastPathComponent)")
+                        }
+                    } else {
+                        TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] ✓ Success in \(String(format: "%.2f", totalTime))s")
+                    }
                     continuation.resume(returning: asset)
                 } else {
+                    let totalTime = Date().timeIntervalSince(startTime)
+                    TapesLog.player.error("TapeCompositionBuilder: [\(localIdentifier)] ✗ Failed after \(String(format: "%.2f", totalTime))s")
                     continuation.resume(throwing: BuilderError.assetUnavailable(clipID: UUID()))
                 }
             }
@@ -425,8 +568,101 @@ struct TapeCompositionBuilder {
         return try Self.accessibleURL(for: clip, url: sourceURL)
     }
 
+    // MARK: - Metadata Loading (Fast - for timeline building)
+    
+    private func loadMetadata(for clips: [Clip], startIndex: Int) -> [ClipMetadata] {
+        // TIMELINE OPTIMIZATION: No async work needed - just read clip properties synchronously
+        // This is instant - no task groups, no PHAsset fetches, just in-memory property access
+        return clips.enumerated().map { offset, clip in
+            let index = startIndex + offset
+            let duration: CMTime
+            let motionEffect: MotionEffect?
+            
+            switch clip.clipType {
+            case .video:
+                // For videos, use clip.duration if available (should be stored in Clip model)
+                if clip.duration > 0 {
+                    duration = CMTime(seconds: clip.duration, preferredTimescale: 600)
+                } else {
+                    // Fallback: use default duration if missing (should be rare)
+                    duration = CMTime(seconds: 1.0, preferredTimescale: 600)
+                    TapesLog.player.warning("TapeCompositionBuilder: Clip \(index) missing duration, using default 1.0s")
+                }
+                motionEffect = nil
+                
+            case .image:
+                // For images, use clip duration or default, and default motion effect
+                let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
+                duration = CMTime(seconds: durationSeconds, preferredTimescale: 600)
+                motionEffect = imageConfiguration.defaultMotionEffect
+            }
+            
+            // TIMELINE OPTIMIZATION: naturalSize is nil for timeline building
+            // It will be resolved later during playback building when needed
+            return ClipMetadata(
+                index: index,
+                clip: clip,
+                duration: duration,
+                naturalSize: nil, // Not needed for timeline - resolved on-demand during playback
+                motionEffect: motionEffect
+            )
+        }
+    }
+    
+    private func fetchPHAsset(localIdentifier: String) async throws -> PHAsset {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            throw BuilderError.photosAccessDenied
+        }
+        
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+        guard let phAsset = fetchResult.firstObject else {
+            throw BuilderError.photosAssetMissing
+        }
+        
+        return phAsset
+    }
+
     // MARK: - Transition Handling
 
+    private func buildTransitionDescriptors(for tape: Tape, metadata: [ClipMetadata]) -> [TransitionDescriptor?] {
+        guard metadata.count > 1 else { return [] }
+
+        let baseStyle = tape.transition
+        let styles: [TransitionType]
+        switch baseStyle {
+        case .none, .crossfade, .slideLR, .slideRL:
+            styles = Array(repeating: baseStyle, count: metadata.count - 1)
+        case .randomise:
+            styles = generateRandomSequence(boundaries: metadata.count - 1, tapeID: tape.id)
+        }
+
+        var descriptors: [TransitionDescriptor?] = []
+        descriptors.reserveCapacity(styles.count)
+
+        for (index, style) in styles.enumerated() {
+            if style == .none {
+                descriptors.append(nil)
+                continue
+            }
+
+            let currentDuration = metadata[index].duration
+            let nextDuration = metadata[index + 1].duration
+            let maxDurationCurrent = CMTimeMultiplyByFloat64(currentDuration, multiplier: 0.5)
+            let maxDurationNext = CMTimeMultiplyByFloat64(nextDuration, multiplier: 0.5)
+            let rawDuration = CMTime(seconds: tape.transitionDuration, preferredTimescale: 600)
+            let capped = minTime(rawDuration, maxDurationCurrent, maxDurationNext)
+            if CMTimeCompare(capped, .zero) <= 0 {
+                descriptors.append(nil)
+            } else {
+                descriptors.append(TransitionDescriptor(style: style, duration: capped))
+            }
+        }
+
+        return descriptors
+    }
+    
+    // Legacy method for backward compatibility
     private func buildTransitionDescriptors(for tape: Tape, assets: [ClipAssetContext]) -> [TransitionDescriptor?] {
         guard assets.count > 1 else { return [] }
 
@@ -466,27 +702,28 @@ struct TapeCompositionBuilder {
         return descriptors
     }
 
-    private func buildSegments(for assets: [ClipAssetContext], transitions: [TransitionDescriptor?]) -> [Segment] {
+    private func buildSegments(for metadata: [ClipMetadata], transitions: [TransitionDescriptor?]) -> [Segment] {
         var segments: [Segment] = []
-        segments.reserveCapacity(assets.count)
+        segments.reserveCapacity(metadata.count)
 
         var currentStart = CMTime.zero
 
-        for index in 0..<assets.count {
-            let assetContext = assets[index]
+        for index in 0..<metadata.count {
+            let meta = metadata[index]
             let incomingTransition = index > 0 ? transitions[index - 1] : nil
             let outgoingTransition = index < transitions.count ? transitions[index] : nil
 
-            let duration = assetContext.duration
+            let duration = meta.duration
             let timeRange = CMTimeRange(start: currentStart, duration: duration)
 
             let segment = Segment(
                 clipIndex: index,
-                assetContext: assetContext,
+                metadata: meta,
+                assetContext: nil, // Will be resolved on-demand during playback building
                 timeRange: timeRange,
                 incomingTransition: incomingTransition,
                 outgoingTransition: outgoingTransition,
-                motionEffect: assetContext.motionEffect
+                motionEffect: meta.motionEffect
             )
             segments.append(segment)
 
@@ -498,6 +735,34 @@ struct TapeCompositionBuilder {
             }
         }
 
+        return segments
+    }
+    
+    // Legacy method for backward compatibility
+    private func buildSegments(for assets: [ClipAssetContext], transitions: [TransitionDescriptor?]) -> [Segment] {
+        // Convert to metadata and build segments
+        let metadata = assets.map { context in
+            ClipMetadata(
+                index: context.index,
+                clip: context.clip,
+                duration: context.duration,
+                naturalSize: context.naturalSize,
+                motionEffect: context.motionEffect
+            )
+        }
+        // Build segments with metadata, then attach asset contexts
+        var segments = buildSegments(for: metadata, transitions: transitions)
+        for (index, context) in assets.enumerated() {
+            segments[index] = Segment(
+                clipIndex: segments[index].clipIndex,
+                metadata: segments[index].metadata,
+                assetContext: context,
+                timeRange: segments[index].timeRange,
+                incomingTransition: segments[index].incomingTransition,
+                outgoingTransition: segments[index].outgoingTransition,
+                motionEffect: segments[index].motionEffect
+            )
+        }
         return segments
     }
 
@@ -546,8 +811,13 @@ struct TapeCompositionBuilder {
         scaleMode: ScaleMode,
         at time: CMTime
     ) -> CGAffineTransform {
+        // TIMELINE FIX: Use assetContext if available, otherwise use metadata
+        guard let assetContext = segment.assetContext else {
+            // Fallback to metadata - this shouldn't happen in playback building, but handle gracefully
+            return CGAffineTransform.identity
+        }
         let base = baseTransform(
-            for: segment.assetContext,
+            for: assetContext,
             renderSize: renderSize,
             scaleMode: scaleMode
         )
@@ -616,7 +886,9 @@ struct TapeCompositionBuilder {
     }
 
     private func effectiveScaleMode(for segment: Segment, tapeScaleMode: ScaleMode) -> ScaleMode {
-        if let override = segment.assetContext.clip.overrideScaleMode {
+        // TIMELINE FIX: Use metadata.clip if assetContext is not available
+        let clip = segment.assetContext?.clip ?? segment.metadata.clip
+        if let override = clip.overrideScaleMode {
             return override
         }
         if segment.motionEffect != nil {
@@ -918,8 +1190,16 @@ private extension TapeCompositionBuilder {
             options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = true
             options.isSynchronous = false
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
-                if let data = data, let image = UIImage(data: data) {
+            // MEMORY FIX: Request reasonable size instead of maximum to prevent memory issues
+            // 2x render size (2160x3840) is sufficient for high-quality playback
+            let targetSize = CGSize(width: 2160, height: 3840)
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFit,
+                options: options
+            ) { image, info in
+                if let image = image {
                     continuation.resume(returning: image)
                 } else if let error = info?[PHImageErrorKey] as? Error {
                     continuation.resume(throwing: error)
@@ -933,7 +1213,9 @@ private extension TapeCompositionBuilder {
     }
 
     func createVideoAsset(from image: UIImage, clip: Clip, duration: Double) throws -> AVAsset {
+        // MEMORY FIX: Extract CGImage early and allow UIImage to be deallocated
         let cgImage = try normalizedCGImage(from: image, clip: clip)
+        // UIImage can now be deallocated - we only need the CGImage
         let rotationTurns = ((clip.rotateQuarterTurns % 4) + 4) % 4
         let targetSize = normalizedVideoSize(for: cgImage, rotationTurns: rotationTurns)
         let targetWidth = Int(targetSize.width)

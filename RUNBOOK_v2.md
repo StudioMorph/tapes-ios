@@ -132,6 +132,10 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - App = UI layer only; clips remain in Photos/MediaStore
   - Temp export inputs only
 
+- **Timeline Asset Loading**
+  - Tape creation uses lightweight clip metadata and thumbnails only.
+  - Full AVAsset composition/rendering is deferred to preview playback.
+
 - **Snapping / Insertion**
   - FAB fixed; carousel snaps around it
   - New clip inserts between left and right neighbor

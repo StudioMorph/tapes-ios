@@ -1,7 +1,7 @@
 import Foundation
 import PhotosUI
 import UniformTypeIdentifiers
-import AVFoundation
+import Photos
 import os
 
 enum MediaLoaderError: Error {
@@ -13,7 +13,7 @@ enum MediaLoaderError: Error {
 }
 
 public enum PickedMedia {
-    case video(url: URL, duration: TimeInterval, assetIdentifier: String?)
+    case video(url: URL?, duration: TimeInterval, assetIdentifier: String?)
     case photo(image: UIImage, assetIdentifier: String?)
 }
 
@@ -138,11 +138,24 @@ func loadImage(from result: PHPickerResult) async throws -> UIImage {
 }
 
 func resolvePickedMedia(from result: PHPickerResult) async throws -> PickedMedia {
+    if let assetIdentifier = result.assetIdentifier,
+       let asset = fetchPHAsset(localIdentifier: assetIdentifier) {
+        switch asset.mediaType {
+        case .video:
+            let seconds = asset.duration
+            return .video(url: nil, duration: seconds, assetIdentifier: assetIdentifier)
+        case .image:
+            if let thumbnail = await requestThumbnail(for: asset) {
+                return .photo(image: thumbnail, assetIdentifier: assetIdentifier)
+            }
+        default:
+            break
+        }
+    }
+
     if result.itemProvider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
         let url = try await loadMovieURL(from: result)
-        let asset = AVURLAsset(url: url)
-        let duration = try? await asset.load(.duration)
-        let seconds = duration?.seconds ?? 0
+        let seconds = durationFromPhotos(assetIdentifier: result.assetIdentifier)
         return .video(url: url, duration: seconds, assetIdentifier: result.assetIdentifier)
     }
 
@@ -153,6 +166,39 @@ func resolvePickedMedia(from result: PHPickerResult) async throws -> PickedMedia
     }
 
     throw MediaLoaderError.loadFailed(nil)
+}
+
+private func durationFromPhotos(assetIdentifier: String?) -> TimeInterval {
+    guard let assetIdentifier else { return 0 }
+    return fetchPHAsset(localIdentifier: assetIdentifier)?.duration ?? 0
+}
+
+private func fetchPHAsset(localIdentifier: String) -> PHAsset? {
+    let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    guard status == .authorized || status == .limited else { return nil }
+    let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+    return fetch.firstObject
+}
+
+private func requestThumbnail(for asset: PHAsset) async -> UIImage? {
+    await withCheckedContinuation { continuation in
+        let options = PHImageRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+        options.resizeMode = .exact
+        let targetSize = CGSize(width: 960, height: 960)
+        PHImageManager.default().requestImage(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: .aspectFill,
+            options: options
+        ) { image, info in
+            if let isDegraded = info?[PHImageResultIsDegradedKey] as? NSNumber, isDegraded.boolValue {
+                return
+            }
+            continuation.resume(returning: image)
+        }
+    }
 }
 
 /// Preserve selection order, loading items concurrently but returning in-order.

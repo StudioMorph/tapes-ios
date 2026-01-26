@@ -52,8 +52,8 @@ final class PlaybackPreparationCoordinator {
     init(
         builder: TapeCompositionBuilder = TapeCompositionBuilder(),
         warmupWindowSize: Int = 5,
-        warmupTimeout: TimeInterval = 15,
-        sequentialTimeout: TimeInterval = 10
+        warmupTimeout: TimeInterval = .infinity, // LOADING FIX: Remove timeout - let all assets load
+        sequentialTimeout: TimeInterval = .infinity // LOADING FIX: Remove timeout - let all assets load
     ) {
         self.builder = builder
         self.warmupWindowSize = warmupWindowSize
@@ -99,6 +99,10 @@ final class PlaybackPreparationCoordinator {
     func cancel() {
         currentTask?.cancel()
         currentTask = nil
+        // MEMORY FIX: Clear cache to release AVAsset references
+        cache.removeAll()
+        sourceTape = nil
+        clips = []
     }
 
     private func performWarmup(onSkip: @escaping (SkipReason, Int) -> Void) async throws -> [PreparedClip] {
@@ -107,21 +111,13 @@ final class PlaybackPreparationCoordinator {
         }
 
         let window = Array(clips.prefix(warmupWindowSize))
-        TapesLog.player.info("PlaybackPrep: warmup resolving \(window.count) clips sequentially (timeout \(self.warmupTimeout)s)")
+        TapesLog.player.info("PlaybackPrep: warmup resolving \(window.count) clips sequentially (no timeout)")
 
-        let start = Date()
         var prepared: [PreparedClip] = []
 
         for (index, clip) in window.enumerated() {
-            let remaining = warmupTimeout - Date().timeIntervalSince(start)
-            if remaining <= 0 {
-                let skipped = PreparedClip(index: index, status: .skipped(.timeout), duration: clip.duration)
-                prepared.append(skipped)
-                onSkip(.timeout, index)
-                continue
-            }
-
-            let resolved = await resolveClip(clip: clip, index: index, timeout: remaining)
+            // LOADING FIX: No timeout - let all assets load completely
+            let resolved = await resolveClip(clip: clip, index: index, timeout: .infinity)
             prepared.append(resolved)
             if case .skipped(let reason) = resolved.status {
                 onSkip(reason, index)
@@ -178,7 +174,9 @@ final class PlaybackPreparationCoordinator {
     }
 
     private func resolveClip(clip: Clip, index: Int, timeout: TimeInterval) async -> PreparedClip {
-        let deadline = Date().addingTimeInterval(timeout)
+        // LOADING FIX: If timeout is infinity, retry indefinitely until success or unrecoverable error
+        let hasTimeout = timeout.isFinite
+        let deadline = hasTimeout ? Date().addingTimeInterval(timeout) : Date.distantFuture
         var attempt = 0
         let baseDelay: UInt64 = 300_000_000
         let start = Date()
@@ -203,18 +201,24 @@ final class PlaybackPreparationCoordinator {
                     return PreparedClip(index: index, status: .skipped(.error), duration: clip.duration)
                 }
                 let remaining = deadline.timeIntervalSinceNow
-                if remaining <= 0 {
+                if hasTimeout && remaining <= 0 {
                     break
                 }
                 let jitter = UInt64.random(in: 0..<100_000_000)
-                let sleepTime = min(UInt64(remaining * 1_000_000_000), baseDelay * UInt64(attempt) + jitter)
+                let sleepTime = hasTimeout ? min(UInt64(remaining * 1_000_000_000), baseDelay * UInt64(attempt) + jitter) : (baseDelay * UInt64(attempt) + jitter)
                 TapesLog.player.info("PlaybackPrep: retry clip \(index) attempt \(attempt) -- \(error.localizedDescription)")
                 try? await Task.sleep(nanoseconds: sleepTime)
             }
         }
 
-        TapesLog.player.warning("PlaybackPrep: clip \(index) timed out after \(timeout)s")
-        return PreparedClip(index: index, status: .skipped(.timeout), duration: clip.duration)
+        if hasTimeout {
+            TapesLog.player.warning("PlaybackPrep: clip \(index) timed out after \(timeout)s")
+            return PreparedClip(index: index, status: .skipped(.timeout), duration: clip.duration)
+        } else {
+            // Should never reach here with infinite timeout, but handle gracefully
+            TapesLog.player.error("PlaybackPrep: unexpected timeout for clip \(index)")
+            return PreparedClip(index: index, status: .skipped(.error), duration: clip.duration)
+        }
     }
 
     private func buildResult(using prepared: [PreparedClip], tape: Tape) async throws -> PreparedResult {
@@ -230,9 +234,8 @@ final class PlaybackPreparationCoordinator {
 
         var subsetTape = tape
         subsetTape.clips = contexts.map { $0.clip }
-        let composition = try await MainActor.run {
-            try self.builder.buildPlayerItem(for: subsetTape, contexts: contexts)
-        }
+        // TIMELINE FIX: buildPlayerItem is now async and @MainActor, so call directly
+        let composition = try await self.builder.buildPlayerItem(for: subsetTape, contexts: contexts)
         return PreparedResult(composition: composition, preparedClips: ordered)
     }
 

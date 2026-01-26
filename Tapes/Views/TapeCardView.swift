@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
@@ -362,29 +361,50 @@ struct TapeCardView: View {
         for item in picked {
             switch item {
             case let .video(url, duration, assetIdentifier):
-                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-                if clip.duration <= 0 {
-                    let asset = AVURLAsset(url: url)
-                    let seconds = CMTimeGetSeconds(asset.duration)
-                    if seconds > 0 {
-                        clip.duration = seconds
-                    }
-                }
+                let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
                 clips.append(clip)
             case let .photo(image, assetIdentifier):
-                if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    clips.append(
-                        Clip.fromImage(
-                            imageData: imageData,
-                            duration: Tokens.Timing.photoDefaultDuration,
-                            thumbnail: image,
-                            assetLocalId: assetIdentifier
-                        )
-                    )
+                if let clip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+                    clips.append(clip)
                 }
             }
         }
         return clips
+    }
+
+    private func makeVideoClip(url: URL?, duration: TimeInterval, assetIdentifier: String?) -> Clip {
+        var clip = Clip(
+            assetLocalId: assetIdentifier,
+            localURL: url,
+            clipType: .video,
+            duration: duration,
+            thumbnail: nil
+        )
+        clip.updatedAt = Date()
+        return clip
+    }
+
+    private func makeImageClip(image: UIImage, assetIdentifier: String?) -> Clip? {
+        let thumbnailData = image.jpegData(compressionQuality: 0.9)
+        let imageData: Data?
+        if assetIdentifier == nil {
+            imageData = image.jpegData(compressionQuality: 0.85)
+        } else {
+            imageData = nil
+        }
+
+        if assetIdentifier != nil || imageData != nil {
+            var clip = Clip(
+                assetLocalId: assetIdentifier,
+                imageData: imageData,
+                clipType: .image,
+                duration: Tokens.Timing.photoDefaultDuration,
+                thumbnail: thumbnailData
+            )
+            clip.updatedAt = Date()
+            return clip
+        }
+        return nil
     }
     
     /// Insert clips at a specific position in the tape
@@ -401,10 +421,8 @@ struct TapeCardView: View {
         tapeStore.updateTape(updatedTape)        
         tapeStore.associateClipsWithAlbum(tapeID: updatedTape.id, clips: newClips)
         // Generate thumbnails and duration for video clips asynchronously
-        for clip in newClips {
-            if clip.clipType == .video, let url = clip.localURL {
-                tapeStore.generateThumbAndDuration(for: url, clipID: clip.id, tapeID: updatedTape.id)
-            }
+        for clip in newClips where clip.clipType == .video {
+            tapeStore.generateThumbAndDuration(for: clip, tapeID: updatedTape.id)
         }
     }
     

@@ -422,11 +422,8 @@ public class TapesStore: ObservableObject {
         autoSave()
         associateClipsWithAlbum(tapeID: tapeID, clips: [resolvedClip])
 
-        switch media {
-        case let .video(url, _, _):
-            generateThumbAndDuration(for: url, clipID: resolvedClip.id, tapeID: tapeID)
-        case .photo:
-            break
+        if resolvedClip.clipType == .video {
+            generateThumbAndDuration(for: resolvedClip, tapeID: tapeID)
         }
     }
 
@@ -451,22 +448,51 @@ private func evaluateBatchCompletion(for tapeID: UUID) {
     private func buildClip(from media: PickedMedia) -> Clip? {
         switch media {
         case let .video(url, duration, assetIdentifier):
-            var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
+            let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
             if clip.duration <= 0 {
-                let asset = AVURLAsset(url: url)
-                let seconds = CMTimeGetSeconds(asset.duration)
-                clip.duration = seconds > 0 ? seconds : 0
+                TapesLog.store.info("Clip duration missing for \(clip.id); will resolve asynchronously.")
             }
             return clip
         case let .photo(image, assetIdentifier):
-            guard let data = image.jpegData(compressionQuality: 0.85) else { return nil }
-            return Clip.fromImage(
-                imageData: data,
-                duration: Tokens.Timing.photoDefaultDuration,
-                thumbnail: image,
-                assetLocalId: assetIdentifier
-            )
+            return makeImageClip(image: image, assetIdentifier: assetIdentifier)
         }
+    }
+
+    private func makeVideoClip(url: URL?, duration: TimeInterval, assetIdentifier: String?) -> Clip {
+        var clip = Clip(
+            assetLocalId: assetIdentifier,
+            localURL: url,
+            clipType: .video,
+            duration: duration,
+            thumbnail: nil
+        )
+        clip.updatedAt = Date()
+        return clip
+    }
+
+    private func makeImageClip(image: UIImage, assetIdentifier: String?) -> Clip? {
+        let thumbnailData = image.jpegData(compressionQuality: 0.9)
+        let imageData: Data?
+
+        if assetIdentifier == nil {
+            imageData = image.jpegData(compressionQuality: 0.85)
+        } else {
+            imageData = nil
+        }
+
+        if assetIdentifier != nil || imageData != nil {
+            var clip = Clip(
+                assetLocalId: assetIdentifier,
+                imageData: imageData,
+                clipType: .image,
+                duration: Tokens.Timing.photoDefaultDuration,
+                thumbnail: thumbnailData
+            )
+            clip.updatedAt = Date()
+            return clip
+        }
+
+        return nil
     }
 
     private func resolvePickedMediaWithTimeout(_ result: PHPickerResult, timeout: TimeInterval) async throws -> PickedMedia {
@@ -733,26 +759,12 @@ extension TapesStore {
             let clip: Clip
             switch item {
             case let .video(url, duration, assetIdentifier):
-                var videoClip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-                if videoClip.duration <= 0 {
-                    let asset = AVURLAsset(url: url)
-                    let seconds = CMTimeGetSeconds(asset.duration)
-                    if seconds > 0 {
-                        videoClip.duration = seconds
-                    }
-                }
-                clip = videoClip
+                clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
             case let .photo(image, assetIdentifier):
-                if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    clip = Clip.fromImage(
-                        imageData: imageData,
-                        duration: Tokens.Timing.photoDefaultDuration,
-                        thumbnail: image,
-                        assetLocalId: assetIdentifier
-                    )
-                } else {
+                guard let imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) else {
                     continue // Skip invalid image
                 }
+                clip = imageClip
             }
             newClips.append(clip)
         }
@@ -765,6 +777,10 @@ extension TapesStore {
         
         updateTape(tape)
         associateClipsWithAlbum(tapeID: tapeID, clips: newClips)
+
+        for clip in newClips where clip.clipType == .video {
+            generateThumbAndDuration(for: clip, tapeID: tapeID)
+        }
         
         // Provide haptic feedback
         #if os(iOS)
@@ -786,25 +802,11 @@ extension TapesStore {
         for m in picked {
             switch m {
             case let .video(url, duration, assetIdentifier):
-                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-                if clip.duration <= 0 {
-                    let asset = AVURLAsset(url: url)
-                    let seconds = CMTimeGetSeconds(asset.duration)
-                    if seconds > 0 {
-                        clip.duration = seconds
-                    }
-                }
+                let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
                 newClips.append(clip)
             case let .photo(image, assetIdentifier):
-                // Convert image to data and use default duration
-                if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    let clip = Clip.fromImage(
-                        imageData: imageData,
-                        duration: Tokens.Timing.photoDefaultDuration,
-                        thumbnail: image,
-                        assetLocalId: assetIdentifier
-                    )
-                    newClips.append(clip)
+                if let imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+                    newClips.append(imageClip)
                 } else {
                     TapesLog.store.warning("Could not build clip from UIImage data")
                 }
@@ -830,10 +832,8 @@ extension TapesStore {
         associateClipsWithAlbum(tapeID: tapeID, clips: newClips)
         
         // Generate thumbnails and duration for video clips asynchronously
-        for clip in newClips {
-            if clip.clipType == .video, let url = clip.localURL {
-                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
-            }
+        for clip in newClips where clip.clipType == .video {
+            generateThumbAndDuration(for: clip, tapeID: tapeID)
         }
     }
     
@@ -846,24 +846,11 @@ extension TapesStore {
         for item in picked {
             switch item {
             case let .video(url, duration, assetIdentifier):
-                var clip = Clip.fromVideo(url: url, duration: duration, thumbnail: nil, assetLocalId: assetIdentifier)
-                if clip.duration <= 0 {
-                    let asset = AVURLAsset(url: url)
-                    let seconds = CMTimeGetSeconds(asset.duration)
-                    if seconds > 0 {
-                        clip.duration = seconds
-                    }
-                }
+                let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
                 newClips.append(clip)
             case let .photo(image, assetIdentifier):
-                if let imageData = image.jpegData(compressionQuality: 0.8) {
-                    let clip = Clip.fromImage(
-                        imageData: imageData,
-                        duration: Tokens.Timing.photoDefaultDuration,
-                        thumbnail: image,
-                        assetLocalId: assetIdentifier
-                    )
-                    newClips.append(clip)
+                if let imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+                    newClips.append(imageClip)
                 }
             }
         }
@@ -878,10 +865,8 @@ extension TapesStore {
         autoSave()
         associateClipsWithAlbum(tapeID: tape.wrappedValue.id, clips: newClips)
         
-        for clip in newClips {
-            if clip.clipType == .video, let url = clip.localURL {
-                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tape.wrappedValue.id)
-            }
+        for clip in newClips where clip.clipType == .video {
+            generateThumbAndDuration(for: clip, tapeID: tape.wrappedValue.id)
         }
     }
     
@@ -896,10 +881,8 @@ extension TapesStore {
         
         autoSave()
         
-        for clip in newClips {
-            if clip.clipType == .video, let url = clip.localURL {
-                generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tapeID)
-            }
+        for clip in newClips where clip.clipType == .video {
+            generateThumbAndDuration(for: clip, tapeID: tapeID)
         }
     }
     
@@ -923,49 +906,99 @@ extension TapesStore {
         autoSave()
     }
     
-    /// Generate thumbnail from video URL
-    private func generateThumbnail(from url: URL) async -> UIImage? {
-        let asset = AVAsset(url: url)
-        let imageGenerator = AVAssetImageGenerator(asset: asset)
-        imageGenerator.appliesPreferredTrackTransform = true
-        imageGenerator.maximumSize = CGSize(width: 320, height: 320)
-        
-        do {
-            let cgImage = try await imageGenerator.image(at: CMTime.zero).image
-            return UIImage(cgImage: cgImage)
-        } catch {
-            TapesLog.store.error("Failed to generate thumbnail: \(error.localizedDescription)")
-            return nil
+    /// Generate thumbnail and duration for a clip using lightweight metadata when possible.
+    func generateThumbAndDuration(for clip: Clip, tapeID: UUID) {
+        guard clip.clipType == .video else { return }
+        let needsDuration = clip.duration <= 0
+        let needsThumbnail = clip.thumbnail == nil
+        guard needsDuration || needsThumbnail else { return }
+
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+
+            if let assetLocalId = clip.assetLocalId,
+               let asset = Self.fetchPHAsset(localIdentifier: assetLocalId) {
+                if needsDuration, asset.duration > 0 {
+                    await MainActor.run {
+                        self.updateClip(clip.id, transform: { $0.duration = asset.duration }, in: tapeID)
+                    }
+                }
+
+                if needsThumbnail, let thumbnail = await Self.requestThumbnail(for: asset) {
+                    await MainActor.run {
+                        self.updateClip(clip.id, transform: { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.9) }, in: tapeID)
+                    }
+                }
+                return
+            }
+
+            guard let url = clip.localURL else { return }
+            await self.processAssetMetadata(url: url, clipID: clip.id, tapeID: tapeID, needsDuration: needsDuration, needsThumbnail: needsThumbnail)
         }
     }
-    
-    /// Generate thumbnail and duration for a clip using robust async methods
-    func generateThumbAndDuration(for url: URL, clipID: UUID, tapeID: UUID) {
-        let asset = AVURLAsset(url: url)
-        processAssetMetadata(asset, clipID: clipID, tapeID: tapeID)
-    }
 
-    private func processAssetMetadata(_ asset: AVAsset, clipID: UUID, tapeID: UUID) {
-        Task.detached(priority: .utility) {
-            do {
+    private func processAssetMetadata(
+        url: URL,
+        clipID: UUID,
+        tapeID: UUID,
+        needsDuration: Bool,
+        needsThumbnail: Bool
+    ) async {
+        let asset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: false]
+        )
+
+        do {
+            if needsDuration {
                 let duration = try await asset.load(.duration)
                 await MainActor.run {
                     self.updateClip(clipID, transform: { $0.duration = duration.seconds }, in: tapeID)
                 }
+            }
 
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.appliesPreferredTrackTransform = true
-                let time = CMTime(seconds: 0.1, preferredTimescale: 600)
+            guard needsThumbnail else { return }
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            let time = CMTime(seconds: 0.1, preferredTimescale: 600)
 
-                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cg, _, _, _ in
-                    guard let cg else { return }
-                    let ui = UIImage(cgImage: cg)
-                    Task { @MainActor in
-                        self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }, in: tapeID)
-                    }
+            generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cg, _, _, _ in
+                guard let cg else { return }
+                let ui = UIImage(cgImage: cg)
+                Task { @MainActor in
+                    self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.9) }, in: tapeID)
                 }
-            } catch {
-                TapesLog.store.error("Failed to load thumbnail/duration: \(error.localizedDescription)")
+            }
+        } catch {
+            TapesLog.store.error("Failed to load thumbnail/duration: \(error.localizedDescription)")
+        }
+    }
+
+    nonisolated private static func fetchPHAsset(localIdentifier: String) -> PHAsset? {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return nil }
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+        return fetch.firstObject
+    }
+
+    nonisolated private static func requestThumbnail(for asset: PHAsset) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .exact
+
+            let targetSize = CGSize(width: 960, height: 960)
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFill,
+                options: options
+            ) { image, info in
+                if let isDegraded = info?[PHImageResultIsDegradedKey] as? NSNumber, isDegraded.boolValue {
+                    return
+                }
+                continuation.resume(returning: image)
             }
         }
     }
@@ -1051,12 +1084,8 @@ extension TapesStore {
                     mutatedTape = true
                 }
 
-                if clip.clipType == .video && clip.duration <= 0 {
-                    if let url = clip.localURL {
-                        generateThumbAndDuration(for: url, clipID: clip.id, tapeID: tape.id)
-                    } else if let assetId = clip.assetLocalId {
-                        regenerateMetadataFromPhotoLibrary(assetLocalId: assetId, clipID: clip.id, tapeID: tape.id)
-                    }
+                if clip.clipType == .video && (clip.duration <= 0 || clip.thumbnail == nil) {
+                    generateThumbAndDuration(for: clip, tapeID: tape.id)
                 }
 
                 tape.clips[cIndex] = clip
@@ -1082,8 +1111,7 @@ extension TapesStore {
 
     /// Attempt to recover duration/thumbnail for videos that only have a Photos asset identifier
     private func regenerateMetadataFromPhotoLibrary(assetLocalId: String, clipID: UUID, tapeID: UUID) {
-        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
-        guard let asset = fetch.firstObject else { return }
+        guard let asset = Self.fetchPHAsset(localIdentifier: assetLocalId) else { return }
 
         if asset.mediaType == .image {
             Task { @MainActor in
@@ -1095,33 +1123,21 @@ extension TapesStore {
             return
         }
 
-        let options = PHVideoRequestOptions()
-        options.deliveryMode = .automatic
-        options.isNetworkAccessAllowed = true
-
-        PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
-            guard let avAsset else { return }
-            let durationSeconds = CMTimeGetSeconds(avAsset.duration)
-
-            Task { @MainActor in
+        let durationSeconds = asset.duration
+        Task { @MainActor in
+            if durationSeconds > 0 {
                 self.updateClip(clipID, transform: { clip in
                     clip.duration = durationSeconds
                     clip.updatedAt = Date()
                 }, in: tapeID)
             }
+        }
 
-            if let urlAsset = avAsset as? AVURLAsset {
-                self.generateThumbAndDuration(for: urlAsset.url, clipID: clipID, tapeID: tapeID)
-            } else {
-                let generator = AVAssetImageGenerator(asset: avAsset)
-                generator.appliesPreferredTrackTransform = true
-                let time = CMTime(seconds: 0.1, preferredTimescale: 600)
-                generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cg, _, _, _ in
-                    guard let cg else { return }
-                    let ui = UIImage(cgImage: cg)
-                    Task { @MainActor in
-                        self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }, in: tapeID)
-                    }
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            if let thumbnail = await Self.requestThumbnail(for: asset) {
+                await MainActor.run {
+                    self.updateClip(clipID, transform: { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.9) }, in: tapeID)
                 }
             }
         }

@@ -89,6 +89,11 @@ class CameraCoordinator: NSObject, ObservableObject {
             
             switch item {
             case let .video(url, duration, assetIdentifier):
+                guard let url else {
+                    TapesLog.camera.error("Missing video URL for captured media")
+                    group.leave()
+                    continue
+                }
                 var placeholderId: String?
                 PHPhotoLibrary.shared().performChanges({
                     if let request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url) {
@@ -98,14 +103,7 @@ class CameraCoordinator: NSObject, ObservableObject {
                     if !success {
                         TapesLog.camera.error("Failed to save video \(url.lastPathComponent): \(error?.localizedDescription ?? "Unknown error")")
                     } else {
-                        let savedDuration: TimeInterval
-                        if duration > 0 {
-                            savedDuration = duration
-                        } else {
-                            let asset = AVURLAsset(url: url)
-                            let seconds = CMTimeGetSeconds(asset.duration)
-                            savedDuration = seconds > 0 ? seconds : 0
-                        }
+                        let savedDuration = duration > 0 ? duration : self.durationFromPhotos(localIdentifier: placeholderId ?? assetIdentifier)
                         let savedItem = PickedMedia.video(url: url, duration: savedDuration, assetIdentifier: placeholderId ?? assetIdentifier)
                         savedMedia.append(savedItem)
                     }
@@ -132,6 +130,14 @@ class CameraCoordinator: NSObject, ObservableObject {
         group.notify(queue: .main) {
             completion(savedMedia)
         }
+    }
+
+    private func durationFromPhotos(localIdentifier: String?) -> TimeInterval {
+        guard let localIdentifier else { return 0 }
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return 0 }
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+        return fetch.firstObject?.duration ?? 0
     }
 }
 
@@ -171,10 +177,8 @@ struct CameraView: UIViewControllerRepresentable {
             var mediaItems: [PickedMedia] = []
             
             if let videoURL = info[.mediaURL] as? URL {
-                // Handle video capture
-                let asset = AVURLAsset(url: videoURL)
-                let seconds = CMTimeGetSeconds(asset.duration)
-                mediaItems.append(.video(url: videoURL, duration: seconds > 0 ? seconds : 0, assetIdentifier: nil))
+                // Handle video capture; duration resolved after save
+                mediaItems.append(.video(url: videoURL, duration: 0, assetIdentifier: nil))
             } else if let image = info[.originalImage] as? UIImage {
                 // Handle photo capture
                 mediaItems.append(.photo(image: image, assetIdentifier: nil))
@@ -191,4 +195,5 @@ struct CameraView: UIViewControllerRepresentable {
             }
         }
     }
+
 }

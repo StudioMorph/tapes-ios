@@ -31,6 +31,7 @@ struct TapePlayerView: View {
     @State private var skippedClipCount: Int = 0
     @State private var showSkipToast: Bool = false
     @State private var skipToastWorkItem: DispatchWorkItem?
+    @State private var isTornDown: Bool = false // CRITICAL: Prevent new playback after tearDown
 
     let tape: Tape
     let onDismiss: () -> Void
@@ -44,7 +45,21 @@ struct TapePlayerView: View {
                     .disabled(true)
                     .overlay(loadingOverlay)
                     .overlay(tapCatcher)
-                    .onDisappear { player.pause() }
+                    .onDisappear {
+                        // AUDIO FIX: Stop audio immediately and synchronously when VideoPlayer disappears
+                        player.pause()
+                        player.rate = 0.0
+                        player.isMuted = true
+                        player.volume = 0.0
+                        
+                        // Deactivate audio session immediately
+                        do {
+                            let audioSession = AVAudioSession.sharedInstance()
+                            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+                        } catch {
+                            // Ignore errors in onDisappear
+                        }
+                    }
             } else {
                 loadingOverlay
                     .overlay(tapCatcher)
@@ -55,7 +70,19 @@ struct TapePlayerView: View {
                     PlayerHeader(
                         currentClipIndex: currentClipIndex,
                         totalClips: tape.clips.count,
-                        onDismiss: onDismiss
+                        onDismiss: {
+                            // AUDIO FIX: Stop playback immediately when user taps dismiss - must be synchronous
+                            if Thread.isMainThread {
+                                stopPlaybackImmediately()
+                                tearDown()
+                            } else {
+                                DispatchQueue.main.sync {
+                                    stopPlaybackImmediately()
+                                    tearDown()
+                                }
+                            }
+                            onDismiss()
+                        }
                     )
                     Spacer()
                     controlsView
@@ -74,7 +101,17 @@ struct TapePlayerView: View {
             setupControlsTimer()
         }
         .onDisappear {
-            tearDown()
+            // AUDIO FIX: Stop audio immediately - must be synchronous
+            // CRITICAL: Set player to nil FIRST to remove VideoPlayer from view hierarchy
+            if Thread.isMainThread {
+                stopPlaybackImmediately()
+                tearDown()
+            } else {
+                DispatchQueue.main.sync {
+                    stopPlaybackImmediately()
+                    tearDown()
+                }
+            }
         }
     }
 
@@ -130,6 +167,9 @@ struct TapePlayerView: View {
         guard !isLoading else { return }
         guard !tape.clips.isEmpty else { return }
 
+        // Reset torn down flag when starting new playback
+        isTornDown = false
+        
         isLoading = true
         loadError = nil
         isUsingFullComposition = false
@@ -177,6 +217,12 @@ struct TapePlayerView: View {
 
     @MainActor
     private func handlePreparedResult(_ result: PlaybackPreparationCoordinator.PreparedResult, isFinal: Bool) {
+        // CRITICAL: Ignore any callbacks if we're torn down - prevents new playback from starting
+        guard !isTornDown else {
+            TapesLog.player.info("TapePlayerView: Ignoring prepared result - view is torn down")
+            return
+        }
+        
         let composition = result.composition
         loadError = nil
         isLoading = false
@@ -216,19 +262,39 @@ struct TapePlayerView: View {
 
     // MARK: - Playback Helpers
 
+    @State private var isSeekingToClip: Bool = false
+    
     @MainActor
     private func seekToClip(index: Int, autoplay: Bool) {
-        guard let player, let timeline, index >= 0, index < timeline.segments.count else { return }
-        applyPendingComposition(force: true, resumeOverride: autoplay)
-        let start = timeline.segments[index].timeRange.start
-        player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero)
-        currentClipIndex = index
-        isFinished = false
-        if autoplay {
-            player.play()
-            isPlaying = true
+        guard let player, let timeline, index >= 0 else { return }
+        
+        // SKIP FIX: Find the requested clip or the next available clip
+        let targetIndex: Int
+        if index >= timeline.segments.count {
+            // Requested index is beyond available segments, use the last available
+            targetIndex = max(0, timeline.segments.count - 1)
+        } else {
+            // Use the exact index if available
+            targetIndex = index
         }
-        playbackIntent = autoplay
+        
+        guard targetIndex < timeline.segments.count else { return }
+        
+        isSeekingToClip = true
+        applyPendingComposition(force: true, resumeOverride: autoplay)
+        let start = timeline.segments[targetIndex].timeRange.start
+        player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            Task { @MainActor in
+                self.currentClipIndex = targetIndex
+                self.isSeekingToClip = false
+                self.isFinished = false
+                if autoplay {
+                    player.play()
+                    self.isPlaying = true
+                }
+                self.playbackIntent = autoplay
+            }
+        }
     }
 
     @MainActor
@@ -314,9 +380,29 @@ struct TapePlayerView: View {
             return
         }
 
+        // MEMORY FIX: Properly release old player item before replacing
         removeTimeObserver()
+        
+        // Remove end observer from old item
+        if let oldItem = player.currentItem, let token = playerEndObserver {
+            NotificationCenter.default.removeObserver(token)
+            playerEndObserver = nil
+        }
+        
+        // Cancel pending seeks on old item
+        player.currentItem?.cancelPendingSeeks()
+        
+        // Stop playback before swapping
         player.pause()
+        player.rate = 0
+        
+        // Replace with new item
+        let oldItem = player.currentItem
         player.replaceCurrentItem(with: composition.playerItem)
+        
+        // Allow old item to be released
+        oldItem?.cancelPendingSeeks()
+        
         installEndObserver(for: composition.playerItem)
         installTimeObserver(on: player)
 
@@ -463,25 +549,103 @@ struct TapePlayerView: View {
         timeObserverToken = nil
     }
 
-    private func tearDown() {
+    @MainActor
+    private func stopPlaybackImmediately() {
+        // CRITICAL: Set torn down flag FIRST to prevent any new callbacks from starting playback
+        isTornDown = true
+        
+        // CRITICAL: Cancel coordinator FIRST to stop any new compositions from being created
         coordinatorHolder.coordinator.cancel()
-        controlsTimer?.invalidate()
-        controlsTimer = nil
-        removeTimeObserver()
-        if let token = playerEndObserver {
-            NotificationCenter.default.removeObserver(token)
-        }
-        playerEndObserver = nil
-        skipToastWorkItem?.cancel()
-        skipToastWorkItem = nil
-        showSkipToast = false
-        skippedClipCount = 0
-        playbackIntent = false
+        
+        // CRITICAL: Clear pending composition to prevent it from being applied
         pendingComposition = nil
         pendingAutoplay = false
         pendingCompositionIsFinal = false
-        player?.pause()
-        player = nil
+        
+        // CRITICAL: Stop audio BEFORE anything else - this must happen first
+        if let player = player {
+            // Remove observers FIRST to prevent any callbacks
+            removeTimeObserver()
+            if let token = playerEndObserver {
+                NotificationCenter.default.removeObserver(token)
+                playerEndObserver = nil
+            }
+            
+            // Stop playback IMMEDIATELY
+            player.pause()
+            player.rate = 0.0
+            player.isMuted = true
+            player.volume = 0.0
+            
+            // Cancel pending seeks
+            player.currentItem?.cancelPendingSeeks()
+            
+            // CRITICAL: Remove player item BEFORE setting player to nil
+            // This stops all audio/video processing
+            let playerItem = player.currentItem
+            player.replaceCurrentItem(with: nil)
+            playerItem?.cancelPendingSeeks()
+            
+            // Deactivate audio session IMMEDIATELY
+            do {
+                let audioSession = AVAudioSession.sharedInstance()
+                try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            } catch {
+                TapesLog.player.warning("Failed to deactivate audio session: \(error.localizedDescription)")
+            }
+            
+            // Set player to nil IMMEDIATELY to remove VideoPlayer from view
+            // This will cause SwiftUI to remove VideoPlayer from the view hierarchy
+            self.player = nil
+        } else {
+            // Still deactivate audio session even if player is nil
+            do {
+                let audioSession = AVAudioSession.sharedInstance()
+                try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            } catch {
+                TapesLog.player.warning("Failed to deactivate audio session: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    @MainActor
+    private func tearDown() {
+        // Cleanup after player is already nil and stopped
+        // Note: Coordinator already cancelled and pendingComposition cleared in stopPlaybackImmediately()
+        
+        // Remove observers (already done in stopPlaybackImmediately, but ensure they're gone)
+        removeTimeObserver()
+        if let token = playerEndObserver {
+            NotificationCenter.default.removeObserver(token)
+            playerEndObserver = nil
+        }
+        
+        // Cancel all timers and work items
+        controlsTimer?.invalidate()
+        controlsTimer = nil
+        skipToastWorkItem?.cancel()
+        skipToastWorkItem = nil
+        
+        // Clear all state
+        showSkipToast = false
+        skippedClipCount = 0
+        playbackIntent = false
+        isPlaying = false
+        isFinished = false
+        isLoading = false
+        isUsingFullComposition = false
+        pendingComposition = nil
+        pendingAutoplay = false
+        pendingCompositionIsFinal = false
+        currentClipIndex = 0
+        currentTime = 0
+        totalDuration = 0
+        loadError = nil
+        
+        // MEMORY CLEANUP: Clear timeline (player already nil from stopPlaybackImmediately)
+        autoreleasepool {
+            timeline = nil
+        }
     }
 
     // MARK: - Metrics
@@ -504,7 +668,8 @@ struct TapePlayerView: View {
     }
 
     private func updateClipIndex(for time: CMTime) {
-        guard let timeline else { return }
+        // SKIP FIX: Don't update clip index during seek to prevent race conditions
+        guard !isSeekingToClip, let timeline else { return }
         for segment in timeline.segments.enumerated().reversed() {
             if CMTimeCompare(time, segment.element.timeRange.start) >= 0 {
                 if currentClipIndex != segment.offset {

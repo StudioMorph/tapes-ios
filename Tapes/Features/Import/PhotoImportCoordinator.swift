@@ -1,6 +1,6 @@
 import SwiftUI
 import PhotosUI
-import AVFoundation
+import Photos
 import UIKit
 
 // MARK: - Models
@@ -67,18 +67,28 @@ public struct PhotoImportCoordinator: View {
         
         for item in items {
             do {
-                // Try to load as video first
+                if let identifier = item.itemIdentifier,
+                   let asset = fetchPHAsset(localIdentifier: identifier) {
+                    switch asset.mediaType {
+                    case .video:
+                        pickedMedia.append(.video(url: nil, duration: asset.duration, assetIdentifier: identifier))
+                        continue
+                    case .image:
+                        if let thumbnail = await requestThumbnail(for: asset) {
+                            pickedMedia.append(.photo(image: thumbnail, assetIdentifier: identifier))
+                            continue
+                        }
+                    default:
+                        break
+                    }
+                }
+
+                // Fallback for non-Photos sources
                 if let movie = try await item.loadTransferable(type: Movie.self) {
-                    let thumbnail = await generateThumbnail(from: movie.url)
-                    let duration = await getVideoDuration(url: movie.url)
-                    
+                    let duration = durationFromPhotos(identifier: item.itemIdentifier)
                     pickedMedia.append(.video(url: movie.url, duration: duration, assetIdentifier: item.itemIdentifier))
                 } else if let image = try await item.loadTransferable(type: Data.self) {
-                    // Load as image
                     if let uiImage = UIImage(data: image) {
-                        let thumbnail = uiImage
-                        let duration = Tokens.Timing.photoDefaultDuration
-                        
                         pickedMedia.append(.photo(image: uiImage, assetIdentifier: item.itemIdentifier))
                     }
                 }
@@ -90,25 +100,37 @@ public struct PhotoImportCoordinator: View {
         return pickedMedia
     }
     
-    private func generateThumbnail(from url: URL) async -> UIImage? {
-        let asset = AVAsset(url: url)
-        let imageGenerator = AVAssetImageGenerator(asset: asset)
-        imageGenerator.appliesPreferredTrackTransform = true
-        imageGenerator.maximumSize = CGSize(width: 320, height: 320)
-        
-        do {
-            let cgImage = try await imageGenerator.image(at: .zero).image
-            return UIImage(cgImage: cgImage)
-        } catch {
-            TapesLog.mediaPicker.error("Failed to generate thumbnail: \(error.localizedDescription)")
-            return nil
-        }
+    private func durationFromPhotos(identifier: String?) -> TimeInterval {
+        guard let identifier else { return 0 }
+        return fetchPHAsset(localIdentifier: identifier)?.duration ?? 0
     }
-    
-    private func getVideoDuration(url: URL) async -> TimeInterval {
-        let asset = AVAsset(url: url)
-        let duration = try? await asset.load(.duration)
-        return CMTimeGetSeconds(duration ?? .zero)
+
+    private func fetchPHAsset(localIdentifier: String) -> PHAsset? {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return nil }
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+        return fetch.firstObject
+    }
+
+    private func requestThumbnail(for asset: PHAsset) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .exact
+            let targetSize = CGSize(width: 960, height: 960)
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFill,
+                options: options
+            ) { image, info in
+                if let isDegraded = info?[PHImageResultIsDegradedKey] as? NSNumber, isDegraded.boolValue {
+                    return
+                }
+                continuation.resume(returning: image)
+            }
+        }
     }
 }
 
