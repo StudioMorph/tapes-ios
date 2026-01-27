@@ -72,6 +72,29 @@ public struct ClipBatchProgress: Equatable {
     }
 }
 
+// MARK: - Persistence
+
+private actor TapePersistenceActor {
+    func save(_ tapes: [Tape], to url: URL) {
+        do {
+            let data = try JSONEncoder().encode(tapes)
+            try data.write(to: url)
+        } catch {
+            TapesLog.store.error("Failed to save tapes: \(error.localizedDescription)")
+        }
+    }
+
+    func load(from url: URL) -> [Tape] {
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode([Tape].self, from: data)
+        } catch {
+            TapesLog.store.warning("No saved tapes found or failed to load: \(error.localizedDescription)")
+            return []
+        }
+    }
+}
+
 // MARK: - TapesStore
 
 @MainActor
@@ -96,6 +119,9 @@ public class TapesStore: ObservableObject {
     private let albumService: TapeAlbumServicing
     private var placeholderTapeMap: [UUID: UUID] = [:]
     private var albumAssociationQueues: [UUID: AlbumAssociationQueueEntry] = [:]
+    private let persistenceActor = TapePersistenceActor()
+    private var saveTask: Task<Void, Never>?
+    private let saveDebounce: TimeInterval = 0.35
     
     // MARK: - Persistence
     private let persistenceKey = "SavedTapes"
@@ -107,26 +133,6 @@ public class TapesStore: ObservableObject {
     public init(albumService: TapeAlbumServicing = TapeAlbumService()) {
         self.albumService = albumService
         loadTapesFromDisk()
-        
-        // Always ensure at least one empty tape exists
-        if tapes.isEmpty {
-            let newReel = Tape(
-                title: "New Reel",
-                orientation: .portrait,
-                scaleMode: .fit,
-                transition: .none,
-                transitionDuration: 0.5,
-                clips: [],
-                hasReceivedFirstContent: false
-            )
-            tapes.append(newReel)
-            saveTapesToDisk()
-        }
-        
-        // Restore empty tape invariant after loading
-        restoreEmptyTapeInvariant()
-        restoreMissingClipMetadata()
-        scheduleLegacyAlbumAssociation()
     }
     
     #if DEBUG
@@ -1006,30 +1012,57 @@ extension TapesStore {
     // MARK: - Persistence Methods
     
     /// Save tapes to disk
-    private func saveTapesToDisk() {
-        do {
-            let sanitized = tapes.map { $0.removingPlaceholders() }
-            let data = try JSONEncoder().encode(sanitized)
-            try data.write(to: persistenceURL)
-        } catch {
-            TapesLog.store.error("Failed to save tapes: \(error.localizedDescription)")
+    private func scheduleSave() {
+        saveTask?.cancel()
+        let sanitized = tapes.map { $0.removingPlaceholders() }
+        let url = persistenceURL
+        let actor = persistenceActor
+        let delay = saveDebounce
+        saveTask = Task.detached(priority: .utility) {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await actor.save(sanitized, to: url)
         }
     }
     
     /// Load tapes from disk
     private func loadTapesFromDisk() {
-        do {
-            let data = try Data(contentsOf: persistenceURL)
-            tapes = try JSONDecoder().decode([Tape].self, from: data)
-        } catch {
-            TapesLog.store.warning("No saved tapes found or failed to load: \(error.localizedDescription)")
-            tapes = []
+        let url = persistenceURL
+        let actor = persistenceActor
+        Task.detached(priority: .utility) { [weak self] in
+            let loaded = await actor.load(from: url)
+            await MainActor.run {
+                self?.applyLoadedTapes(loaded)
+            }
         }
     }
     
     /// Auto-save when tapes change
     private func autoSave() {
-        saveTapesToDisk()
+        scheduleSave()
+    }
+
+    private func applyLoadedTapes(_ loaded: [Tape]) {
+        tapes = loaded
+
+        // Always ensure at least one empty tape exists
+        if tapes.isEmpty {
+            let newReel = Tape(
+                title: "New Reel",
+                orientation: .portrait,
+                scaleMode: .fit,
+                transition: .none,
+                transitionDuration: 0.5,
+                clips: [],
+                hasReceivedFirstContent: false
+            )
+            tapes.append(newReel)
+            scheduleSave()
+        }
+
+        // Restore empty tape invariant after loading
+        restoreEmptyTapeInvariant()
+        restoreMissingClipMetadata()
+        scheduleLegacyAlbumAssociation()
     }
     
     // MARK: - Empty Tape Management

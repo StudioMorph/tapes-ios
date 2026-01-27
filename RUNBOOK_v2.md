@@ -136,6 +136,11 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Tape creation uses lightweight clip metadata and thumbnails only.
   - Full AVAsset composition/rendering is deferred to preview playback.
 
+- **Persistence & Responsiveness**
+  - Tape JSON persistence is debounced and runs off the main thread.
+  - Playback teardown must avoid blocking the main thread.
+  - Image-to-video preparation uses async completion rather than blocking waits.
+
 - **Snapping / Insertion**
   - FAB fixed; carousel snaps around it
   - New clip inserts between left and right neighbor

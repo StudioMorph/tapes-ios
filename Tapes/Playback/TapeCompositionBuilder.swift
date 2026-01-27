@@ -393,7 +393,7 @@ struct TapeCompositionBuilder {
         case .image:
             let image = try await loadImage(for: clip)
             let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
-            let asset = try createVideoAsset(from: image, clip: clip, duration: durationSeconds)
+            let asset = try await createVideoAsset(from: image, clip: clip, duration: durationSeconds)
             return ResolvedAsset(
                 asset: asset,
                 isTemporary: true,
@@ -1212,7 +1212,7 @@ private extension TapeCompositionBuilder {
         }
     }
 
-    func createVideoAsset(from image: UIImage, clip: Clip, duration: Double) throws -> AVAsset {
+    func createVideoAsset(from image: UIImage, clip: Clip, duration: Double) async throws -> AVAsset {
         // MEMORY FIX: Extract CGImage early and allow UIImage to be deallocated
         let cgImage = try normalizedCGImage(from: image, clip: clip)
         // UIImage can now be deallocated - we only need the CGImage
@@ -1265,7 +1265,8 @@ private extension TapeCompositionBuilder {
         for frameIndex in 0..<totalFrames {
             let time = CMTimeMultiply(frameDuration, multiplier: Int32(frameIndex))
             while !input.isReadyForMoreMediaData {
-                Thread.sleep(forTimeInterval: 0.001)
+                try Task.checkCancellation()
+                await Task.yield()
             }
 
             var pixelBuffer: CVPixelBuffer?
@@ -1286,11 +1287,14 @@ private extension TapeCompositionBuilder {
         }
 
         input.markAsFinished()
-        let semaphore = DispatchSemaphore(value: 0)
-        writer.finishWriting {
-            semaphore.signal()
+        await withCheckedContinuation { continuation in
+            writer.finishWriting {
+                continuation.resume()
+            }
         }
-        semaphore.wait()
+        if writer.status == .failed {
+            throw writer.error ?? BuilderError.imageEncodingFailed
+        }
         return AVURLAsset(url: url)
     }
 

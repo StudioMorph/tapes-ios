@@ -72,15 +72,8 @@ struct TapePlayerView: View {
                         totalClips: tape.clips.count,
                         onDismiss: {
                             // AUDIO FIX: Stop playback immediately when user taps dismiss - must be synchronous
-                            if Thread.isMainThread {
-                                stopPlaybackImmediately()
-                                tearDown()
-                            } else {
-                                DispatchQueue.main.sync {
-                                    stopPlaybackImmediately()
-                                    tearDown()
-                                }
-                            }
+                            stopPlaybackImmediately()
+                            tearDown()
                             onDismiss()
                         }
                     )
@@ -103,15 +96,8 @@ struct TapePlayerView: View {
         .onDisappear {
             // AUDIO FIX: Stop audio immediately - must be synchronous
             // CRITICAL: Set player to nil FIRST to remove VideoPlayer from view hierarchy
-            if Thread.isMainThread {
-                stopPlaybackImmediately()
-                tearDown()
-            } else {
-                DispatchQueue.main.sync {
-                    stopPlaybackImmediately()
-                    tearDown()
-                }
-            }
+            stopPlaybackImmediately()
+            tearDown()
         }
     }
 
