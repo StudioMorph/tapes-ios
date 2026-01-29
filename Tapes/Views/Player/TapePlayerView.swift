@@ -23,8 +23,8 @@ struct TapePlayerView: View {
     @State private var isPlaying: Bool = false
     @State private var showingControls: Bool = true
     @State private var controlsTimer: Timer?
-    @State private var totalDuration: Double = 0
-    @State private var currentTime: Double = 0
+    @State private var clipDuration: Double = 0
+    @State private var clipTime: Double = 0
     @State private var isFinished: Bool = false
     @State private var isLoading: Bool = false
     @State private var loadError: String?
@@ -38,6 +38,7 @@ struct TapePlayerView: View {
     @State private var isSeekingToClip: Bool = false
     @State private var isTornDown: Bool = false
     @State private var slotClipIndex: [PlayerSlot: Int] = [:]
+    @State private var slotClipDuration: [PlayerSlot: Double] = [:]
 
     @State private var skippedClipCount: Int = 0
     @State private var showSkipToast: Bool = false
@@ -158,8 +159,8 @@ struct TapePlayerView: View {
     private var controlsView: some View {
         VStack(spacing: 32) {
             PlayerProgressBar(
-                currentTime: currentTime,
-                totalDuration: totalDuration,
+                currentTime: clipTime,
+                totalDuration: clipDuration,
                 onSeek: { time in
                     Task { await seek(to: time, autoplay: isPlaying) }
                 }
@@ -191,7 +192,6 @@ struct TapePlayerView: View {
         do {
             let timeline = try await builder.prepareTimeline(for: tape)
             self.timeline = timeline
-            totalDuration = CMTimeGetSeconds(timeline.totalDuration)
             try await loadClip(index: 0, autoplay: true, forceSlot: .primary)
             prefetchAround(index: 0)
         } catch {
@@ -213,7 +213,7 @@ struct TapePlayerView: View {
 
         currentClipIndex = index
         isFinished = false
-        updateGlobalTime(with: .zero, for: index)
+        updateClipTime(with: .zero)
     }
 
     @MainActor
@@ -291,38 +291,24 @@ struct TapePlayerView: View {
 
     @MainActor
     private func seek(to seconds: Double, autoplay: Bool) async {
-        guard let timeline else { return }
-        let clamped = max(0, min(seconds, totalDuration))
-
-        guard let targetSegment = timeline.segments.first(where: { segment in
-            let start = CMTimeGetSeconds(segment.timeRange.start)
-            let end = start + CMTimeGetSeconds(segment.timeRange.duration)
-            return clamped >= start && clamped < end
-        }) else { return }
-
-        let targetIndex = targetSegment.clipIndex
-        let localTime = CMTime(seconds: clamped - CMTimeGetSeconds(targetSegment.timeRange.start), preferredTimescale: 600)
+        guard let active = activePlayer() else { return }
+        let clamped = max(0, min(seconds, clipDuration))
+        let localTime = CMTime(seconds: clamped, preferredTimescale: 600)
 
         cancelTransition()
         isSeekingToClip = true
-        isLoading = true
-        do {
-            let composition = try await loadClipComposition(index: targetIndex, timeline: timeline)
-            installComposition(composition, in: activeSlot, autoplay: autoplay, seekTime: localTime)
-            currentClipIndex = targetIndex
-            updateGlobalTime(with: localTime, for: targetIndex)
-            if autoplay {
-                activePlayer()?.play()
-                isPlaying = true
-            } else {
-                isPlaying = false
+        active.seek(to: localTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            Task { @MainActor in
+                updateClipTime(with: localTime)
+                if autoplay {
+                    active.play()
+                    isPlaying = true
+                } else {
+                    isPlaying = false
+                }
+                isSeekingToClip = false
             }
-            prefetchAround(index: targetIndex)
-        } catch {
-            recordSkip(showToast: true)
         }
-        isLoading = false
-        isSeekingToClip = false
     }
 
     // MARK: - Transition Handling
@@ -391,6 +377,8 @@ struct TapePlayerView: View {
         currentClipIndex = nextIndex
         isTransitioning = false
         transitionProgress = 0
+        clipDuration = slotClipDuration[newSlot] ?? 0
+        clipTime = 0
 
         player(for: oldSlot)?.pause()
         player(for: oldSlot)?.replaceCurrentItem(with: nil)
@@ -449,6 +437,12 @@ struct TapePlayerView: View {
             slotClipIndex[slot] = clipIndex
         } else {
             slotClipIndex.removeValue(forKey: slot)
+        }
+        let durationSeconds = CMTimeGetSeconds(composition.timeline.totalDuration)
+        slotClipDuration[slot] = durationSeconds
+        if slot == activeSlot {
+            clipDuration = durationSeconds
+            clipTime = CMTimeGetSeconds(seekTime)
         }
 
         if slot == activeSlot {
@@ -551,19 +545,14 @@ struct TapePlayerView: View {
 
     @MainActor
     private func updatePlaybackMetrics(localTime: CMTime) {
-        guard let timeline else { return }
         let localSeconds = max(CMTimeGetSeconds(localTime), 0)
-        let segment = timeline.segments[currentClipIndex]
-        let start = CMTimeGetSeconds(segment.timeRange.start)
-        currentTime = start + localSeconds
+        clipTime = localSeconds
         isPlaying = activePlayer()?.rate ?? 0 > 0
     }
 
     @MainActor
-    private func updateGlobalTime(with localTime: CMTime, for index: Int) {
-        guard let timeline, index < timeline.segments.count else { return }
-        let start = CMTimeGetSeconds(timeline.segments[index].timeRange.start)
-        currentTime = start + CMTimeGetSeconds(localTime)
+    private func updateClipTime(with localTime: CMTime) {
+        clipTime = max(CMTimeGetSeconds(localTime), 0)
     }
 
     // MARK: - Helpers
@@ -676,12 +665,13 @@ struct TapePlayerView: View {
         isTransitioning = false
         transitionProgress = 0
         currentClipIndex = 0
-        currentTime = 0
+        clipTime = 0
         loadError = nil
         clipCache.removeAll()
         clipLoadTasks.values.forEach { $0.cancel() }
         clipLoadTasks.removeAll()
         slotClipIndex.removeAll()
+        slotClipDuration.removeAll()
     }
 }
 
