@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import AVKit
+import UIKit
 
 // MARK: - Unified Tape Player View (Per-Clip Preview)
 
@@ -30,10 +31,13 @@ struct TapePlayerView: View {
 
     @State private var timeObserverToken: Any?
     @State private var playerEndObserver: NSObjectProtocol?
+    @State private var playerFailedObserver: NSObjectProtocol?
+    @State private var playerStallObserver: NSObjectProtocol?
     @State private var clipCache: [Int: TapeCompositionBuilder.PlayerComposition] = [:]
     @State private var clipLoadTasks: [Int: Task<TapeCompositionBuilder.PlayerComposition, Error>] = [:]
     @State private var isSeekingToClip: Bool = false
     @State private var isTornDown: Bool = false
+    @State private var slotClipIndex: [PlayerSlot: Int] = [:]
 
     @State private var skippedClipCount: Int = 0
     @State private var showSkipToast: Bool = false
@@ -93,7 +97,7 @@ struct TapePlayerView: View {
     private func playerView(for slot: PlayerSlot, size: CGSize) -> some View {
         Group {
             if let player = player(for: slot) {
-                VideoPlayer(player: player)
+                PlayerLayerView(player: player, videoGravity: videoGravity(for: slot))
                     .disabled(true)
                     .overlay(tapCatcher)
                     .opacity(opacity(for: slot))
@@ -280,7 +284,7 @@ struct TapePlayerView: View {
             }
             prefetchAround(index: clampedIndex)
         } catch {
-            recordSkip(showToast: true)
+            await skipFailedClip(from: clampedIndex, autoplay: autoplay)
         }
         isLoading = false
     }
@@ -373,7 +377,7 @@ struct TapePlayerView: View {
             try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
             finalizeTransition(to: nextIndex, duration: duration)
         } catch {
-            recordSkip(showToast: true)
+            await skipFailedClip(from: nextIndex, autoplay: isPlaying)
         }
     }
 
@@ -441,6 +445,11 @@ struct TapePlayerView: View {
         player.replaceCurrentItem(with: composition.playerItem)
         player.actionAtItemEnd = .pause
         setPlayer(player, for: slot)
+        if let clipIndex = composition.timeline.segments.first?.clipIndex {
+            slotClipIndex[slot] = clipIndex
+        } else {
+            slotClipIndex.removeValue(forKey: slot)
+        }
 
         if slot == activeSlot {
             installObservers(on: slot)
@@ -476,6 +485,27 @@ struct TapePlayerView: View {
                 handleClipFinished()
             }
         }
+
+        playerFailedObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { notification in
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            Task { @MainActor in
+                handleClipFailure(error)
+            }
+        }
+
+        playerStallObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemPlaybackStalled,
+            object: item,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                handleClipFailure(nil)
+            }
+        }
     }
 
     @MainActor
@@ -489,6 +519,16 @@ struct TapePlayerView: View {
             NotificationCenter.default.removeObserver(token)
         }
         playerEndObserver = nil
+
+        if let token = playerFailedObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        playerFailedObserver = nil
+
+        if let token = playerStallObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+        playerStallObserver = nil
     }
 
     @MainActor
@@ -501,6 +541,12 @@ struct TapePlayerView: View {
             isPlaying = false
             showingControls = true
         }
+    }
+
+    @MainActor
+    private func handleClipFailure(_ error: Error?) {
+        recordSkip(showToast: true)
+        Task { await skipFailedClip(from: currentClipIndex, autoplay: isPlaying) }
     }
 
     @MainActor
@@ -635,6 +681,7 @@ struct TapePlayerView: View {
         clipCache.removeAll()
         clipLoadTasks.values.forEach { $0.cancel() }
         clipLoadTasks.removeAll()
+        slotClipIndex.removeAll()
     }
 }
 
@@ -664,5 +711,78 @@ extension TapePlayerView {
         }
         skipToastWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: workItem)
+    }
+}
+
+// MARK: - Failure Recovery & Video Gravity
+
+extension TapePlayerView {
+    @MainActor
+    private func skipFailedClip(from index: Int, autoplay: Bool) async {
+        guard let timeline else { return }
+        var nextIndex = index + 1
+        while nextIndex < timeline.segments.count {
+            do {
+                try await loadClip(index: nextIndex, autoplay: autoplay, forceSlot: activeSlot)
+                if autoplay {
+                    activePlayer()?.play()
+                    isPlaying = true
+                } else {
+                    isPlaying = false
+                }
+                prefetchAround(index: nextIndex)
+                return
+            } catch {
+                recordSkip(showToast: true)
+                nextIndex += 1
+            }
+        }
+
+        isFinished = true
+        isPlaying = false
+        showingControls = true
+    }
+
+    private func videoGravity(for slot: PlayerSlot) -> AVLayerVideoGravity {
+        guard let index = slotClipIndex[slot], index >= 0, index < tape.clips.count else {
+            return tape.scaleMode == .fill ? .resizeAspectFill : .resizeAspect
+        }
+        let clip = tape.clips[index]
+        if clip.clipType == .image {
+            return .resizeAspectFill
+        }
+        if let override = clip.overrideScaleMode {
+            return override == .fill ? .resizeAspectFill : .resizeAspect
+        }
+        return tape.scaleMode == .fill ? .resizeAspectFill : .resizeAspect
+    }
+}
+
+// MARK: - Player Layer View
+
+private final class PlayerLayerContainerView: UIView {
+    override class var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    var playerLayer: AVPlayerLayer {
+        layer as! AVPlayerLayer
+    }
+}
+
+private struct PlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
+    let videoGravity: AVLayerVideoGravity
+
+    func makeUIView(context: Context) -> PlayerLayerContainerView {
+        let view = PlayerLayerContainerView()
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = videoGravity
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerLayerContainerView, context: Context) {
+        uiView.playerLayer.player = player
+        uiView.playerLayer.videoGravity = videoGravity
     }
 }

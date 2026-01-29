@@ -219,16 +219,20 @@ struct TapeCompositionBuilder {
         guard clipIndex >= 0, clipIndex < tape.clips.count else {
             throw BuilderError.assetUnavailable(clipID: UUID())
         }
-        guard clipIndex < timeline.segments.count else {
-            throw BuilderError.assetUnavailable(clipID: tape.clips[clipIndex].id)
-        }
-
-        let metadata = timeline.segments[clipIndex].metadata
+        let clip = tape.clips[clipIndex]
+        let context = try await resolveClipContext(for: clip, index: clipIndex)
+        let metadata = ClipMetadata(
+            index: clipIndex,
+            clip: clip,
+            duration: context.duration,
+            naturalSize: context.naturalSize,
+            motionEffect: context.motionEffect
+        )
         let segment = Segment(
             clipIndex: clipIndex,
             metadata: metadata,
-            assetContext: nil,
-            timeRange: CMTimeRange(start: .zero, duration: metadata.duration),
+            assetContext: context,
+            timeRange: CMTimeRange(start: .zero, duration: context.duration),
             incomingTransition: nil,
             outgoingTransition: nil,
             motionEffect: metadata.motionEffect
@@ -237,9 +241,14 @@ struct TapeCompositionBuilder {
         let singleTimeline = Timeline(
             segments: [segment],
             renderSize: timeline.renderSize,
-            totalDuration: metadata.duration,
+            totalDuration: context.duration,
             transitionSequence: []
         )
+
+        if clip.clipType == .video {
+            let playerItem = AVPlayerItem(asset: context.asset)
+            return PlayerComposition(playerItem: playerItem, timeline: singleTimeline)
+        }
 
         return try await buildPlayerComposition(for: tape, timeline: singleTimeline)
     }
@@ -269,6 +278,8 @@ struct TapeCompositionBuilder {
         // Build segments with resolved contexts for video instruction building
         var segmentsWithContexts: [Segment] = []
         
+        let isSingleClipTimeline = timeline.segments.count == 1
+
         for segment in timeline.segments {
             // Resolve full asset context if not already available
             let assetContext: ClipAssetContext
@@ -280,11 +291,18 @@ struct TapeCompositionBuilder {
             }
             
             // Create segment with resolved context
+            let resolvedTimeRange: CMTimeRange
+            if isSingleClipTimeline {
+                resolvedTimeRange = CMTimeRange(start: .zero, duration: assetContext.duration)
+            } else {
+                resolvedTimeRange = segment.timeRange
+            }
+
             let segmentWithContext = Segment(
                 clipIndex: segment.clipIndex,
                 metadata: segment.metadata,
                 assetContext: assetContext,
-                timeRange: segment.timeRange,
+                timeRange: resolvedTimeRange,
                 incomingTransition: segment.incomingTransition,
                 outgoingTransition: segment.outgoingTransition,
                 motionEffect: segment.motionEffect
@@ -295,7 +313,7 @@ struct TapeCompositionBuilder {
             if trackIndex < videoTracks.count {
                 let videoTrack = videoTracks[trackIndex]
                 let sourceRange = CMTimeRange(start: .zero, duration: assetContext.duration)
-                try videoTrack.insertTimeRange(sourceRange, of: assetContext.videoTrack, at: segment.timeRange.start)
+                try videoTrack.insertTimeRange(sourceRange, of: assetContext.videoTrack, at: resolvedTimeRange.start)
                 videoTrackMap[segment.clipIndex] = videoTrack
             }
 
@@ -304,19 +322,19 @@ struct TapeCompositionBuilder {
                trackIndex < audioTracks.count {
                 let audioTrack = audioTracks[trackIndex]
                 let sourceRange = CMTimeRange(start: .zero, duration: assetContext.duration)
-                try audioTrack.insertTimeRange(sourceRange, of: sourceAudioTrack, at: segment.timeRange.start)
+                try audioTrack.insertTimeRange(sourceRange, of: sourceAudioTrack, at: resolvedTimeRange.start)
                 audioTrackMap[segment.clipIndex] = audioTrack
 
                 let key = audioTrack.trackID
                 let params = audioMixParameters[key] ?? AVMutableAudioMixInputParameters(track: audioTrack)
-                params.setVolume(1.0, at: segment.timeRange.start)
+                params.setVolume(1.0, at: resolvedTimeRange.start)
 
                 if let incoming = segment.incomingTransition, incoming.style == .crossfade {
-                    let rampRange = CMTimeRange(start: segment.timeRange.start, duration: incoming.duration)
+                    let rampRange = CMTimeRange(start: resolvedTimeRange.start, duration: incoming.duration)
                     params.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: rampRange)
                 }
                 if let outgoing = segment.outgoingTransition, outgoing.style == .crossfade {
-                    let rampStart = CMTimeSubtract(CMTimeAdd(segment.timeRange.start, segment.timeRange.duration), outgoing.duration)
+                    let rampStart = CMTimeSubtract(CMTimeAdd(resolvedTimeRange.start, resolvedTimeRange.duration), outgoing.duration)
                     let rampRange = CMTimeRange(start: rampStart, duration: outgoing.duration)
                     params.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: rampRange)
                 }
@@ -326,10 +344,17 @@ struct TapeCompositionBuilder {
         }
         
         // Create timeline with resolved contexts for video instruction building
+        let resolvedTotalDuration: CMTime
+        if isSingleClipTimeline, let onlySegment = segmentsWithContexts.first {
+            resolvedTotalDuration = onlySegment.timeRange.duration
+        } else {
+            resolvedTotalDuration = timeline.totalDuration
+        }
+
         let timelineWithContexts = Timeline(
             segments: segmentsWithContexts,
             renderSize: timeline.renderSize,
-            totalDuration: timeline.totalDuration,
+            totalDuration: resolvedTotalDuration,
             transitionSequence: timeline.transitionSequence
         )
 
