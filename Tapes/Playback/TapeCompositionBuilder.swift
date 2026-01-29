@@ -210,6 +210,40 @@ struct TapeCompositionBuilder {
         return try await buildPlayerComposition(for: tape, timeline: timeline)
     }
 
+    @MainActor
+    func buildSingleClipPlayerItem(
+        for tape: Tape,
+        clipIndex: Int,
+        timeline: Timeline
+    ) async throws -> PlayerComposition {
+        guard clipIndex >= 0, clipIndex < tape.clips.count else {
+            throw BuilderError.assetUnavailable(clipID: UUID())
+        }
+        guard clipIndex < timeline.segments.count else {
+            throw BuilderError.assetUnavailable(clipID: tape.clips[clipIndex].id)
+        }
+
+        let metadata = timeline.segments[clipIndex].metadata
+        let segment = Segment(
+            clipIndex: clipIndex,
+            metadata: metadata,
+            assetContext: nil,
+            timeRange: CMTimeRange(start: .zero, duration: metadata.duration),
+            incomingTransition: nil,
+            outgoingTransition: nil,
+            motionEffect: metadata.motionEffect
+        )
+
+        let singleTimeline = Timeline(
+            segments: [segment],
+            renderSize: timeline.renderSize,
+            totalDuration: metadata.duration,
+            transitionSequence: []
+        )
+
+        return try await buildPlayerComposition(for: tape, timeline: singleTimeline)
+    }
+
     func resolveClipContext(for clip: Clip, index: Int) async throws -> ClipAssetContext {
         let contexts = try await loadAssets(for: [clip], startIndex: index)
         guard let context = contexts.first else {
