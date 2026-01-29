@@ -7,7 +7,6 @@ import UIKit
 
 struct TapePlayerView: View {
     private let builder = TapeCompositionBuilder()
-    private let prefetchWindow = 2
 
     @State private var timeline: TapeCompositionBuilder.Timeline?
     @State private var primaryPlayer: AVPlayer?
@@ -30,6 +29,7 @@ struct TapePlayerView: View {
     @State private var loadError: String?
 
     @State private var timeObserverToken: Any?
+    @State private var timeObserverPlayer: AVPlayer?
     @State private var playerEndObserver: NSObjectProtocol?
     @State private var playerFailedObserver: NSObjectProtocol?
     @State private var playerStallObserver: NSObjectProtocol?
@@ -39,6 +39,8 @@ struct TapePlayerView: View {
     @State private var isTornDown: Bool = false
     @State private var slotClipIndex: [PlayerSlot: Int] = [:]
     @State private var slotClipDuration: [PlayerSlot: Double] = [:]
+    @State private var preloadTask: Task<Void, Never>?
+    @State private var preloadNextIndex: Int = 0
 
     @State private var skippedClipCount: Int = 0
     @State private var showSkipToast: Bool = false
@@ -193,7 +195,7 @@ struct TapePlayerView: View {
             let timeline = try await builder.prepareTimeline(for: tape)
             self.timeline = timeline
             try await loadClip(index: 0, autoplay: true, forceSlot: .primary)
-            prefetchAround(index: 0)
+            startSequentialPreload(from: 1)
         } catch {
             loadError = error.localizedDescription
         }
@@ -207,7 +209,7 @@ struct TapePlayerView: View {
             throw TapeCompositionBuilder.BuilderError.assetUnavailable(clipID: UUID())
         }
 
-        let composition = try await loadClipComposition(index: index, timeline: timeline)
+        let composition = try await loadClipComposition(index: index, timeline: timeline, allowTrim: false)
         let slot = forceSlot ?? activeSlot
         installComposition(composition, in: slot, autoplay: autoplay, seekTime: .zero)
 
@@ -219,7 +221,8 @@ struct TapePlayerView: View {
     @MainActor
     private func loadClipComposition(
         index: Int,
-        timeline: TapeCompositionBuilder.Timeline
+        timeline: TapeCompositionBuilder.Timeline,
+        allowTrim: Bool = true
     ) async throws -> TapeCompositionBuilder.PlayerComposition {
         if let cached = clipCache[index] {
             return cached
@@ -236,7 +239,6 @@ struct TapePlayerView: View {
         defer { clipLoadTasks[index] = nil }
         let composition = try await task.value
         clipCache[index] = composition
-        trimCache(around: index)
         return composition
     }
 
@@ -282,7 +284,7 @@ struct TapePlayerView: View {
             } else {
                 isPlaying = false
             }
-            prefetchAround(index: clampedIndex)
+            startSequentialPreload(from: clampedIndex + 1)
         } catch {
             await skipFailedClip(from: clampedIndex, autoplay: autoplay)
         }
@@ -345,7 +347,7 @@ struct TapePlayerView: View {
         guard !isTransitioning else { return }
 
         do {
-            let composition = try await loadClipComposition(index: nextIndex, timeline: timeline)
+            let composition = try await loadClipComposition(index: nextIndex, timeline: timeline, allowTrim: false)
             let inactive = inactiveSlot()
             installComposition(composition, in: inactive, autoplay: true, seekTime: .zero)
 
@@ -386,7 +388,7 @@ struct TapePlayerView: View {
         player(for: newSlot)?.volume = 1.0
 
         installObservers(on: newSlot)
-        prefetchAround(index: nextIndex)
+            startSequentialPreload(from: nextIndex + 1)
     }
 
     @MainActor
@@ -469,6 +471,7 @@ struct TapePlayerView: View {
             updatePlaybackMetrics(localTime: time)
             maybeStartTransition(localTime: time)
         }
+        timeObserverPlayer = player
 
         playerEndObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
@@ -504,10 +507,11 @@ struct TapePlayerView: View {
 
     @MainActor
     private func removeObservers() {
-        if let token = timeObserverToken, let player = activePlayer() {
+        if let token = timeObserverToken, let player = timeObserverPlayer {
             player.removeTimeObserver(token)
         }
         timeObserverToken = nil
+        timeObserverPlayer = nil
 
         if let token = playerEndObserver {
             NotificationCenter.default.removeObserver(token)
@@ -610,25 +614,32 @@ struct TapePlayerView: View {
         clipLoadTasks.removeAll()
         primaryPlayer = nil
         secondaryPlayer = nil
+        preloadTask?.cancel()
+        preloadTask = nil
+        preloadNextIndex = 0
     }
 
     @MainActor
-    private func prefetchAround(index: Int) {
+    private func startSequentialPreload(from startIndex: Int) {
         guard let timeline else { return }
         let maxIndex = timeline.segments.count - 1
-        let targets = (1...prefetchWindow).compactMap { index + $0 }.filter { $0 <= maxIndex }
-        for target in targets {
-            if clipCache[target] != nil { continue }
-            Task { @MainActor in
-                _ = try? await loadClipComposition(index: target, timeline: timeline)
+        let clampedStart = max(0, min(startIndex, maxIndex))
+        if clampedStart <= preloadNextIndex, preloadTask != nil {
+            return
+        }
+        preloadTask?.cancel()
+        preloadNextIndex = clampedStart
+        let tapeTimeline = timeline
+        preloadTask = Task { @MainActor in
+            var index = preloadNextIndex
+            while index <= maxIndex && !Task.isCancelled {
+                preloadNextIndex = index
+                if clipCache[index] == nil {
+                    _ = try? await loadClipComposition(index: index, timeline: tapeTimeline, allowTrim: false)
+                }
+                index += 1
             }
         }
-    }
-
-    @MainActor
-    private func trimCache(around index: Int) {
-        let keep = Set([index, index - 1, index + 1, index + 2])
-        clipCache = clipCache.filter { keep.contains($0.key) }
     }
 
     private func player(for slot: PlayerSlot) -> AVPlayer? {
@@ -672,6 +683,9 @@ struct TapePlayerView: View {
         clipLoadTasks.removeAll()
         slotClipIndex.removeAll()
         slotClipDuration.removeAll()
+        preloadTask?.cancel()
+        preloadTask = nil
+        preloadNextIndex = 0
     }
 }
 
@@ -720,7 +734,7 @@ extension TapePlayerView {
                 } else {
                     isPlaying = false
                 }
-                prefetchAround(index: nextIndex)
+                startSequentialPreload(from: nextIndex + 1)
                 return
             } catch {
                 recordSkip(showToast: true)

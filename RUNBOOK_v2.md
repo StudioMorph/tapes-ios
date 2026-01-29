@@ -159,7 +159,8 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - **Preview Composition (iOS)**
   - Preview playback uses per-clip `AVPlayerItem` instances rather than a single merged composition.
   - Transitions are applied at runtime (crossfade/slide) while keeping clips loaded individually.
-  - The player prefetches a small window (current + next 2) for fast skips and stable memory use.
+  - The player preloads clips sequentially after the current clip finishes loading and keeps them cached during playback.
+  - The scrubber seeks within the current clip only; clip changes remain button or gesture driven.
   - `TapeCompositionBuilder` still resolves `.image` clips by synthesising a short H.264 asset and pairs it with the default Ken Burns `MotionEffect`.
   - Photo assets are normalised for EXIF orientation and colour space before encoding, and clip-level quarter-turn rotations are baked into the generated video.
   - Photo frames clamp to ≤1920px on the long side / ≤1080px on the short side to avoid oversized pixel buffers when generating temporary assets.
