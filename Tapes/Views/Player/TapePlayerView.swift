@@ -432,7 +432,8 @@ struct TapePlayerView: View {
         seekTime: CMTime
     ) {
         let player = player(for: slot) ?? AVPlayer()
-        player.replaceCurrentItem(with: composition.playerItem)
+        let playerItem = makePlayerItem(from: composition)
+        player.replaceCurrentItem(with: playerItem)
         player.actionAtItemEnd = .pause
         setPlayer(player, for: slot)
         if let clipIndex = composition.timeline.segments.first?.clipIndex {
@@ -647,6 +648,18 @@ struct TapePlayerView: View {
         case .primary: return primaryPlayer
         case .secondary: return secondaryPlayer
         }
+    }
+
+    private func makePlayerItem(from composition: TapeCompositionBuilder.PlayerComposition) -> AVPlayerItem {
+        let template = composition.playerItem
+        let item = AVPlayerItem(asset: template.asset)
+        if let videoComposition = template.videoComposition {
+            item.videoComposition = (videoComposition.copy() as? AVVideoComposition) ?? videoComposition
+        }
+        if let audioMix = template.audioMix {
+            item.audioMix = (audioMix.copy() as? AVAudioMix) ?? audioMix
+        }
+        return item
     }
 
     private func setPlayer(_ player: AVPlayer, for slot: PlayerSlot) {
