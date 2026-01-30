@@ -123,7 +123,7 @@ struct TapeCompositionBuilder {
         let transitionSequence: [TransitionDescriptor?] // matches clip boundaries (count = clips.count - 1)
     }
 
-    struct PlayerComposition {
+    struct PlayerComposition: @unchecked Sendable {
         let playerItem: AVPlayerItem
         let timeline: Timeline
     }
@@ -220,6 +220,49 @@ struct TapeCompositionBuilder {
             throw BuilderError.assetUnavailable(clipID: UUID())
         }
         let clip = tape.clips[clipIndex]
+        if clip.clipType == .image {
+            let image = try await loadImage(for: clip)
+            let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
+            let duration = CMTime(seconds: durationSeconds, preferredTimescale: 600)
+            let cgImage = try normalizedCGImage(from: image, clip: clip)
+            let naturalSize = CGSize(width: cgImage.width, height: cgImage.height)
+            let motionEffect = imageConfiguration.defaultMotionEffect
+
+            let metadata = ClipMetadata(
+                index: clipIndex,
+                clip: clip,
+                duration: duration,
+                naturalSize: naturalSize,
+                motionEffect: motionEffect
+            )
+            let segment = Segment(
+                clipIndex: clipIndex,
+                metadata: metadata,
+                assetContext: nil,
+                timeRange: CMTimeRange(start: .zero, duration: duration),
+                incomingTransition: nil,
+                outgoingTransition: nil,
+                motionEffect: motionEffect
+            )
+
+            let singleTimeline = Timeline(
+                segments: [segment],
+                renderSize: timeline.renderSize,
+                totalDuration: duration,
+                transitionSequence: []
+            )
+
+            let playerItem = try await makeStillImagePlayerItem(
+                cgImage: cgImage,
+                clip: clip,
+                duration: duration,
+                renderSize: timeline.renderSize,
+                motionEffect: motionEffect,
+                scaleMode: clip.overrideScaleMode ?? imageConfiguration.baseScaleMode
+            )
+            return PlayerComposition(playerItem: playerItem, timeline: singleTimeline)
+        }
+
         let context = try await resolveClipContext(for: clip, index: clipIndex)
         let metadata = ClipMetadata(
             index: clipIndex,
@@ -245,12 +288,8 @@ struct TapeCompositionBuilder {
             transitionSequence: []
         )
 
-        if clip.clipType == .video {
-            let playerItem = AVPlayerItem(asset: context.asset)
-            return PlayerComposition(playerItem: playerItem, timeline: singleTimeline)
-        }
-
-        return try await buildPlayerComposition(for: tape, timeline: singleTimeline)
+        let playerItem = AVPlayerItem(asset: context.asset)
+        return PlayerComposition(playerItem: playerItem, timeline: singleTimeline)
     }
 
     func resolveClipContext(for clip: Clip, index: Int) async throws -> ClipAssetContext {
@@ -399,13 +438,18 @@ struct TapeCompositionBuilder {
             for (offset, clip) in clips.enumerated() {
                 let index = startIndex + offset
                 group.addTask {
-                    // Acquire semaphore based on clip type
-                    if clip.clipType == .image {
+                    let isImage = clip.clipType == .image
+                    if isImage {
                         await imageSemaphore.wait()
-                        defer { imageSemaphore.signal() }
                     } else {
                         await videoSemaphore.wait()
-                        defer { videoSemaphore.signal() }
+                    }
+                    defer {
+                        if isImage {
+                            imageSemaphore.signal()
+                        } else {
+                            videoSemaphore.signal()
+                        }
                     }
                     
                     let resolved = try await resolveAsset(for: clip)
@@ -617,7 +661,7 @@ struct TapeCompositionBuilder {
             try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true, attributes: nil)
         }
         let fileExtension = originalURL.pathExtension.isEmpty ? "mov" : originalURL.pathExtension
-        let updatedAt = clip.updatedAt ?? Date.distantPast
+        let updatedAt = clip.updatedAt
         let timestamp = Int((updatedAt.timeIntervalSince1970 * 1_000).rounded())
         let versionComponent = "\(clip.id.uuidString)-\(timestamp)"
         return cacheDirectory.appendingPathComponent(versionComponent).appendingPathExtension(fileExtension)
@@ -625,6 +669,130 @@ struct TapeCompositionBuilder {
 
     private func makeAccessibleCopyIfNeeded(for clip: Clip, sourceURL: URL) throws -> URL {
         return try Self.accessibleURL(for: clip, url: sourceURL)
+    }
+
+    @MainActor
+    private func makeStillImagePlayerItem(
+        cgImage: CGImage,
+        clip: Clip,
+        duration: CMTime,
+        renderSize: CGSize,
+        motionEffect: MotionEffect?,
+        scaleMode: ScaleMode
+    ) async throws -> AVPlayerItem {
+        let timingAsset = try await Self.timingAsset()
+        guard let timingTrack = try await timingAsset.loadTracks(withMediaType: .video).first else {
+            throw BuilderError.missingVideoTrack
+        }
+        let composition = AVMutableComposition()
+        let track = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        )
+        let timingDuration = try await timingAsset.load(.duration)
+        let timingRange = CMTimeRange(start: .zero, duration: timingDuration)
+        try track?.insertTimeRange(timingRange, of: timingTrack, at: .zero)
+        if CMTimeCompare(timingDuration, duration) != 0 {
+            track?.scaleTimeRange(timingRange, toDuration: duration)
+        }
+
+        let rotationTurns = ((clip.rotateQuarterTurns % 4) + 4) % 4
+        let instruction = StillImageCompositionInstruction(
+            timeRange: CMTimeRange(start: .zero, duration: duration),
+            trackID: track?.trackID ?? kCMPersistentTrackID_Invalid,
+            renderSize: renderSize,
+            image: cgImage,
+            imageSize: CGSize(width: cgImage.width, height: cgImage.height),
+            rotationTurns: rotationTurns,
+            motionEffect: motionEffect,
+            scaleMode: scaleMode
+        )
+
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.customVideoCompositorClass = StillImageVideoCompositor.self
+        videoComposition.instructions = [instruction]
+        videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
+        videoComposition.renderSize = renderSize
+
+        let playerItem = AVPlayerItem(asset: composition)
+        playerItem.videoComposition = videoComposition
+        return playerItem
+    }
+
+    private static var timingAssetTask: Task<AVAsset, Error>?
+
+    private static func timingAsset() async throws -> AVAsset {
+        if let task = timingAssetTask {
+            return try await task.value
+        }
+        let task: Task<AVAsset, Error> = Task {
+            let fileManager = FileManager.default
+            let url = fileManager.temporaryDirectory.appendingPathComponent("TimingAsset.mov")
+            if fileManager.fileExists(atPath: url.path) {
+                return AVURLAsset(url: url)
+            }
+            return try await buildTimingAsset(at: url)
+        }
+        timingAssetTask = task
+        defer { timingAssetTask = nil }
+        return try await task.value
+    }
+
+    private static func buildTimingAsset(at url: URL) async throws -> AVAsset {
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let settings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 2,
+            AVVideoHeightKey: 2,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 50_000
+            ]
+        ]
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: 2,
+                kCVPixelBufferHeightKey as String: 2,
+                kCVPixelBufferCGImageCompatibilityKey as String: true,
+                kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+            ]
+        )
+        writer.add(input)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+
+        guard let pool = adaptor.pixelBufferPool else {
+            throw BuilderError.imageEncodingFailed
+        }
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer)
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            throw BuilderError.imageEncodingFailed
+        }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        if let base = CVPixelBufferGetBaseAddress(buffer) {
+            memset(base, 0, CVPixelBufferGetDataSize(buffer))
+        }
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+
+        while !input.isReadyForMoreMediaData {
+            await Task.yield()
+        }
+        adaptor.append(buffer, withPresentationTime: .zero)
+        input.markAsFinished()
+        await withCheckedContinuation { continuation in
+            writer.finishWriting { continuation.resume() }
+        }
+        if writer.status == .failed {
+            throw writer.error ?? BuilderError.imageEncodingFailed
+        }
+        return AVURLAsset(url: url)
     }
 
     // MARK: - Metadata Loading (Fast - for timeline building)

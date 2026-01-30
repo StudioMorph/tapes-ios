@@ -241,7 +241,7 @@ private struct NewTapeRevealContainer<Content: View>: View {
                 isVisible = false
                 reveal(after: listSlideDuration)
             }
-            .onChange(of: isNewlyInserted) { newValue in
+            .onChange(of: isNewlyInserted) { _, newValue in
                 if newValue {
                     guard !hasAnimated else { return }
                     hasAnimated = true
@@ -251,7 +251,7 @@ private struct NewTapeRevealContainer<Content: View>: View {
                     isVisible = true
                 }
             }
-            .onChange(of: isPendingReveal) { pending in
+            .onChange(of: isPendingReveal) { _, pending in
                 if pending {
                     isVisible = false
                     hasAnimated = false

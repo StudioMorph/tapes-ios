@@ -42,6 +42,8 @@ struct TapePlayerView: View {
     @State private var preloadTask: Task<Void, Never>?
     @State private var preloadNextIndex: Int = 0
 
+    @State private var viewportSize: CGSize = .zero
+
     @State private var isInteractiveDragging = false
     @State private var dragTranslation: CGFloat = 0
     @State private var dragTargetIndex: Int?
@@ -77,8 +79,9 @@ struct TapePlayerView: View {
                             }
                         )
                         Spacer()
-                        controlsView
+                        controlsView(bottomInset: proxy.safeAreaInsets.bottom)
                     }
+                    .padding(.top, max(0, proxy.safeAreaInsets.top - 108))
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 0.2), value: showingControls)
                 }
@@ -91,6 +94,7 @@ struct TapePlayerView: View {
                 loadingOverlay
             }
             .onAppear {
+                viewportSize = UIScreen.main.bounds.size
                 Task { await preparePlayer() }
                 setupControlsTimer()
             }
@@ -104,13 +108,16 @@ struct TapePlayerView: View {
     // MARK: - Player Views
 
     private func playerView(for slot: PlayerSlot, size: CGSize) -> some View {
-        Group {
+        let targetSize = viewportSize == .zero ? size : viewportSize
+        return Group {
             if let player = player(for: slot) {
                 PlayerLayerView(player: player, videoGravity: videoGravity(for: slot))
                     .disabled(true)
                     .overlay(tapCatcher)
                     .opacity(opacity(for: slot))
                     .offset(offset(for: slot, size: size))
+                    .frame(width: targetSize.width, height: targetSize.height)
+                    .ignoresSafeArea()
             }
         }
     }
@@ -164,7 +171,7 @@ struct TapePlayerView: View {
 
     // MARK: - Controls View
 
-    private var controlsView: some View {
+    private func controlsView(bottomInset: CGFloat) -> some View {
         VStack(spacing: 32) {
             PlayerProgressBar(
                 currentTime: clipTime,
@@ -184,7 +191,7 @@ struct TapePlayerView: View {
             )
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 40)
+        .padding(.bottom, max(64, bottomInset + 48))
     }
 
     // MARK: - Preparation
@@ -199,7 +206,7 @@ struct TapePlayerView: View {
 
         do {
             let timeline = try await builder.prepareTimeline(for: tape)
-            self.timeline = timeline
+            self.timeline = updateTimelineRenderSize(timeline)
             try await loadClip(index: 0, autoplay: true, forceSlot: .primary)
             startSequentialPreload(from: 1)
         } catch {
@@ -215,7 +222,7 @@ struct TapePlayerView: View {
             throw TapeCompositionBuilder.BuilderError.assetUnavailable(clipID: UUID())
         }
 
-        let composition = try await loadClipComposition(index: index, timeline: timeline, allowTrim: false)
+        let composition = try await loadClipComposition(index: index, timeline: updateTimelineRenderSize(timeline), allowTrim: false)
         let slot = forceSlot ?? activeSlot
         installComposition(composition, in: slot, autoplay: autoplay, seekTime: .zero)
 
@@ -475,8 +482,10 @@ struct TapePlayerView: View {
         let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             guard !isSeekingToClip else { return }
-            updatePlaybackMetrics(localTime: time)
-            maybeStartTransition(localTime: time)
+            Task { @MainActor in
+                updatePlaybackMetrics(localTime: time)
+                maybeStartTransition(localTime: time)
+            }
         }
         timeObserverPlayer = player
 
@@ -636,7 +645,7 @@ struct TapePlayerView: View {
         }
         preloadTask?.cancel()
         preloadNextIndex = clampedStart
-        let tapeTimeline = timeline
+        let tapeTimeline = updateTimelineRenderSize(timeline)
         preloadTask = Task { @MainActor in
             var index = preloadNextIndex
             while index <= maxIndex && !Task.isCancelled {
@@ -790,6 +799,19 @@ struct TapePlayerView: View {
         player(for: activeSlot)
     }
 
+    private func updateTimelineRenderSize(_ timeline: TapeCompositionBuilder.Timeline) -> TapeCompositionBuilder.Timeline {
+        guard viewportSize != .zero else { return timeline }
+        let scale = UIScreen.main.scale
+        let renderSize = CGSize(width: viewportSize.width * scale, height: viewportSize.height * scale)
+        guard renderSize != timeline.renderSize else { return timeline }
+        return TapeCompositionBuilder.Timeline(
+            segments: timeline.segments,
+            renderSize: renderSize,
+            totalDuration: timeline.totalDuration,
+            transitionSequence: timeline.transitionSequence
+        )
+    }
+
     private func inactiveSlot() -> PlayerSlot {
         activeSlot == .primary ? .secondary : .primary
     }
@@ -882,13 +904,10 @@ extension TapePlayerView {
             return tape.scaleMode == .fill ? .resizeAspectFill : .resizeAspect
         }
         let clip = tape.clips[index]
-        if clip.clipType == .image {
-            return .resizeAspectFill
-        }
         if let override = clip.overrideScaleMode {
             return override == .fill ? .resizeAspectFill : .resizeAspect
         }
-        return tape.scaleMode == .fill ? .resizeAspectFill : .resizeAspect
+        return .resizeAspectFill
     }
 }
 

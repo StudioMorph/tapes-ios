@@ -106,7 +106,7 @@ final class PlaybackPreparationCoordinator {
     }
 
     private func performWarmup(onSkip: @escaping (SkipReason, Int) -> Void) async throws -> [PreparedClip] {
-        guard !clips.isEmpty, let tape = sourceTape else {
+        guard !clips.isEmpty, sourceTape != nil else {
             return []
         }
 

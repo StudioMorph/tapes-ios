@@ -1028,11 +1028,9 @@ extension TapesStore {
     private func loadTapesFromDisk() {
         let url = persistenceURL
         let actor = persistenceActor
-        Task.detached(priority: .utility) { [weak self] in
+        Task(priority: .utility) {
             let loaded = await actor.load(from: url)
-            await MainActor.run {
-                self?.applyLoadedTapes(loaded)
-            }
+            applyLoadedTapes(loaded)
         }
     }
     
