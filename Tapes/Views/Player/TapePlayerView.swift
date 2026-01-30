@@ -42,6 +42,11 @@ struct TapePlayerView: View {
     @State private var preloadTask: Task<Void, Never>?
     @State private var preloadNextIndex: Int = 0
 
+    @State private var isInteractiveDragging = false
+    @State private var dragTranslation: CGFloat = 0
+    @State private var dragTargetIndex: Int?
+    @State private var dragWasPlaying = false
+
     @State private var skippedClipCount: Int = 0
     @State private var showSkipToast: Bool = false
     @State private var skipToastWorkItem: DispatchWorkItem?
@@ -58,6 +63,7 @@ struct TapePlayerView: View {
                     playerView(for: .primary, size: proxy.size)
                     playerView(for: .secondary, size: proxy.size)
                 }
+                .highPriorityGesture(swipeGesture(in: proxy.size))
 
                 if showingControls {
                     VStack {
@@ -317,7 +323,7 @@ struct TapePlayerView: View {
 
     @MainActor
     private func maybeStartTransition(localTime: CMTime) {
-        guard let timeline, isPlaying, !isTransitioning else { return }
+        guard let timeline, isPlaying, !isTransitioning, !isInteractiveDragging else { return }
         guard currentClipIndex < timeline.segments.count - 1 else { return }
 
         let segment = timeline.segments[currentClipIndex]
@@ -532,7 +538,7 @@ struct TapePlayerView: View {
 
     @MainActor
     private func handleClipFinished() {
-        guard !isTransitioning else { return }
+        guard !isTransitioning, !isInteractiveDragging else { return }
         if currentClipIndex < (timeline?.segments.count ?? 0) - 1 {
             Task { await jumpToClip(index: currentClipIndex + 1, autoplay: isPlaying) }
         } else {
@@ -648,6 +654,117 @@ struct TapePlayerView: View {
         case .primary: return primaryPlayer
         case .secondary: return secondaryPlayer
         }
+    }
+
+    private func swipeGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .local)
+            .onChanged { value in
+                guard let timeline else { return }
+                guard !isLoading, !isSeekingToClip else { return }
+                guard timeline.segments.count > 1 else { return }
+
+                let translation = value.translation.width
+                if isInteractiveDragging {
+                    dragTranslation = translation
+                    let progress = min(max(abs(translation) / max(size.width, 1), 0), 1)
+                    transitionProgress = progress
+                    return
+                }
+                if !isTransitioning {
+                    guard abs(translation) > 2 else { return }
+                    let direction: Int = translation < 0 ? 1 : -1
+                    let targetIndex = currentClipIndex + direction
+                    guard targetIndex >= 0, targetIndex < timeline.segments.count else { return }
+
+                    cancelTransition()
+                    isInteractiveDragging = true
+                    dragWasPlaying = isPlaying
+                    if isPlaying {
+                        pausePlayers()
+                    }
+                    isPlaying = false
+                    dragTargetIndex = targetIndex
+                    transitionStyle = translation < 0 ? .slideRL : .slideLR
+                    isTransitioning = true
+                    transitionProgress = 0
+
+                    Task { @MainActor in
+                        await prepareDragTarget(index: targetIndex)
+                    }
+                }
+            }
+            .onEnded { value in
+                guard isInteractiveDragging else { return }
+                let progress = min(max(abs(value.translation.width) / max(size.width, 1), 0), 1)
+                let shouldCommit = progress > 0.25
+                if shouldCommit {
+                    Task { @MainActor in
+                        await completeDragTransition()
+                    }
+                } else {
+                    Task { @MainActor in
+                        await cancelDragTransition()
+                    }
+                }
+            }
+    }
+
+    @MainActor
+    private func prepareDragTarget(index: Int) async {
+        guard let timeline else { return }
+        do {
+            let composition = try await loadClipComposition(index: index, timeline: timeline, allowTrim: false)
+            let inactive = inactiveSlot()
+            installComposition(composition, in: inactive, autoplay: false, seekTime: .zero)
+            inactivePlayer()?.pause()
+            inactivePlayer()?.volume = 0
+        } catch {
+            await cancelDragTransition()
+        }
+    }
+
+    @MainActor
+    private func completeDragTransition() async {
+        guard let targetIndex = dragTargetIndex else {
+            await cancelDragTransition()
+            return
+        }
+        let duration = 0.2
+        withAnimation(.linear(duration: duration)) {
+            transitionProgress = 1
+        }
+        try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+        finalizeTransition(to: targetIndex, duration: duration)
+        if dragWasPlaying {
+            activePlayer()?.play()
+            isPlaying = true
+        }
+        resetDragState()
+    }
+
+    @MainActor
+    private func cancelDragTransition() async {
+        let duration = 0.2
+        withAnimation(.linear(duration: duration)) {
+            transitionProgress = 0
+        }
+        try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+        isTransitioning = false
+        transitionProgress = 0
+        inactivePlayer()?.pause()
+        if dragWasPlaying {
+            activePlayer()?.play()
+            isPlaying = true
+        }
+        resetDragState()
+    }
+
+    @MainActor
+    private func resetDragState() {
+        isInteractiveDragging = false
+        dragTranslation = 0
+        dragTargetIndex = nil
+        dragWasPlaying = false
     }
 
     private func makePlayerItem(from composition: TapeCompositionBuilder.PlayerComposition) -> AVPlayerItem {
