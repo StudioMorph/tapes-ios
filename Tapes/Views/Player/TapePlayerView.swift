@@ -38,23 +38,25 @@ struct TapePlayerView: View {
     // MARK: - Layer 1: Media (full-bleed)
 
     private var mediaLayer: some View {
-        let size = vm.viewportSize
-        return ZStack {
-            Color.black
-            playerLayerView(for: .primary, size: size)
-            playerLayerView(for: .secondary, size: size)
+        GeometryReader { geo in
+            ZStack {
+                Color.black
+                playerLayerView(for: .primary)
+                playerLayerView(for: .secondary)
+            }
+            .onAppear { vm.viewportSize = geo.size }
+            .onChange(of: geo.size) { _, newSize in vm.viewportSize = newSize }
         }
         .ignoresSafeArea()
     }
 
     @ViewBuilder
-    private func playerLayerView(for slot: PlayerSlot, size: CGSize) -> some View {
+    private func playerLayerView(for slot: PlayerSlot) -> some View {
         if let player = vm.player(for: slot) {
             PlayerLayerView(player: player, videoGravity: vm.videoGravity(for: slot))
                 .disabled(true)
                 .opacity(vm.opacity(for: slot))
-                .offset(vm.offset(for: slot, viewSize: size))
-                .frame(width: size.width, height: size.height)
+                .offset(vm.offset(for: slot, viewSize: vm.viewportSize))
         }
     }
 
