@@ -89,10 +89,10 @@ struct TapePlayerView: View {
 
                 VStack(spacing: 32) {
                     PlayerProgressBar(
-                        currentTime: vm.globalCurrentTime,
-                        totalDuration: vm.totalTapeDuration,
+                        currentTime: vm.clipTime,
+                        totalDuration: vm.clipDuration,
                         onSeek: { time in
-                            Task { await vm.seekToGlobalTime(time) }
+                            Task { await vm.seekWithinClip(time) }
                         }
                     )
 

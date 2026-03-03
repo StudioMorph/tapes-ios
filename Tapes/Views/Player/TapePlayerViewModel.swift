@@ -171,6 +171,11 @@ final class TapePlayerViewModel: ObservableObject {
         resetControlsTimer()
     }
 
+    func seekWithinClip(_ seconds: Double) async {
+        await seek(to: seconds, autoplay: isPlaying)
+        resetControlsTimer()
+    }
+
     func seekToGlobalTime(_ globalSeconds: Double) async {
         guard let timeline, !timeline.segments.isEmpty else { return }
         let clamped = max(0, min(globalSeconds, totalTapeDuration))
