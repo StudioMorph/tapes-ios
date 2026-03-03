@@ -41,6 +41,10 @@ struct TapePlayerView: View {
         GeometryReader { geo in
             ZStack {
                 Color.black
+
+                blurredBackdrop(for: .primary)
+                blurredBackdrop(for: .secondary)
+
                 playerLayerView(for: .primary)
                 playerLayerView(for: .secondary)
             }
@@ -48,6 +52,17 @@ struct TapePlayerView: View {
             .onChange(of: geo.size) { _, newSize in vm.viewportSize = newSize }
         }
         .ignoresSafeArea()
+    }
+
+    @ViewBuilder
+    private func blurredBackdrop(for slot: PlayerSlot) -> some View {
+        if let player = vm.player(for: slot) {
+            PlayerLayerView(player: player, videoGravity: .resizeAspectFill)
+                .disabled(true)
+                .opacity(vm.opacity(for: slot) * 0.7)
+                .blur(radius: 24)
+                .clipped()
+        }
     }
 
     @ViewBuilder
