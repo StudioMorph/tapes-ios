@@ -301,7 +301,7 @@ final class TapePlayerViewModel: ObservableObject {
         if let override = clip.overrideScaleMode {
             return override == .fill ? .resizeAspectFill : .resizeAspect
         }
-        return .resizeAspectFill
+        return clip.clipType == .video ? .resizeAspect : .resizeAspectFill
     }
 
     // MARK: - Swipe Gesture
