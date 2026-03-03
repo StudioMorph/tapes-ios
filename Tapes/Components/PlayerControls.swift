@@ -1,23 +1,26 @@
-//
-//  PlayerControls.swift
-//  Tapes
-//
-//  Created by AI Assistant on 25/09/2025.
-//
-
 import SwiftUI
 
 struct PlayerControls: View {
     let isPlaying: Bool
+    let isFinished: Bool
     let canGoBack: Bool
     let canGoForward: Bool
     let onPlayPause: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
-    
+
+    private var playButtonIcon: String {
+        if isFinished { return "gobackward" }
+        return isPlaying ? "pause.fill" : "play.fill"
+    }
+
+    private var playButtonLabel: String {
+        if isFinished { return "Replay" }
+        return isPlaying ? "Pause" : "Play"
+    }
+
     var body: some View {
         HStack(spacing: 32) {
-            // Previous button
             Button(action: onPrevious) {
                 Image(systemName: "backward.fill")
                     .font(.title2)
@@ -29,11 +32,9 @@ struct PlayerControls: View {
             }
             .disabled(!canGoBack)
             .accessibilityLabel("Previous clip")
-            .accessibilityHint("Goes to the previous clip in the tape")
-            
-            // Play/Pause button
+
             Button(action: onPlayPause) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                Image(systemName: playButtonIcon)
                     .font(.largeTitle)
                     .fontWeight(.semibold)
                     .foregroundStyle(.white)
@@ -42,10 +43,8 @@ struct PlayerControls: View {
                     .contentShape(Circle())
                     .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
             }
-            .accessibilityLabel(isPlaying ? "Pause" : "Play")
-            .accessibilityHint(isPlaying ? "Pauses video playback" : "Starts video playback")
-            
-            // Next button
+            .accessibilityLabel(playButtonLabel)
+
             Button(action: onNext) {
                 Image(systemName: "forward.fill")
                     .font(.title2)
@@ -57,7 +56,6 @@ struct PlayerControls: View {
             }
             .disabled(!canGoForward)
             .accessibilityLabel("Next clip")
-            .accessibilityHint("Goes to the next clip in the tape")
         }
         .padding(.horizontal, 20)
     }
@@ -66,6 +64,7 @@ struct PlayerControls: View {
 #Preview {
     PlayerControls(
         isPlaying: false,
+        isFinished: false,
         canGoBack: true,
         canGoForward: true,
         onPlayPause: {},

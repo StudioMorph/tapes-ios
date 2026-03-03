@@ -157,16 +157,16 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - iOS: AVMutableComposition + AVMutableAudioMix
   - Android: FFmpegKit filtergraph (xfade + acrossfade)
 - **Preview Composition (iOS)**
-  - Preview playback uses per-clip `AVPlayerItem` instances rather than a single merged composition.
-  - Transitions are applied at runtime (crossfade/slide) while keeping clips loaded individually.
-  - The player preloads clips sequentially after the current clip finishes loading and keeps them cached during playback.
-  - The scrubber seeks within the current clip only; clip changes remain button or gesture driven.
-  - Photo clips use a custom `AVVideoCompositing` pipeline at playback time to avoid per-clip H.264 proxy encoding.
-  - Export and non-preview flows still resolve `.image` clips by synthesising a short H.264 asset and pairing it with the default Ken Burns `MotionEffect`.
-  - Photo assets are normalised for EXIF orientation and colour space before encoding, and clip-level quarter-turn rotations are baked into the generated video.
-  - Photo frames clamp to ≤1920px on the long side / ≤1080px on the short side to avoid oversized pixel buffers when generating temporary assets.
-  - Override duration/animation by passing a custom `ImageClipConfiguration` into the builder; the resulting `Timeline.Segment` exposes the chosen effect for UI/tests.
-  - Generated photo assets are marked temporary—hold them through playback/export and rely on the temp directory cleanup afterward.
+  - Preview playback uses per-clip `AVPlayerItem` instances via `TapePlayerViewModel` (MVVM).
+  - Transitions are applied at runtime (crossfade/slide) using a two-player slot architecture.
+  - Clips are preloaded sequentially with an LRU cache (10 entries, evicts on memory warning).
+  - Global timeline scrubber seeks across the entire tape; scrubbing navigates between clips automatically.
+  - Photo clips use a custom `AVVideoCompositing` pipeline (`StillImageVideoCompositor`) for real-time Ken Burns.
+  - `AVAudioSession` configured as `.playback` with interruption and route-change handling.
+  - Reduce Motion: slide transitions become crossfade; Ken Burns motion is disabled.
+  - Export and non-preview flows still resolve `.image` clips by synthesising a short H.264 asset.
+  - Photo assets are normalised for EXIF orientation; frames clamp to ≤1920×1080.
+  - Builder split into 3 files: core (`TapeCompositionBuilder`), asset resolution (`+AssetResolution`), image encoding (`+ImageEncoding`).
 
 ---
 
@@ -176,11 +176,15 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - **Frameworks**: AVFoundation, Photos, AVKit
 - **Export preset**: AVAssetExportPreset1920x1080
 - **Files**:
-  - ios/TransitionPicker.swift
-  - ios/TapeExporter.swift
-  - ios/CastManager.swift
-  - ios/AirPlayButton.swift
-  - ios/TapePlayerView+CastOverlay.swift
+  - Tapes/Views/Player/TapePlayerView.swift (thin View shell)
+  - Tapes/Views/Player/TapePlayerViewModel.swift (playback state + logic)
+  - Tapes/Components/AirPlayButton.swift (AVRoutePickerView wrapper)
+  - Tapes/Components/Player*.swift (Header, Controls, ProgressBar, LoadingOverlay, SkipToast)
+  - Tapes/Playback/TapeCompositionBuilder.swift (timeline + composition)
+  - Tapes/Playback/TapeCompositionBuilder+AssetResolution.swift
+  - Tapes/Playback/TapeCompositionBuilder+ImageEncoding.swift
+  - Tapes/Playback/StillImageVideoCompositor.swift (real-time image rendering)
+  - Tapes/Playback/AsyncSemaphore.swift (concurrency primitive)
 
 ### Android
 - **Dependencies**:

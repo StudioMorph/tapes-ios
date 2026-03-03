@@ -99,7 +99,8 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         context.clear(CGRect(origin: .zero, size: instruction.renderSize))
         context.interpolationQuality = .high
 
-        let progress = normalizedProgress(time: time, duration: instruction.duration)
+        let reduceMotion = UIAccessibility.isReduceMotionEnabled
+        let progress = reduceMotion ? 0 : normalizedProgress(time: time, duration: instruction.duration)
         let base = baseTransform(
             imageSize: instruction.imageSize,
             rotationTurns: instruction.rotationTurns,
