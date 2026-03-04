@@ -558,7 +558,11 @@ final class TapePlayerViewModel: ObservableObject {
         player(for: oldSlot)?.pause()
         player(for: oldSlot)?.replaceCurrentItem(with: nil)
         player(for: oldSlot)?.volume = 1.0
+        player(for: oldSlot)?.allowsExternalPlayback = false
+        player(for: oldSlot)?.usesExternalPlaybackWhileExternalScreenIsActive = false
         player(for: newSlot)?.volume = 1.0
+        player(for: newSlot)?.allowsExternalPlayback = true
+        player(for: newSlot)?.usesExternalPlaybackWhileExternalScreenIsActive = true
 
         installObservers(on: newSlot)
         startSequentialPreload(from: nextIndex + 1)
@@ -671,6 +675,8 @@ final class TapePlayerViewModel: ObservableObject {
         let playerItem = makePlayerItem(from: composition)
         player.replaceCurrentItem(with: playerItem)
         player.actionAtItemEnd = .pause
+        player.allowsExternalPlayback = (slot == activeSlot)
+        player.usesExternalPlaybackWhileExternalScreenIsActive = (slot == activeSlot)
         setPlayer(player, for: slot)
 
         if let segment = composition.timeline.segments.first {
