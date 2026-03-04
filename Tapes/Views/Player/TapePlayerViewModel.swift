@@ -93,6 +93,10 @@ final class TapePlayerViewModel: ObservableObject {
     private var dragWasPlaying = false
     private var skipToastWorkItem: DispatchWorkItem?
     private var wasPlayingBeforeBackground = false
+    private var airplayObservation: NSKeyValueObservation?
+    private var isAirPlayActive = false
+    private var preRenderedImageURLs: [Int: URL] = [:]
+    private var preRenderTasks: [Int: Task<URL, Error>] = [:]
 
     private static let cacheCapacity = 10
 
@@ -143,6 +147,10 @@ final class TapePlayerViewModel: ObservableObject {
         preloadTask?.cancel()
         preloadTask = nil
         preloadNextIndex = 0
+        airplayObservation?.invalidate()
+        airplayObservation = nil
+        isAirPlayActive = false
+        cleanupAllPreRenderedFiles()
         deactivateAudioSession()
     }
 
@@ -372,7 +380,12 @@ final class TapePlayerViewModel: ObservableObject {
             allowTrim: false
         )
         let slot = forceSlot ?? activeSlot
-        installComposition(composition, in: slot, autoplay: autoplay, seekTime: .zero)
+
+        if let airplayItem = await preRenderedPlayerItem(for: index) {
+            installAirPlayItem(airplayItem, composition: composition, in: slot, autoplay: autoplay)
+        } else {
+            installComposition(composition, in: slot, autoplay: autoplay, seekTime: .zero)
+        }
 
         currentClipIndex = index
         isFinished = false
@@ -665,6 +678,38 @@ final class TapePlayerViewModel: ObservableObject {
 
     // MARK: - Observers
 
+    private func installAirPlayItem(
+        _ item: AVPlayerItem,
+        composition: TapeCompositionBuilder.PlayerComposition,
+        in slot: PlayerSlot,
+        autoplay: Bool
+    ) {
+        let player = player(for: slot) ?? AVPlayer()
+        player.replaceCurrentItem(with: item)
+        player.actionAtItemEnd = .pause
+        player.allowsExternalPlayback = (slot == activeSlot)
+        player.usesExternalPlaybackWhileExternalScreenIsActive = (slot == activeSlot)
+        setPlayer(player, for: slot)
+
+        if let segment = composition.timeline.segments.first {
+            slotClipIndex[slot] = segment.clipIndex
+            slotVideoNaturalSize.removeValue(forKey: slot)
+        }
+
+        let durationSeconds = CMTimeGetSeconds(composition.timeline.totalDuration)
+        slotClipDuration[slot] = durationSeconds
+        if slot == activeSlot {
+            clipDuration = durationSeconds
+            clipTime = 0
+            installObservers(on: slot)
+            observeAirPlayState(on: player)
+        }
+
+        player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            if autoplay { player.play() } else { player.pause() }
+        }
+    }
+
     private func installComposition(
         _ composition: TapeCompositionBuilder.PlayerComposition,
         in slot: PlayerSlot,
@@ -704,6 +749,7 @@ final class TapePlayerViewModel: ObservableObject {
 
         if slot == activeSlot {
             installObservers(on: slot)
+            observeAirPlayState(on: player)
         }
 
         player.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
@@ -839,6 +885,7 @@ final class TapePlayerViewModel: ObservableObject {
         for key in keysToRemove {
             clipCache.removeValue(forKey: key)
             cacheAccessOrder.removeAll { $0 == key }
+            cleanupPreRenderedFile(at: key)
         }
     }
 
@@ -915,6 +962,94 @@ final class TapePlayerViewModel: ObservableObject {
         withAnimation(.easeInOut(duration: 0.2)) { showingControls = true }
     }
 
+    // MARK: - AirPlay Pre-Rendering
+
+    private func observeAirPlayState(on player: AVPlayer) {
+        airplayObservation?.invalidate()
+        airplayObservation = player.observe(\.isExternalPlaybackActive, options: [.new]) { [weak self] _, change in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let active = change.newValue ?? false
+                guard active != self.isAirPlayActive else { return }
+                self.isAirPlayActive = active
+                if active {
+                    self.preRenderUpcomingImageClips()
+                } else {
+                    self.cleanupAllPreRenderedFiles()
+                }
+            }
+        }
+    }
+
+    private func preRenderUpcomingImageClips() {
+        guard let timeline else { return }
+        let start = max(0, currentClipIndex)
+        let end = min(start + Self.cacheCapacity, timeline.segments.count)
+        for i in start..<end {
+            guard i < tape.clips.count, tape.clips[i].clipType == .image else { continue }
+            preRenderImageClip(at: i)
+        }
+    }
+
+    @discardableResult
+    private func preRenderImageClip(at index: Int) -> Task<URL, Error>? {
+        if let url = preRenderedImageURLs[index] { return Task { url } }
+        if let existing = preRenderTasks[index] { return existing }
+        guard index < tape.clips.count, tape.clips[index].clipType == .image else { return nil }
+
+        let clip = tape.clips[index]
+        let capturedBuilder = builder
+        let task = Task<URL, Error> { [weak self] in
+            let image = try await capturedBuilder.loadImage(for: clip)
+            let duration = clip.duration > 0 ? clip.duration : 3.0
+            let asset = try await capturedBuilder.createVideoAsset(from: image, clip: clip, duration: duration)
+            guard let urlAsset = asset as? AVURLAsset else {
+                throw TapeCompositionBuilder.BuilderError.imageEncodingFailed
+            }
+            let url = urlAsset.url
+            await MainActor.run { [weak self] in
+                self?.preRenderedImageURLs[index] = url
+                self?.preRenderTasks.removeValue(forKey: index)
+            }
+            return url
+        }
+        preRenderTasks[index] = task
+        return task
+    }
+
+    private func preRenderedPlayerItem(for index: Int) async -> AVPlayerItem? {
+        guard isAirPlayActive,
+              index < tape.clips.count,
+              tape.clips[index].clipType == .image else { return nil }
+
+        if let url = preRenderedImageURLs[index] {
+            return AVPlayerItem(url: url)
+        }
+        if let task = preRenderTasks[index] ?? preRenderImageClip(at: index) {
+            if let url = try? await task.value {
+                return AVPlayerItem(url: url)
+            }
+        }
+        return nil
+    }
+
+    private func cleanupPreRenderedFile(at index: Int) {
+        if let url = preRenderedImageURLs.removeValue(forKey: index) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        preRenderTasks[index]?.cancel()
+        preRenderTasks.removeValue(forKey: index)
+    }
+
+    private func cleanupAllPreRenderedFiles() {
+        for (_, url) in preRenderedImageURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        preRenderedImageURLs.removeAll()
+        preRenderTasks.values.forEach { $0.cancel() }
+        preRenderTasks.removeAll()
+    }
+
     // MARK: - Cache Management
 
     private func cacheComposition(_ composition: TapeCompositionBuilder.PlayerComposition, for index: Int) {
@@ -933,6 +1068,7 @@ final class TapePlayerViewModel: ObservableObject {
         while clipCache.count > Self.cacheCapacity, let oldest = cacheAccessOrder.first {
             cacheAccessOrder.removeFirst()
             clipCache.removeValue(forKey: oldest)
+            cleanupPreRenderedFile(at: oldest)
         }
     }
 
@@ -1001,6 +1137,7 @@ final class TapePlayerViewModel: ObservableObject {
         preloadTask?.cancel()
         preloadTask = nil
         preloadNextIndex = 0
+        cleanupAllPreRenderedFiles()
     }
 
     private func startSequentialPreload(from startIndex: Int) {
@@ -1021,6 +1158,11 @@ final class TapePlayerViewModel: ObservableObject {
                     _ = try? await self.loadClipComposition(
                         index: index, timeline: tapeTimeline, allowTrim: false
                     )
+                }
+                if self.isAirPlayActive,
+                   index < self.tape.clips.count,
+                   self.tape.clips[index].clipType == .image {
+                    self.preRenderImageClip(at: index)
                 }
                 index += 1
             }
