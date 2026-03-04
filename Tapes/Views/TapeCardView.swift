@@ -34,7 +34,7 @@ struct TapeCardView: View {
     let titleEditingConfig: TitleEditingConfig?
 
     @EnvironmentObject var tapeStore: TapesStore
-    @StateObject private var castManager = CastManager.shared
+    @ObservedObject private var castManager = CastManager.shared
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera

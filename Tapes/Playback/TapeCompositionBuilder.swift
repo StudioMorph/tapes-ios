@@ -12,6 +12,7 @@ struct TapeCompositionBuilder {
 
     let assetResolver: AssetResolver
     let imageConfiguration: ImageClipConfiguration
+    let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
 
     init(
         assetResolver: @escaping AssetResolver = TapeCompositionBuilder.defaultAssetResolver,

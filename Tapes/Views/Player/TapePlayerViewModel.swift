@@ -99,6 +99,7 @@ final class TapePlayerViewModel: ObservableObject {
     private var preRenderTasks: [Int: Task<URL, Error>] = [:]
 
     private static let cacheCapacity = 10
+    private static let maxConcurrentPreRenders = 2
 
     // MARK: - Init
 
@@ -877,6 +878,9 @@ final class TapePlayerViewModel: ObservableObject {
     }
 
     private func handleMemoryWarning() {
+        preloadTask?.cancel()
+        preloadTask = nil
+
         let keepSet: Set<Int> = Set(
             [currentClipIndex - 1, currentClipIndex, currentClipIndex + 1]
                 .filter { $0 >= 0 }
@@ -885,7 +889,14 @@ final class TapePlayerViewModel: ObservableObject {
         for key in keysToRemove {
             clipCache.removeValue(forKey: key)
             cacheAccessOrder.removeAll { $0 == key }
+            clipLoadTasks[key]?.cancel()
+            clipLoadTasks.removeValue(forKey: key)
             cleanupPreRenderedFile(at: key)
+        }
+
+        for (index, task) in preRenderTasks where !keepSet.contains(index) {
+            task.cancel()
+            preRenderTasks.removeValue(forKey: index)
         }
     }
 
@@ -987,6 +998,7 @@ final class TapePlayerViewModel: ObservableObject {
         let end = min(start + Self.cacheCapacity, timeline.segments.count)
         for i in start..<end {
             guard i < tape.clips.count, tape.clips[i].clipType == .image else { continue }
+            guard preRenderTasks.count < Self.maxConcurrentPreRenders else { break }
             preRenderImageClip(at: i)
         }
     }
@@ -996,13 +1008,23 @@ final class TapePlayerViewModel: ObservableObject {
         if let url = preRenderedImageURLs[index] { return Task { url } }
         if let existing = preRenderTasks[index] { return existing }
         guard index < tape.clips.count, tape.clips[index].clipType == .image else { return nil }
+        guard preRenderTasks.count < Self.maxConcurrentPreRenders else { return nil }
 
         let clip = tape.clips[index]
         let capturedBuilder = builder
+        let motionEffect = capturedBuilder.imageConfiguration.defaultMotionEffect
+        let scaleMode = clip.overrideScaleMode ?? capturedBuilder.imageConfiguration.baseScaleMode
         let task = Task<URL, Error> { [weak self] in
             let image = try await capturedBuilder.loadImage(for: clip)
             let duration = clip.duration > 0 ? clip.duration : 3.0
-            let asset = try await capturedBuilder.createVideoAsset(from: image, clip: clip, duration: duration)
+            let asset = try await capturedBuilder.createVideoAsset(
+                from: image,
+                clip: clip,
+                duration: duration,
+                motionEffect: motionEffect,
+                scaleMode: scaleMode,
+                includeBlurredBackground: true
+            )
             guard let urlAsset = asset as? AVURLAsset else {
                 throw TapeCompositionBuilder.BuilderError.imageEncodingFailed
             }

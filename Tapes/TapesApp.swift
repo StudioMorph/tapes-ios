@@ -11,10 +11,14 @@ import SwiftUI
 struct TapesApp: App {
     @StateObject private var tapeStore = TapesStore()   // single source of truth
 
+    init() {
+        cleanupTempImports()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(tapeStore)          // <- provide to whole tree
+                .environmentObject(tapeStore)
         }
     }
 }
