@@ -99,7 +99,7 @@ struct TapePlayerView: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .ignoresSafeArea(edges: .top)
+                    .ignoresSafeArea()
                 }
 
                 Spacer()
@@ -136,7 +136,7 @@ struct TapePlayerView: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .ignoresSafeArea(edges: .bottom)
+                    .ignoresSafeArea()
                 }
             }
             .transition(.opacity)
