@@ -84,6 +84,7 @@ final class TapePlayerViewModel: ObservableObject {
     private var isTornDown = false
     private var slotClipIndex: [PlayerSlot: Int] = [:]
     private var slotClipDuration: [PlayerSlot: Double] = [:]
+    private var slotVideoNaturalSize: [PlayerSlot: CGSize] = [:]
     private var preloadTask: Task<Void, Never>?
     private var preloadNextIndex: Int = 0
     private var isInteractiveDragging = false
@@ -301,7 +302,16 @@ final class TapePlayerViewModel: ObservableObject {
         if let override = clip.overrideScaleMode {
             return override == .fill ? .resizeAspectFill : .resizeAspect
         }
-        return clip.clipType == .video ? .resizeAspect : .resizeAspectFill
+        guard clip.clipType == .video,
+              let videoSize = slotVideoNaturalSize[slot],
+              videoSize.width > 0, videoSize.height > 0,
+              viewportSize.width > 0, viewportSize.height > 0
+        else {
+            return .resizeAspectFill
+        }
+        let videoIsLandscape = videoSize.width > videoSize.height
+        let viewportIsLandscape = viewportSize.width > viewportSize.height
+        return videoIsLandscape == viewportIsLandscape ? .resizeAspectFill : .resizeAspect
     }
 
     // MARK: - Swipe Gesture
@@ -663,10 +673,20 @@ final class TapePlayerViewModel: ObservableObject {
         player.actionAtItemEnd = .pause
         setPlayer(player, for: slot)
 
-        if let clipIndex = composition.timeline.segments.first?.clipIndex {
-            slotClipIndex[slot] = clipIndex
+        if let segment = composition.timeline.segments.first {
+            slotClipIndex[slot] = segment.clipIndex
+            if let ctx = segment.assetContext {
+                let transformed = ctx.naturalSize.applying(ctx.preferredTransform)
+                slotVideoNaturalSize[slot] = CGSize(
+                    width: abs(transformed.width),
+                    height: abs(transformed.height)
+                )
+            } else {
+                slotVideoNaturalSize.removeValue(forKey: slot)
+            }
         } else {
             slotClipIndex.removeValue(forKey: slot)
+            slotVideoNaturalSize.removeValue(forKey: slot)
         }
 
         let durationSeconds = CMTimeGetSeconds(composition.timeline.totalDuration)
@@ -971,6 +991,7 @@ final class TapePlayerViewModel: ObservableObject {
         clipLoadTasks.removeAll()
         slotClipIndex.removeAll()
         slotClipDuration.removeAll()
+        slotVideoNaturalSize.removeAll()
         preloadTask?.cancel()
         preloadTask = nil
         preloadNextIndex = 0
