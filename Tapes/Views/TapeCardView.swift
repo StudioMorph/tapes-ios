@@ -24,7 +24,6 @@ struct TapeCardView: View {
     let tapeID: UUID
     let onSettings: () -> Void
     let onPlay: () -> Void
-    let onAirPlay: () -> Void
     let onThumbnailDelete: (Clip) -> Void
     
     let onClipInserted: (Clip, Int) -> Void
@@ -34,7 +33,6 @@ struct TapeCardView: View {
     let titleEditingConfig: TitleEditingConfig?
 
     @EnvironmentObject var tapeStore: TapesStore
-    @ObservedObject private var castManager = CastManager.shared
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
@@ -95,7 +93,6 @@ struct TapeCardView: View {
         tapeID: UUID,
         onSettings: @escaping () -> Void,
         onPlay: @escaping () -> Void,
-        onAirPlay: @escaping () -> Void,
         onThumbnailDelete: @escaping (Clip) -> Void,
         onClipInserted: @escaping (Clip, Int) -> Void,
         onClipInsertedAtPlaceholder: @escaping (Clip, CarouselItem) -> Void,
@@ -107,7 +104,6 @@ struct TapeCardView: View {
         self.tapeID = tapeID
         self.onSettings = onSettings
         self.onPlay = onPlay
-        self.onAirPlay = onAirPlay
         self.onThumbnailDelete = onThumbnailDelete
         self.onClipInserted = onClipInserted
         self.onClipInsertedAtPlaceholder = onClipInsertedAtPlaceholder
@@ -141,36 +137,18 @@ struct TapeCardView: View {
                 // 32pt minimum gap
                 Spacer(minLength: 32)
                 
-                // Right group: gear 16 cast? 16 play
+                // Right group: gear 16 play
                 HStack(spacing: 16) {
-                    // Settings button
                     Image(systemName: "gearshape")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(Tokens.Colors.primaryText)
-                        .onTapGesture {
-                            print("🔧 Settings button tapped! - \(tapeID)")
-                            onSettings()
-                        }
+                        .onTapGesture { onSettings() }
                         .id("settings-\(tapeID)")
                     
-                    // AirPlay button (only show if available devices)
-                    if castManager.hasAvailableDevices {
-                        Image(systemName: "airplayvideo")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Tokens.Colors.primaryText)
-                            .onTapGesture {
-                                onAirPlay()
-                            }
-                    }
-                    
-                    // Play button
                     Image(systemName: "play.fill")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(Tokens.Colors.primaryText)
-                        .onTapGesture {
-                            print("▶️ Play button tapped! - \(tapeID)")
-                            onPlay()
-                        }
+                        .onTapGesture { onPlay() }
                         .id("play-\(tapeID)")
                 }
             }
@@ -322,16 +300,8 @@ struct TapeCardView: View {
                 let pSnapshot = savedCarouselPosition
                 let k = picked.count
                 
-                // Insert media based on source
-                switch source {
-                case .centerFAB:
-                    // Insert at current carousel position (where FAB is positioned)
-                    let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
-                    insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
-                default:
-                    let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
-                    insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
-                }
+                let insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
+                insertClipsAtPosition(picked: picked, at: insertionIndex, into: $tape)
                 
                 // Calculate target position in clip-space after insertion
                 let pAfter = pSnapshot + k
@@ -430,15 +400,11 @@ struct TapeCardView: View {
 
     /// Check if this tape just received its first content and create new empty tape if needed
     private func checkAndCreateEmptyTapeIfNeeded() {
-        // Check if tape just transitioned from 0 → >0 clips and hasReceivedFirstContent == false
-        if tape.clips.count > 0 && !tape.hasReceivedFirstContent {
-            // Set hasReceivedFirstContent = true on this tape and persist
-            tape.hasReceivedFirstContent = true
-            
-            // Insert a new empty tape at index 0
-            tapeStore.insertEmptyTapeAtTop()
-            
-            }
+        guard tape.clips.count > 0, !tape.hasReceivedFirstContent else { return }
+        var updated = tape
+        updated.hasReceivedFirstContent = true
+        tapeStore.updateTape(updated)
+        tapeStore.insertEmptyTapeAtTop()
     }
 
     private func beginEditingTitle() {
@@ -505,7 +471,6 @@ private struct BatchProgressChip: View {
         tapeID: Tape.sampleTapes[0].id,
         onSettings: {},
         onPlay: {},
-        onAirPlay: {},
         onThumbnailDelete: { _ in },
         onClipInserted: { _, _ in },
         onClipInsertedAtPlaceholder: { _, _ in },

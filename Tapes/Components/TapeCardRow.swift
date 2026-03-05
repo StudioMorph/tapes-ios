@@ -12,7 +12,6 @@ struct TapeCardRow: View {
     let tapeID: UUID
     let onSettings: () -> Void
     let onPlay: () -> Void
-    let onAirPlay: () -> Void
     let onThumbnailDelete: (Clip) -> Void
     let onClipInserted: (Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
@@ -27,7 +26,6 @@ struct TapeCardRow: View {
                 tapeID: tapeID,
                 onSettings: onSettings,
                 onPlay: onPlay,
-                onAirPlay: onAirPlay,
                 onThumbnailDelete: onThumbnailDelete,
                 onClipInserted: onClipInserted,
                 onClipInsertedAtPlaceholder: onClipInsertedAtPlaceholder,
@@ -53,7 +51,6 @@ struct TapeCardRow: View {
         tapeID: Tape.sampleTapes[0].id,
         onSettings: {},
         onPlay: {},
-        onAirPlay: {},
         onThumbnailDelete: { _ in },
         onClipInserted: { _, _ in },
         onClipInsertedAtPlaceholder: { _, _ in },

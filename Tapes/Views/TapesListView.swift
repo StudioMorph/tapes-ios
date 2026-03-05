@@ -34,7 +34,6 @@ struct TapesListView: View {
                             draftTitle: $draftTitle,
                             onSettings: handleSettings,
                             onPlay: handlePlay,
-                            onAirPlay: handleAirPlay,
                             onThumbnailDelete: handleThumbnailDelete,
                             onClipInserted: handleClipInserted,
                             onClipInsertedAtPlaceholder: handleClipInsertedAtPlaceholder,
@@ -50,8 +49,22 @@ struct TapesListView: View {
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
         }
-        .actionSheet(isPresented: $showingPlayOptions) {
-            playOptionsSheet
+        .confirmationDialog("Play Options", isPresented: $showingPlayOptions) {
+            Button("Preview Tape") {
+                if tapeToPreview == nil {
+                    tapeToPreview = tapesStore.tapes.first(where: { !$0.clips.isEmpty })
+                }
+                showingPlayer = tapeToPreview != nil
+            }
+            Button("Merge & Save") {
+                let tape = tapeToPreview ?? tapesStore.tapes.first(where: { !$0.clips.isEmpty })
+                if let tape {
+                    exportCoordinator.exportTape(tape) { newIdentifier in
+                        tapesStore.updateTapeAlbumIdentifier(newIdentifier, for: tape.id)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
         }
         .fullScreenCover(isPresented: $showingPlayer) {
             playerView
@@ -65,18 +78,12 @@ struct TapesListView: View {
     // MARK: - Action Handlers
     
     private func handleSettings(_ tape: Tape) {
-        print("🔧 onSettings called for tape: \(tape.title)")
         tapesStore.selectTape(tape)
     }
     
     private func handlePlay(_ tape: Tape) {
-        print("▶️ onPlay called for tape: \(tape.title)")
         tapeToPreview = tape
         showingPlayOptions = true
-    }
-    
-    private func handleAirPlay(_ tape: Tape) {
-        // AirPlay functionality - currently empty
     }
     
     private func handleThumbnailDelete(_ tape: Tape, _ clip: Clip) {
@@ -99,9 +106,10 @@ struct TapesListView: View {
         startTitleEditing(tapeID: tapeID, currentTitle: currentTitle)
     }
 
+    @ViewBuilder
     private var settingsSheet: some View {
         if let selectedTape = tapesStore.selectedTape {
-            return AnyView(TapeSettingsView(
+            TapeSettingsView(
                 tape: Binding(
                     get: { selectedTape },
                     set: { tapesStore.updateTape($0) }
@@ -113,42 +121,17 @@ struct TapesListView: View {
                 onTapeDeleted: {
                     showingDeleteSuccessToast = true
                 }
-            ))
-        } else {
-            return AnyView(EmptyView())
+            )
         }
     }
 
-    private var playOptionsSheet: ActionSheet {
-        ActionSheet(
-            title: Text("Play Options"),
-            buttons: [
-                .default(Text("Preview Tape")) {
-                    if tapeToPreview == nil {
-                        tapeToPreview = tapesStore.tapes.first(where: { !$0.clips.isEmpty })
-                    }
-                    showingPlayer = tapeToPreview != nil
-                },
-                .default(Text("Merge & Save")) {
-                    if let tape = tapesStore.tapes.first {
-                        exportCoordinator.exportTape(tape) { newIdentifier in
-                            tapesStore.updateTapeAlbumIdentifier(newIdentifier, for: tape.id)
-                        }
-                    }
-                },
-                .cancel()
-            ]
-        )
-    }
-
+    @ViewBuilder
     private var playerView: some View {
         if let tape = tapeToPreview {
-            return AnyView(TapePlayerView(tape: tape, onDismiss: {
+            TapePlayerView(tape: tape, onDismiss: {
                 showingPlayer = false
                 tapeToPreview = nil
-            }))
-        } else {
-            return AnyView(EmptyView())
+            })
         }
     }
 
@@ -195,101 +178,11 @@ struct TapesListView: View {
     }
 }
 
-private struct NewTapeRevealContainer<Content: View>: View {
-    let tapeID: UUID
-    let isNewlyInserted: Bool
-    let isPendingReveal: Bool
-    let onAnimationCompleted: () -> Void
-    let content: () -> Content
-
-    @State private var hasAnimated = false
-    @State private var isVisible = false
-
-    private let listSlideDuration: Double = 0.42
-    private let animationDuration: Double = 0.32
-    private let revealAnimation = Animation.interactiveSpring(response: 0.36, dampingFraction: 0.85, blendDuration: 0.12)
-
-    init(
-        tapeID: UUID,
-        isNewlyInserted: Bool,
-        isPendingReveal: Bool,
-        onAnimationCompleted: @escaping () -> Void,
-        @ViewBuilder content: @escaping () -> Content
-    ) {
-        self.tapeID = tapeID
-        self.isNewlyInserted = isNewlyInserted
-        self.isPendingReveal = isPendingReveal
-        self.onAnimationCompleted = onAnimationCompleted
-        self.content = content
-    }
-
-    var body: some View {
-        content()
-            .scaleEffect(targetScale, anchor: .center)
-            .opacity(targetOpacity)
-            .allowsHitTesting(true)
-            .onAppear {
-                if isPendingReveal {
-                    isVisible = false
-                    hasAnimated = false
-                    return
-                }
-                guard isNewlyInserted else {
-                    isVisible = true
-                    return
-                }
-                guard !hasAnimated else { return }
-                hasAnimated = true
-                isVisible = false
-                reveal(after: listSlideDuration)
-            }
-            .onChange(of: isNewlyInserted) { _, newValue in
-                if newValue {
-                    guard !hasAnimated else { return }
-                    hasAnimated = true
-                    isVisible = false
-                    reveal(after: 0)
-                } else {
-                    isVisible = true
-                }
-            }
-            .onChange(of: isPendingReveal) { _, pending in
-                if pending {
-                    isVisible = false
-                    hasAnimated = false
-                }
-            }
-    }
-
-    private var targetScale: CGFloat {
-        if isPendingReveal { return 0.85 }
-        guard isNewlyInserted else { return 1.0 }
-        return isVisible ? 1.0 : 0.85
-    }
-
-    private var targetOpacity: Double {
-        if isPendingReveal { return 0.0 }
-        guard isNewlyInserted else { return 1.0 }
-        return isVisible ? 1.0 : 0.0
-    }
-
-    private func reveal(after delay: Double) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            withAnimation(revealAnimation) {
-                isVisible = true
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay + animationDuration) {
-            onAnimationCompleted()
-        }
-    }
-}
-
 private struct AlbumAssociationAlert: View {
     @EnvironmentObject var tapesStore: TapesStore
 
     var body: some View {
-        EmptyView()
+        Color.clear
             .alert("Photos Album", isPresented: binding) {
                 Button("OK") {
                     tapesStore.albumAssociationError = nil
@@ -318,6 +211,9 @@ private struct AlbumAssociationAlert: View {
 private struct DeleteSuccessToast: View {
     @Binding var isVisible: Bool
     @State private var showing = false
+
+    private var displayDuration: TimeInterval { 3.0 }
+    private var dismissAnimationDuration: TimeInterval { 0.4 }
     
     var body: some View {
         VStack {
@@ -348,22 +244,16 @@ private struct DeleteSuccessToast: View {
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showing)
             .onAppear {
                 showing = true
-                
-                // Auto-dismiss after 3 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                    withAnimation {
-                        showing = false
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + displayDuration) {
+                    withAnimation { showing = false }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + dismissAnimationDuration) {
                         isVisible = false
                     }
                 }
             }
             .onTapGesture {
-                withAnimation {
-                    showing = false
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                withAnimation { showing = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + dismissAnimationDuration) {
                     isVisible = false
                 }
             }

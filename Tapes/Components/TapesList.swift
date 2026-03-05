@@ -13,7 +13,6 @@ struct TapesList: View {
     @Binding var draftTitle: String
     let onSettings: (Tape) -> Void
     let onPlay: (Tape) -> Void
-    let onAirPlay: (Tape) -> Void
     let onThumbnailDelete: (Tape, Clip) -> Void
     let onClipInserted: (Tape, Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Tape, Clip, CarouselItem) -> Void
@@ -45,7 +44,6 @@ struct TapesList: View {
                         tapeID: tapeID,
                         onSettings: { onSettings(currentTape) },
                         onPlay: { onPlay(currentTape) },
-                        onAirPlay: { onAirPlay(currentTape) },
                         onThumbnailDelete: { clip in onThumbnailDelete(currentTape, clip) },
                         onClipInserted: { clip, index in onClipInserted(currentTape, clip, index) },
                         onClipInsertedAtPlaceholder: { clip, placeholder in onClipInsertedAtPlaceholder(currentTape, clip, placeholder) },
@@ -71,7 +69,6 @@ struct TapesList: View {
         draftTitle: .constant(""),
         onSettings: { _ in },
         onPlay: { _ in },
-        onAirPlay: { _ in },
         onThumbnailDelete: { _, _ in },
         onClipInserted: { _, _, _ in },
         onClipInsertedAtPlaceholder: { _, _, _ in },
