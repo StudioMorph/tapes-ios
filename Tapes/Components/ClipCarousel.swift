@@ -22,7 +22,7 @@ struct ClipCarousel: View {
     
     // Force re-evaluation when tape changes
     private var tapeHash: Int {
-        tape.clips.map { "\($0.id)-\($0.thumbnail != nil)" }.joined().hashValue
+        tape.clips.map { "\($0.id)-\($0.hasThumbnail)" }.joined().hashValue
     }
     
     var body: some View {

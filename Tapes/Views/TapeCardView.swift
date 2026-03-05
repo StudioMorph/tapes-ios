@@ -385,7 +385,8 @@ struct TapeCardView: View {
     }
 
     private func makeImageClip(image: UIImage, assetIdentifier: String?) -> Clip? {
-        let thumbnailData = image.jpegData(compressionQuality: 0.9)
+        let thumb = image.preparingThumbnail(of: CGSize(width: 480, height: 480))
+        let thumbnailData = (thumb ?? image).jpegData(compressionQuality: 0.8)
         let imageData: Data?
         if assetIdentifier == nil {
             imageData = image.jpegData(compressionQuality: 0.85)

@@ -75,9 +75,34 @@ public struct ClipBatchProgress: Equatable {
 // MARK: - Persistence
 
 private actor TapePersistenceActor {
+    private let mediaDir: URL
+
+    init() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.mediaDir = docs.appendingPathComponent("clip_media", isDirectory: true)
+        try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
+    }
+
     func save(_ tapes: [Tape], to url: URL) {
+        for tape in tapes {
+            for clip in tape.clips {
+                saveBlobFiles(for: clip)
+            }
+        }
+
+        let stripped = tapes.map { tape -> Tape in
+            var t = tape
+            t.clips = t.clips.map { clip in
+                var c = clip
+                c.thumbnail = nil
+                c.imageData = nil
+                return c
+            }
+            return t
+        }
+
         do {
-            let data = try JSONEncoder().encode(tapes)
+            let data = try JSONEncoder().encode(stripped)
             try data.write(to: url)
         } catch {
             TapesLog.store.error("Failed to save tapes: \(error.localizedDescription)")
@@ -87,11 +112,64 @@ private actor TapePersistenceActor {
     func load(from url: URL) -> [Tape] {
         do {
             let data = try Data(contentsOf: url)
-            return try JSONDecoder().decode([Tape].self, from: data)
+            var tapes = try JSONDecoder().decode([Tape].self, from: data)
+
+            // Migrate: if old JSON had inline blobs, save them as files
+            var needsMigration = false
+            for tape in tapes {
+                for clip in tape.clips where clip.thumbnail != nil || clip.imageData != nil {
+                    saveBlobFiles(for: clip)
+                    needsMigration = true
+                }
+            }
+
+            if needsMigration {
+                // Strip blobs from in-memory clips (they're now on disk)
+                for tIdx in tapes.indices {
+                    for cIdx in tapes[tIdx].clips.indices {
+                        tapes[tIdx].clips[cIdx].thumbnail = nil
+                        tapes[tIdx].clips[cIdx].imageData = nil
+                    }
+                }
+                // Re-save JSON without blobs
+                let stripped = tapes.map { $0.removingPlaceholders() }
+                if let encoded = try? JSONEncoder().encode(stripped) {
+                    try? encoded.write(to: url)
+                }
+            }
+
+            return tapes
         } catch {
             TapesLog.store.warning("No saved tapes found or failed to load: \(error.localizedDescription)")
             return []
         }
+    }
+
+    func deleteBlobs(for clipID: UUID) {
+        let thumbURL = mediaDir.appendingPathComponent("\(clipID)_thumb.jpg")
+        let imageURL = mediaDir.appendingPathComponent("\(clipID)_image.dat")
+        try? FileManager.default.removeItem(at: thumbURL)
+        try? FileManager.default.removeItem(at: imageURL)
+    }
+
+    func deleteBlobs(for clipIDs: [UUID]) {
+        for id in clipIDs { deleteBlobs(for: id) }
+    }
+
+    private func saveBlobFiles(for clip: Clip) {
+        if let thumb = clip.thumbnail {
+            let url = mediaDir.appendingPathComponent("\(clip.id)_thumb.jpg")
+            try? thumb.write(to: url)
+        }
+        if let img = clip.imageData {
+            let url = mediaDir.appendingPathComponent("\(clip.id)_image.dat")
+            try? img.write(to: url)
+        }
+    }
+
+    static var mediaDirectory: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return docs.appendingPathComponent("clip_media", isDirectory: true)
     }
 }
 
@@ -100,6 +178,7 @@ private actor TapePersistenceActor {
 @MainActor
 public class TapesStore: ObservableObject {
     @Published public var tapes: [Tape] = []
+    @Published public private(set) var isLoaded = false
     @Published public var selectedTape: Tape?
     @Published public var showingSettingsSheet = false
     @Published public var latestInsertedTapeID: UUID?
@@ -122,6 +201,11 @@ public class TapesStore: ObservableObject {
     private let persistenceActor = TapePersistenceActor()
     private var saveTask: Task<Void, Never>?
     private let saveDebounce: TimeInterval = 0.35
+    private var metadataQueue: [() async -> Void] = []
+    private var activeMetadataTasks = 0
+    private static let maxConcurrentMetadata = 3
+    private var pendingClipUpdates: [(clipID: UUID, tapeID: UUID, transform: (inout Clip) -> Void)] = []
+    private var batchUpdateTask: Task<Void, Never>?
     
     // MARK: - Persistence
     private let persistenceKey = "SavedTapes"
@@ -180,6 +264,7 @@ public class TapesStore: ObservableObject {
     
     public func deleteTape(_ tape: Tape) {
         scheduleAlbumDeletionIfNeeded(for: tape)
+        scheduleMediaCleanup(for: tape.clips.map(\.id))
         tapes.removeAll { $0.id == tape.id }
         autoSave()
     }
@@ -187,6 +272,7 @@ public class TapesStore: ObservableObject {
     public func deleteTape(by id: UUID) {
         if let tape = getTape(by: id) {
             scheduleAlbumDeletionIfNeeded(for: tape)
+            scheduleMediaCleanup(for: tape.clips.map(\.id))
         }
         tapes.removeAll { $0.id == id }
         autoSave()
@@ -240,18 +326,16 @@ public class TapesStore: ObservableObject {
     public func deleteClip(from tapeId: UUID, at index: Int) {
         guard var tape = getTape(by: tapeId) else { return }
         
-        // Remove the clip at the specified index
         if index < tape.clips.count {
             let clip = tape.clips[index]
             if clip.isPlaceholder {
                 purgePlaceholderTrackingIfNeeded(for: clip.id)
             }
+            scheduleMediaCleanup(for: [clip.id])
             tape.clips.remove(at: index)
         }
         
-        // If this was the last clip, ensure we have an empty tape state
         if tape.clips.isEmpty {
-            // Keep the tape but ensure it's in the correct empty state
             tape.clips = []
         }
         
@@ -261,15 +345,13 @@ public class TapesStore: ObservableObject {
     public func deleteClip(from tapeId: UUID, clip: Clip) {
         guard var tape = getTape(by: tapeId) else { return }
         
-        // Find and remove the specific clip
         tape.clips.removeAll { $0.id == clip.id }
         if clip.isPlaceholder {
             purgePlaceholderTrackingIfNeeded(for: clip.id)
         }
+        scheduleMediaCleanup(for: [clip.id])
         
-        // If this was the last clip, ensure we have an empty tape state
         if tape.clips.isEmpty {
-            // Keep the tape but ensure it's in the correct empty state
             tape.clips = []
         }
         
@@ -538,6 +620,14 @@ private func evaluateBatchCompletion(for tapeID: UUID) {
         clipLoadingStates.removeValue(forKey: clipID)
         if let tapeID = placeholderTapeMap.removeValue(forKey: clipID) {
             evaluateBatchCompletion(for: tapeID)
+        }
+    }
+
+    private func scheduleMediaCleanup(for clipIDs: [UUID]) {
+        guard !clipIDs.isEmpty else { return }
+        let actor = persistenceActor
+        Task.detached(priority: .utility) {
+            await actor.deleteBlobs(for: clipIDs)
         }
     }
     
@@ -916,30 +1006,80 @@ extension TapesStore {
     func generateThumbAndDuration(for clip: Clip, tapeID: UUID) {
         guard clip.clipType == .video else { return }
         let needsDuration = clip.duration <= 0
-        let needsThumbnail = clip.thumbnail == nil
+        let needsThumbnail = !clip.hasThumbnail
         guard needsDuration || needsThumbnail else { return }
 
-        Task.detached(priority: .utility) { [weak self] in
+        let clipID = clip.id
+        let assetLocalId = clip.assetLocalId
+        let localURL = clip.localURL
+
+        enqueueMetadataWork { [weak self] in
             guard let self else { return }
 
-            if let assetLocalId = clip.assetLocalId,
+            if let assetLocalId,
                let asset = Self.fetchPHAsset(localIdentifier: assetLocalId) {
                 if needsDuration, asset.duration > 0 {
-                    await MainActor.run {
-                        self.updateClip(clip.id, transform: { $0.duration = asset.duration }, in: tapeID)
-                    }
+                    await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.duration = asset.duration }
                 }
-
                 if needsThumbnail, let thumbnail = await Self.requestThumbnail(for: asset) {
-                    await MainActor.run {
-                        self.updateClip(clip.id, transform: { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.9) }, in: tapeID)
-                    }
+                    await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.8) }
                 }
                 return
             }
 
-            guard let url = clip.localURL else { return }
-            await self.processAssetMetadata(url: url, clipID: clip.id, tapeID: tapeID, needsDuration: needsDuration, needsThumbnail: needsThumbnail)
+            guard let url = localURL else { return }
+            await self.processAssetMetadata(url: url, clipID: clipID, tapeID: tapeID, needsDuration: needsDuration, needsThumbnail: needsThumbnail)
+        }
+    }
+
+    private func enqueueMetadataWork(_ work: @escaping () async -> Void) {
+        metadataQueue.append(work)
+        drainMetadataQueue()
+    }
+
+    private func drainMetadataQueue() {
+        guard activeMetadataTasks < Self.maxConcurrentMetadata, !metadataQueue.isEmpty else { return }
+        let work = metadataQueue.removeFirst()
+        activeMetadataTasks += 1
+        Task.detached(priority: .utility) { [weak self] in
+            await work()
+            await MainActor.run { [weak self] in
+                self?.activeMetadataTasks -= 1
+                self?.drainMetadataQueue()
+            }
+        }
+    }
+
+    @MainActor
+    private func enqueueBatchUpdate(clipID: UUID, tapeID: UUID, transform: @escaping (inout Clip) -> Void) {
+        pendingClipUpdates.append((clipID: clipID, tapeID: tapeID, transform: transform))
+        scheduleBatchFlush()
+    }
+
+    private func scheduleBatchFlush() {
+        guard batchUpdateTask == nil else { return }
+        batchUpdateTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            self?.flushBatchUpdates()
+        }
+    }
+
+    private func flushBatchUpdates() {
+        batchUpdateTask = nil
+        guard !pendingClipUpdates.isEmpty else { return }
+        let updates = pendingClipUpdates
+        pendingClipUpdates.removeAll()
+
+        var mutatedTapeIndices: Set<Int> = []
+        for update in updates {
+            guard let tIndex = tapes.firstIndex(where: { $0.id == update.tapeID }),
+                  let cIndex = tapes[tIndex].clips.firstIndex(where: { $0.id == update.clipID }) else { continue }
+            update.transform(&tapes[tIndex].clips[cIndex])
+            mutatedTapeIndices.insert(tIndex)
+        }
+
+        if !mutatedTapeIndices.isEmpty {
+            autoSave()
         }
     }
 
@@ -958,21 +1098,20 @@ extension TapesStore {
         do {
             if needsDuration {
                 let duration = try await asset.load(.duration)
-                await MainActor.run {
-                    self.updateClip(clipID, transform: { $0.duration = duration.seconds }, in: tapeID)
-                }
+                await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.duration = duration.seconds }
             }
 
             guard needsThumbnail else { return }
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 480, height: 480)
             let time = CMTime(seconds: 0.1, preferredTimescale: 600)
 
             generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, cg, _, _, _ in
                 guard let cg else { return }
                 let ui = UIImage(cgImage: cg)
-                Task { @MainActor in
-                    self.updateClip(clipID, transform: { $0.thumbnail = ui.jpegData(compressionQuality: 0.9) }, in: tapeID)
+                Task { @MainActor [weak self] in
+                    self?.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.thumbnail = ui.jpegData(compressionQuality: 0.8) }
                 }
             }
         } catch {
@@ -991,10 +1130,10 @@ extension TapesStore {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.isNetworkAccessAllowed = true
-            options.deliveryMode = .highQualityFormat
-            options.resizeMode = .exact
+            options.deliveryMode = .opportunistic
+            options.resizeMode = .fast
 
-            let targetSize = CGSize(width: 960, height: 960)
+            let targetSize = CGSize(width: 480, height: 480)
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: targetSize,
@@ -1042,7 +1181,6 @@ extension TapesStore {
     private func applyLoadedTapes(_ loaded: [Tape]) {
         tapes = loaded
 
-        // Always ensure at least one empty tape exists
         if tapes.isEmpty {
             let newReel = Tape(
                 title: "New Reel",
@@ -1054,19 +1192,22 @@ extension TapesStore {
                 hasReceivedFirstContent: false
             )
             tapes.append(newReel)
-            scheduleSave()
         }
 
-        // Restore empty tape invariant after loading
-        restoreEmptyTapeInvariant()
-        restoreMissingClipMetadata()
-        scheduleLegacyAlbumAssociation()
+        restoreEmptyTapeInvariant(animated: false)
+        isLoaded = true
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            self?.restoreMissingClipMetadata()
+            self?.scheduleLegacyAlbumAssociation()
+        }
     }
     
     // MARK: - Empty Tape Management
     
     /// Insert a new empty tape at index 0
-    public func insertEmptyTapeAtTop() {
+    public func insertEmptyTapeAtTop(animated: Bool = true) {
         let newEmptyTape = Tape(
             title: "New Reel",
             orientation: .portrait,
@@ -1076,20 +1217,25 @@ extension TapesStore {
             clips: [],
             hasReceivedFirstContent: false
         )
-        withAnimation(Animation.interactiveSpring(response: 0.42, dampingFraction: 0.82, blendDuration: 0.12)) {
+
+        if animated {
+            withAnimation(Animation.interactiveSpring(response: 0.42, dampingFraction: 0.82, blendDuration: 0.12)) {
+                tapes.insert(newEmptyTape, at: 0)
+            }
+            pendingTapeRevealID = newEmptyTape.id
+            latestInsertedTapeID = nil
+            let revealDelay = 0.45
+            DispatchQueue.main.asyncAfter(deadline: .now() + revealDelay) { [weak self] in
+                guard let self else { return }
+                withAnimation {
+                    self.latestInsertedTapeID = newEmptyTape.id
+                    self.pendingTapeRevealID = nil
+                }
+            }
+            autoSave()
+        } else {
             tapes.insert(newEmptyTape, at: 0)
         }
-        pendingTapeRevealID = newEmptyTape.id
-        latestInsertedTapeID = nil
-        let revealDelay = 0.45
-        DispatchQueue.main.asyncAfter(deadline: .now() + revealDelay) { [weak self] in
-            guard let self else { return }
-            withAnimation {
-                self.latestInsertedTapeID = newEmptyTape.id
-                self.pendingTapeRevealID = nil
-            }
-        }
-        autoSave()
     }
 
     public func clearLatestInsertedTapeID(_ identifier: UUID) {
@@ -1115,7 +1261,7 @@ extension TapesStore {
                     mutatedTape = true
                 }
 
-                if clip.clipType == .video && (clip.duration <= 0 || clip.thumbnail == nil) {
+                if clip.clipType == .video && (clip.duration <= 0 || !clip.hasThumbnail) {
                     generateThumbAndDuration(for: clip, tapeID: tape.id)
                 }
 
@@ -1145,31 +1291,25 @@ extension TapesStore {
         guard let asset = Self.fetchPHAsset(localIdentifier: assetLocalId) else { return }
 
         if asset.mediaType == .image {
-            Task { @MainActor in
-                self.updateClip(clipID, transform: { clip in
-                    clip.duration = Tokens.Timing.photoDefaultDuration
-                    clip.updatedAt = Date()
-                }, in: tapeID)
+            enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { clip in
+                clip.duration = Tokens.Timing.photoDefaultDuration
+                clip.updatedAt = Date()
             }
             return
         }
 
         let durationSeconds = asset.duration
-        Task { @MainActor in
-            if durationSeconds > 0 {
-                self.updateClip(clipID, transform: { clip in
-                    clip.duration = durationSeconds
-                    clip.updatedAt = Date()
-                }, in: tapeID)
+        if durationSeconds > 0 {
+            enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { clip in
+                clip.duration = durationSeconds
+                clip.updatedAt = Date()
             }
         }
 
-        Task.detached(priority: .utility) { [weak self] in
+        enqueueMetadataWork { [weak self] in
             guard let self else { return }
             if let thumbnail = await Self.requestThumbnail(for: asset) {
-                await MainActor.run {
-                    self.updateClip(clipID, transform: { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.9) }, in: tapeID)
-                }
+                await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.8) }
             }
         }
     }
@@ -1264,14 +1404,10 @@ extension TapesStore {
     }
 
     /// Restore invariant: ensure empty tape exists at top after loading
-    public func restoreEmptyTapeInvariant() {
-        // Check if first tape is empty
+    public func restoreEmptyTapeInvariant(animated: Bool = true) {
         if let firstTape = tapes.first, firstTape.clips.isEmpty {
-            // First tape is already empty, no action needed
             return
         }
-        
-        // No empty tape at top, insert one
-        insertEmptyTapeAtTop()
+        insertEmptyTapeAtTop(animated: animated)
     }
 }

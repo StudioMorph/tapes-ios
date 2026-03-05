@@ -18,7 +18,9 @@ struct TapesListView: View {
                 Tokens.Colors.primaryBackground
                     .ignoresSafeArea(.all)
                 
-                if tapesStore.tapes.isEmpty {
+                if !tapesStore.isLoaded {
+                    Color.clear
+                } else if tapesStore.tapes.isEmpty {
                     EmptyStateView()
                 } else {
                     VStack(spacing: 0) {

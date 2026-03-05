@@ -198,13 +198,51 @@ public struct Clip: Identifiable, Codable, Equatable {
         )
     }
     
-    // MARK: - Computed Properties
-    
-    public var thumbnailImage: UIImage? {
-        guard let thumbnailData = thumbnail else { return nil }
-        return UIImage(data: thumbnailData)
+    // MARK: - Blob File Storage
+
+    private static let thumbnailCache: NSCache<NSUUID, UIImage> = {
+        let cache = NSCache<NSUUID, UIImage>()
+        cache.countLimit = 80
+        cache.totalCostLimit = 30 * 1024 * 1024
+        return cache
+    }()
+
+    private static var mediaDirectory: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return docs.appendingPathComponent("clip_media", isDirectory: true)
     }
-    
+
+    public var thumbnailImage: UIImage? {
+        let key = id as NSUUID
+        if let cached = Self.thumbnailCache.object(forKey: key) { return cached }
+
+        let data: Data?
+        if let mem = thumbnail {
+            data = mem
+        } else {
+            let url = Self.mediaDirectory.appendingPathComponent("\(id)_thumb.jpg")
+            data = try? Data(contentsOf: url)
+        }
+
+        guard let data, let image = UIImage(data: data) else { return nil }
+        Self.thumbnailCache.setObject(image, forKey: key, cost: data.count)
+        return image
+    }
+
+    /// Returns in-memory imageData, or loads from file if stored externally.
+    public var resolvedImageData: Data? {
+        if let data = imageData { return data }
+        let url = Self.mediaDirectory.appendingPathComponent("\(id)_image.dat")
+        return try? Data(contentsOf: url)
+    }
+
+    /// Whether a thumbnail exists (in-memory or on disk).
+    public var hasThumbnail: Bool {
+        if thumbnail != nil { return true }
+        let url = Self.mediaDirectory.appendingPathComponent("\(id)_thumb.jpg")
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
     public var isLocalVideo: Bool {
         return localURL != nil
     }

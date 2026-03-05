@@ -191,7 +191,7 @@ extension TapeCompositionBuilder {
     }
 
     func loadImage(for clip: Clip) async throws -> UIImage {
-        if let data = clip.imageData, let image = UIImage(data: data) {
+        if let data = clip.resolvedImageData, let image = UIImage(data: data) {
             return image
         }
         if let url = clip.localURL, let image = UIImage(contentsOfFile: url.path) {

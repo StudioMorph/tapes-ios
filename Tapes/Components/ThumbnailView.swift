@@ -81,7 +81,7 @@ struct ClipThumbnailView: View {
                 ResolvedClipThumbnail(clip: clip)
             }
         }
-        .id("clip-\(clip.id)-\(clip.thumbnail != nil)-\(clip.isPlaceholder)")
+        .id("clip-\(clip.id)-\(clip.hasThumbnail)-\(clip.isPlaceholder)")
     }
 }
 
@@ -119,7 +119,7 @@ private struct ResolvedClipThumbnail: View {
             .padding(8)
         }
         .overlay(alignment: .topTrailing) {
-            Text(clip.thumbnail == nil ? "no thumb" : "thumb")
+            Text(clip.hasThumbnail ? "thumb" : "no thumb")
                 .font(.caption2)
                 .opacity(0.001)
         }
