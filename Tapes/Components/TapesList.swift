@@ -39,7 +39,7 @@ struct TapesList: View {
                         )
                     }()
                     
-                    TapeCardRow(
+                    TapeCardView(
                         tape: $tape,
                         tapeID: tapeID,
                         onSettings: { onSettings(currentTape) },
@@ -51,6 +51,9 @@ struct TapesList: View {
                         onTitleFocusRequest: { onTitleFocusRequest(tapeID, currentTape.title) },
                         titleEditingConfig: titleEditingConfig
                     )
+                    .background(Tokens.Colors.primaryBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                     .id(tapeID)
                 }
             }

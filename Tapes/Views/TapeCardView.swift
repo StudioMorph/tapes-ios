@@ -9,6 +9,13 @@ enum ImportSource {
     case centerFAB
 }
 
+private struct CardWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 
 
 
@@ -50,6 +57,7 @@ struct TapeCardView: View {
     // Pending target for programmatic scroll (scoped by tape ID)
     @State private var pendingTargetItemIndex: Int? = nil
     @State private var pendingToken: UUID? = nil
+    @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
     // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
         return tape.clips.count // Clip-space: 0 = start, N = end
@@ -58,6 +66,14 @@ struct TapeCardView: View {
     private var displayedTitle: String {
         let trimmed = tape.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? " " : trimmed
+    }
+
+    private func thumbDimensions(for width: CGFloat) -> (thumbW: CGFloat, thumbH: CGFloat) {
+        let availableWidth = max(0, width - Tokens.FAB.size)
+        let thumbW = max(0, floor(availableWidth / 2.0))
+        let aspectRatio: CGFloat = 9.0 / 16.0
+        let thumbH = max(0, floor(thumbW * aspectRatio))
+        return (thumbW, thumbH)
     }
 
     @ViewBuilder
@@ -155,14 +171,8 @@ struct TapeCardView: View {
             .padding(.horizontal, Tokens.Spacing.m)
             .padding(.top, Tokens.Spacing.m)
             
-            // Timeline container
-            let screenW = UIScreen.main.bounds.width
-            let availableWidth = max(0, screenW - Tokens.FAB.size)
-            let thumbW = max(0, floor(availableWidth / 2.0))
-            let aspectRatio: CGFloat = 9.0 / 16.0
-            let thumbH = max(0, floor(thumbW * aspectRatio))
-            
-            
+            // Timeline container (uses container width from GeometryReader for adaptive layout)
+            let (thumbW, thumbH) = thumbDimensions(for: containerWidth)
             ZStack(alignment: .center) {
                 // 1) Thumbnails / scrollable carousel
                 ClipCarousel(
@@ -229,6 +239,14 @@ struct TapeCardView: View {
             }
             .frame(height: thumbH)
             .padding(.vertical, Tokens.Spacing.m)
+            .background(
+                GeometryReader { geometry in
+                    Color.clear.preference(key: CardWidthKey.self, value: geometry.size.width)
+                }
+            )
+            .onPreferenceChange(CardWidthKey.self) { width in
+                if width > 0 { containerWidth = width }
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
