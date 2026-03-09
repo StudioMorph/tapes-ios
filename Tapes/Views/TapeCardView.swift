@@ -29,6 +29,8 @@ struct TapeCardView: View {
 
     @Binding var tape: Tape
     let tapeID: UUID
+    let tapeWidth: CGFloat
+    let isLandscape: Bool
     let onSettings: () -> Void
     let onPlay: () -> Void
     let onThumbnailDelete: (Clip) -> Void
@@ -69,8 +71,13 @@ struct TapeCardView: View {
     }
 
     private func thumbDimensions(for width: CGFloat) -> (thumbW: CGFloat, thumbH: CGFloat) {
-        let availableWidth = max(0, width - Tokens.FAB.size)
-        let thumbW = max(0, floor(availableWidth / 2.0))
+        let thumbW: CGFloat
+        if isLandscape {
+            thumbW = max(0, floor((tapeWidth / 2) - 16))
+        } else {
+            let availableWidth = max(0, width - Tokens.FAB.size)
+            thumbW = max(0, floor(availableWidth / 2.0))
+        }
         let aspectRatio: CGFloat = 9.0 / 16.0
         let thumbH = max(0, floor(thumbW * aspectRatio))
         return (thumbW, thumbH)
@@ -107,6 +114,8 @@ struct TapeCardView: View {
     init(
         tape: Binding<Tape>,
         tapeID: UUID,
+        tapeWidth: CGFloat,
+        isLandscape: Bool = false,
         onSettings: @escaping () -> Void,
         onPlay: @escaping () -> Void,
         onThumbnailDelete: @escaping (Clip) -> Void,
@@ -118,6 +127,8 @@ struct TapeCardView: View {
     ) {
         self._tape = tape
         self.tapeID = tapeID
+        self.tapeWidth = tapeWidth
+        self.isLandscape = isLandscape
         self.onSettings = onSettings
         self.onPlay = onPlay
         self.onThumbnailDelete = onThumbnailDelete
@@ -487,6 +498,7 @@ private struct BatchProgressChip: View {
     TapeCardView(
         tape: Binding.constant(Tape.sampleTapes[0]),
         tapeID: Tape.sampleTapes[0].id,
+        tapeWidth: 375,
         onSettings: {},
         onPlay: {},
         onThumbnailDelete: { _ in },

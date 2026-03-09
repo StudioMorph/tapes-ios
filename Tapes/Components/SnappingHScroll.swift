@@ -81,7 +81,12 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIScrollView, context: Context) {
         context.coordinator.parent = self
-        // No-op; SwiftUI content updates through hosting controller automatically.
+
+        if let hosting = context.coordinator.hostingController {
+            hosting.rootView = HStack(spacing: 0) {
+                content()
+            }
+        }
     }
     
     private func performProgrammaticScroll(scrollView: UIScrollView, targetIndex: Int, retryCount: Int) {

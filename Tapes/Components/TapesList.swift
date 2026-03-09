@@ -19,49 +19,80 @@ struct TapesList: View {
     let onMediaInserted: (Tape, [PickedMedia], InsertionStrategy) -> Void
     let onTitleFocusRequest: (UUID, String) -> Void
     let onTitleCommit: () -> Void
-    
+
+    private let columnSpacing: CGFloat = 16
+
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: Tokens.Spacing.m) {
-                ForEach($tapes) { $tape in
-                    let tapeID = tape.id
-                    let currentTape = tape
-                    
-                    let titleEditingConfig: TapeCardView.TitleEditingConfig? = {
-                        guard editingTapeID == tapeID else { return nil }
-                        return TapeCardView.TitleEditingConfig(
-                            text: Binding(
-                                get: { draftTitle },
-                                set: { draftTitle = $0 }
-                            ),
-                            tapeID: tapeID,
-                            onCommit: onTitleCommit
-                        )
-                    }()
-                    
-                    TapeCardView(
-                        tape: $tape,
-                        tapeID: tapeID,
-                        onSettings: { onSettings(currentTape) },
-                        onPlay: { onPlay(currentTape) },
-                        onThumbnailDelete: { clip in onThumbnailDelete(currentTape, clip) },
-                        onClipInserted: { clip, index in onClipInserted(currentTape, clip, index) },
-                        onClipInsertedAtPlaceholder: { clip, placeholder in onClipInsertedAtPlaceholder(currentTape, clip, placeholder) },
-                        onMediaInserted: { media, strategy in onMediaInserted(currentTape, media, strategy) },
-                        onTitleFocusRequest: { onTitleFocusRequest(tapeID, currentTape.title) },
-                        titleEditingConfig: titleEditingConfig
-                    )
-                    .background(Tokens.Colors.primaryBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
-                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-                    .id(tapeID)
+        GeometryReader { geometry in
+            let isLandscape = geometry.size.width > geometry.size.height
+            let contentWidth = geometry.size.width - (Tokens.Spacing.m * 2)
+            let tapeWidth: CGFloat = isLandscape
+                ? (contentWidth - columnSpacing) / 2
+                : contentWidth
+
+            ScrollView {
+                if isLandscape {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: columnSpacing),
+                            GridItem(.flexible(), spacing: columnSpacing)
+                        ],
+                        spacing: Tokens.Spacing.m
+                    ) {
+                        tapeCards(tapeWidth: tapeWidth, isLandscape: isLandscape)
+                    }
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.vertical, Tokens.Spacing.s)
+                } else {
+                    LazyVStack(spacing: Tokens.Spacing.m) {
+                        tapeCards(tapeWidth: tapeWidth, isLandscape: isLandscape)
+                    }
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.vertical, Tokens.Spacing.s)
                 }
             }
-            .padding(.horizontal, Tokens.Spacing.m)
-            .padding(.vertical, Tokens.Spacing.s)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .scrollContentBackground(.hidden)
-        .scrollDismissesKeyboard(.interactively)
+    }
+
+    @ViewBuilder
+    private func tapeCards(tapeWidth: CGFloat, isLandscape: Bool) -> some View {
+        ForEach($tapes) { $tape in
+            let tapeID = tape.id
+            let currentTape = tape
+
+            let titleEditingConfig: TapeCardView.TitleEditingConfig? = {
+                guard editingTapeID == tapeID else { return nil }
+                return TapeCardView.TitleEditingConfig(
+                    text: Binding(
+                        get: { draftTitle },
+                        set: { draftTitle = $0 }
+                    ),
+                    tapeID: tapeID,
+                    onCommit: onTitleCommit
+                )
+            }()
+
+            TapeCardView(
+                tape: $tape,
+                tapeID: tapeID,
+                tapeWidth: tapeWidth,
+                isLandscape: isLandscape,
+                onSettings: { onSettings(currentTape) },
+                onPlay: { onPlay(currentTape) },
+                onThumbnailDelete: { clip in onThumbnailDelete(currentTape, clip) },
+                onClipInserted: { clip, index in onClipInserted(currentTape, clip, index) },
+                onClipInsertedAtPlaceholder: { clip, placeholder in onClipInsertedAtPlaceholder(currentTape, clip, placeholder) },
+                onMediaInserted: { media, strategy in onMediaInserted(currentTape, media, strategy) },
+                onTitleFocusRequest: { onTitleFocusRequest(tapeID, currentTape.title) },
+                titleEditingConfig: titleEditingConfig
+            )
+            .background(Tokens.Colors.primaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+            .id(tapeID)
+        }
     }
 }
 
