@@ -67,6 +67,59 @@ struct TapeCompositionBuilder {
             startOffset: CGPoint(x: 0.0, y: 0.0),
             endOffset: CGPoint(x: 0.05, y: -0.05)
         )
+
+        // MARK: - Motion Style Presets
+
+        /// Cinematic slow zoom + diagonal pan, classic documentary feel.
+        static let kenBurns = MotionEffect(
+            startScale: 1.0,
+            endScale: 1.2,
+            startOffset: CGPoint(x: -0.05, y: 0.03),
+            endOffset: CGPoint(x: 0.05, y: -0.03)
+        )
+
+        /// Smooth horizontal glide across the image.
+        static let pan = MotionEffect(
+            startScale: 1.2,
+            endScale: 1.2,
+            startOffset: CGPoint(x: -0.10, y: 0.0),
+            endOffset: CGPoint(x: 0.10, y: 0.0)
+        )
+
+        /// Gradual zoom into the centre of the image.
+        static let zoomIn = MotionEffect(
+            startScale: 1.0,
+            endScale: 1.3,
+            startOffset: .zero,
+            endOffset: .zero
+        )
+
+        /// Start cropped tight, gradually reveal the full image.
+        static let zoomOut = MotionEffect(
+            startScale: 1.3,
+            endScale: 1.0,
+            startOffset: .zero,
+            endOffset: .zero
+        )
+
+        /// Subtle floating diagonal drift with gentle scale breathing.
+        static let drift = MotionEffect(
+            startScale: 1.03,
+            endScale: 1.09,
+            startOffset: CGPoint(x: 0.02, y: -0.02),
+            endOffset: CGPoint(x: -0.02, y: 0.02)
+        )
+
+        static func from(style: MotionStyle) -> MotionEffect? {
+            switch style {
+            case .none: return nil
+            case .kenBurns: return .kenBurns
+            case .pan: return .pan
+            case .zoomIn: return .zoomIn
+            case .zoomOut: return .zoomOut
+            case .drift: return .drift
+            }
+        }
     }
 
     struct ImageClipConfiguration {
@@ -227,7 +280,7 @@ struct TapeCompositionBuilder {
             let duration = CMTime(seconds: durationSeconds, preferredTimescale: 600)
             let cgImage = try normalizedCGImage(from: image, clip: clip)
             let naturalSize = CGSize(width: cgImage.width, height: cgImage.height)
-            let motionEffect = imageConfiguration.defaultMotionEffect
+            let motionEffect = MotionEffect.from(style: clip.motionStyle)
 
             let metadata = ClipMetadata(
                 index: clipIndex,
@@ -640,10 +693,9 @@ struct TapeCompositionBuilder {
                 motionEffect = nil
                 
             case .image:
-                // For images, use clip duration or default, and default motion effect
                 let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
                 duration = CMTime(seconds: durationSeconds, preferredTimescale: 600)
-                motionEffect = imageConfiguration.defaultMotionEffect
+                motionEffect = MotionEffect.from(style: clip.motionStyle)
             }
             
             // TIMELINE OPTIMIZATION: naturalSize is nil for timeline building
