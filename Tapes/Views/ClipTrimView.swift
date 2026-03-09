@@ -47,10 +47,6 @@ struct ClipTrimView: View {
                     videoPreview
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    timeDisplay
-                        .padding(.top, Tokens.Spacing.s)
-                        .opacity(isDragging ? 0 : 1)
-
                     HStack(spacing: Tokens.Spacing.s) {
                         playButton
 
@@ -119,13 +115,6 @@ struct ClipTrimView: View {
                     }
             }
         }
-    }
-
-    private var timeDisplay: some View {
-        Text(formatTrimTime(currentTime))
-            .font(.system(size: 14, weight: .medium))
-            .monospacedDigit()
-            .foregroundColor(.white.opacity(0.7))
     }
 
     private var playButton: some View {
@@ -324,6 +313,9 @@ struct FrameTimelineView: View {
             let playheadX = handleWidth + playheadFrac * trackWidth
 
             ZStack(alignment: .topLeading) {
+                // 0. Static skeleton frame (full-extent background)
+                skeletonFrame(totalWidth: totalWidth, trackHeight: trackHeight)
+
                 // 1. Thumbnail strip
                 thumbnailStrip(trackWidth: trackWidth, trackHeight: trackHeight)
                     .offset(x: handleWidth)
@@ -420,7 +412,53 @@ struct FrameTimelineView: View {
                 }
             }
         }
-        .cornerRadius(cornerRadius)
+    }
+
+    // MARK: - Skeleton Frame
+
+    private func skeletonFrame(totalWidth: CGFloat, trackHeight: CGFloat) -> some View {
+        let skeletonColor = Color.white.opacity(0.12)
+        return ZStack(alignment: .topLeading) {
+            // Left handle ghost
+            Rectangle()
+                .fill(skeletonColor)
+                .frame(width: handleWidth, height: trackHeight)
+                .clipShape(
+                    .rect(
+                        topLeadingRadius: cornerRadius,
+                        bottomLeadingRadius: cornerRadius,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: 0
+                    )
+                )
+
+            // Right handle ghost
+            Rectangle()
+                .fill(skeletonColor)
+                .frame(width: handleWidth, height: trackHeight)
+                .clipShape(
+                    .rect(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: cornerRadius,
+                        topTrailingRadius: cornerRadius
+                    )
+                )
+                .offset(x: totalWidth - handleWidth)
+
+            // Top bar ghost
+            Rectangle()
+                .fill(skeletonColor)
+                .frame(width: max(0, totalWidth - handleWidth * 2), height: borderThickness)
+                .offset(x: handleWidth)
+
+            // Bottom bar ghost
+            Rectangle()
+                .fill(skeletonColor)
+                .frame(width: max(0, totalWidth - handleWidth * 2), height: borderThickness)
+                .offset(x: handleWidth, y: trackHeight - borderThickness)
+        }
+        .allowsHitTesting(false)
     }
 
     // MARK: - Handle View
