@@ -16,6 +16,7 @@ struct ClipTrimView: View {
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var timeObserver: Any?
+    @State private var isDragging = false
 
     private var totalDuration: TimeInterval {
         assetDuration > 0 ? assetDuration : clip.duration
@@ -23,6 +24,10 @@ struct ClipTrimView: View {
 
     private var trimmedDuration: TimeInterval {
         max(0, totalDuration - trimStart - trimEnd)
+    }
+
+    private var trimEndTime: TimeInterval {
+        totalDuration - trimEnd
     }
 
     init(clip: Binding<Clip>, onDismiss: @escaping () -> Void, onSave: @escaping (Clip) -> Void) {
@@ -42,8 +47,12 @@ struct ClipTrimView: View {
                     videoPreview
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    VStack(spacing: Tokens.Spacing.m) {
-                        timeLabel
+                    timeDisplay
+                        .padding(.top, Tokens.Spacing.s)
+                        .opacity(isDragging ? 0 : 1)
+
+                    HStack(spacing: Tokens.Spacing.s) {
+                        playButton
 
                         if asset != nil, totalDuration > 0 {
                             FrameTimelineView(
@@ -52,28 +61,19 @@ struct ClipTrimView: View {
                                 trimStart: $trimStart,
                                 trimEnd: $trimEnd,
                                 currentTime: $currentTime,
-                                onSeek: { time in seekTo(time) }
+                                isDragging: $isDragging,
+                                onSeek: { seekTo($0) },
+                                onDragStarted: { pauseIfPlaying() },
+                                onHandleDragEnded: { seekTo(trimStart) }
                             )
                             .frame(height: 56)
                         } else {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.white.opacity(0.1))
-                                .frame(height: 56)
-                                .overlay {
-                                    if let loadError {
-                                        Text(loadError)
-                                            .font(.caption)
-                                            .foregroundColor(.red)
-                                    } else {
-                                        ProgressView().tint(.white)
-                                    }
-                                }
+                            loadingPlaceholder
                         }
-
-                        playbackControls
                     }
-                    .padding(.horizontal, Tokens.Spacing.l)
+                    .padding(.horizontal, Tokens.Spacing.m)
                     .padding(.bottom, Tokens.Spacing.xl)
+                    .padding(.top, Tokens.Spacing.s)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -121,31 +121,37 @@ struct ClipTrimView: View {
         }
     }
 
-    private var timeLabel: some View {
-        HStack {
-            Text(formatTime(max(0, currentTime - trimStart)))
-                .monospacedDigit()
-            Spacer()
-            Text(formatTime(trimmedDuration))
-                .monospacedDigit()
-        }
-        .font(.system(size: 13, weight: .medium))
-        .foregroundColor(.white.opacity(0.7))
+    private var timeDisplay: some View {
+        Text(formatTrimTime(currentTime))
+            .font(.system(size: 14, weight: .medium))
+            .monospacedDigit()
+            .foregroundColor(.white.opacity(0.7))
     }
 
-    private var playbackControls: some View {
-        HStack(spacing: Tokens.Spacing.xl) {
-            Spacer()
-            Button {
-                togglePlayback()
-            } label: {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(.white)
-                    .frame(width: Tokens.HitTarget.recommended, height: Tokens.HitTarget.recommended)
-            }
-            Spacer()
+    private var playButton: some View {
+        Button { togglePlayback() } label: {
+            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundColor(.white)
+                .frame(width: Tokens.HitTarget.recommended, height: 56)
+                .background(Color.white.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    private var loadingPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.white.opacity(0.1))
+            .frame(height: 56)
+            .overlay {
+                if let loadError {
+                    Text(loadError)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                } else {
+                    ProgressView().tint(.white)
+                }
+            }
     }
 
     // MARK: - Asset Loading
@@ -186,12 +192,18 @@ struct ClipTrimView: View {
             player.pause()
             isPlaying = false
         } else {
-            if currentTime >= totalDuration - trimEnd {
+            if currentTime >= trimEndTime {
                 seekTo(trimStart)
             }
             player.play()
             isPlaying = true
         }
+    }
+
+    private func pauseIfPlaying() {
+        guard isPlaying else { return }
+        player?.pause()
+        isPlaying = false
     }
 
     private func seekTo(_ time: TimeInterval) {
@@ -208,8 +220,7 @@ struct ClipTrimView: View {
             if t.isNaN || t.isInfinite { return }
 
             currentTime = t
-            let endBound = totalDuration - trimEnd
-            if t >= endBound && isPlaying {
+            if t >= trimEndTime && isPlaying {
                 player.pause()
                 isPlaying = false
                 seekTo(trimStart)
@@ -233,16 +244,16 @@ struct ClipTrimView: View {
         onSave(updated)
         onDismiss()
     }
+}
 
-    // MARK: - Helpers
+// MARK: - Time Formatting
 
-    private func formatTime(_ seconds: TimeInterval) -> String {
-        let clamped = max(0, seconds)
-        let mins = Int(clamped) / 60
-        let secs = Int(clamped) % 60
-        let frac = Int((clamped.truncatingRemainder(dividingBy: 1)) * 100)
-        return String(format: "%d:%02d.%02d", mins, secs, frac)
-    }
+private func formatTrimTime(_ seconds: TimeInterval) -> String {
+    let clamped = max(0, seconds)
+    let mins = Int(clamped) / 60
+    let secs = Int(clamped) % 60
+    let frac = Int((clamped.truncatingRemainder(dividingBy: 1)) * 100)
+    return String(format: "%02d:%02d.%02d", mins, secs, frac)
 }
 
 // MARK: - Player Layer
@@ -276,40 +287,115 @@ struct FrameTimelineView: View {
     @Binding var trimStart: TimeInterval
     @Binding var trimEnd: TimeInterval
     @Binding var currentTime: TimeInterval
+    @Binding var isDragging: Bool
     let onSeek: (TimeInterval) -> Void
+    let onDragStarted: () -> Void
+    let onHandleDragEnded: () -> Void
 
     @State private var frameThumbnails: [UIImage] = []
     @State private var isExtracting = false
-    @GestureState private var dragStartTrimStart: TimeInterval? = nil
-    @GestureState private var dragStartTrimEnd: TimeInterval? = nil
+    @State private var isDraggingLeft = false
+    @State private var isDraggingRight = false
+    @State private var isDraggingPlayhead = false
+    @State private var dragInitialTrimStart: TimeInterval = 0
+    @State private var dragInitialTrimEnd: TimeInterval = 0
 
-    private let handleWidth: CGFloat = 16
+    private let handleWidth: CGFloat = 20
+    private let borderThickness: CGFloat = 3
+    private let cornerRadius: CGFloat = 10
     private let frameCount = 15
 
     var body: some View {
         GeometryReader { geometry in
-            let trackWidth = max(1, geometry.size.width - handleWidth * 2)
+            let totalWidth = geometry.size.width
             let trackHeight = geometry.size.height
+            let trackWidth = max(1, totalWidth - handleWidth * 2)
 
-            let leftFraction = totalDuration > 0 ? trimStart / totalDuration : 0
-            let rightFraction = totalDuration > 0 ? trimEnd / totalDuration : 0
-            let leftOffset = leftFraction * trackWidth
-            let rightOffset = rightFraction * trackWidth
+            let leftFrac = totalDuration > 0 ? trimStart / totalDuration : 0
+            let rightFrac = totalDuration > 0 ? trimEnd / totalDuration : 0
+            let leftHandleOffset = leftFrac * trackWidth
+            let rightHandleOffset = rightFrac * trackWidth
 
-            ZStack(alignment: .leading) {
+            let selectedLeft = handleWidth + leftHandleOffset
+            let selectedRight = totalWidth - handleWidth - rightHandleOffset
+            let barWidth = max(0, selectedRight - selectedLeft)
+
+            let playheadFrac = totalDuration > 0 ? max(0, min(1, currentTime / totalDuration)) : 0
+            let playheadX = handleWidth + playheadFrac * trackWidth
+
+            ZStack(alignment: .topLeading) {
+                // 1. Thumbnail strip
                 thumbnailStrip(trackWidth: trackWidth, trackHeight: trackHeight)
                     .offset(x: handleWidth)
 
-                dimmedOverlay(side: .leading, offset: leftOffset, trackHeight: trackHeight)
-                dimmedOverlay(side: .trailing, offset: rightOffset, trackHeight: trackHeight, totalWidth: geometry.size.width)
+                // 2. Dimmed overlays on excluded thumbnails
+                if leftHandleOffset > 0.5 {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.6))
+                        .frame(width: leftHandleOffset, height: trackHeight)
+                        .offset(x: handleWidth)
+                        .allowsHitTesting(false)
+                }
+                if rightHandleOffset > 0.5 {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.6))
+                        .frame(width: rightHandleOffset, height: trackHeight)
+                        .offset(x: selectedRight)
+                        .allowsHitTesting(false)
+                }
 
-                trimBorder(leftOffset: leftOffset, rightOffset: rightOffset, totalWidth: geometry.size.width, trackHeight: trackHeight)
+                // 3. Yellow frame borders (top + bottom between handles)
+                Rectangle()
+                    .fill(Color.yellow)
+                    .frame(width: barWidth, height: borderThickness)
+                    .offset(x: selectedLeft)
+                    .allowsHitTesting(false)
 
-                leftHandle(trackHeight: trackHeight, trackWidth: trackWidth)
-                rightHandle(trackHeight: trackHeight, trackWidth: trackWidth, totalWidth: geometry.size.width)
+                Rectangle()
+                    .fill(Color.yellow)
+                    .frame(width: barWidth, height: borderThickness)
+                    .offset(x: selectedLeft, y: trackHeight - borderThickness)
+                    .allowsHitTesting(false)
 
-                playheadIndicator(trackWidth: trackWidth, trackHeight: trackHeight)
+                // 4. Scrub gesture overlay (captures tap/drag for playhead)
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(scrubGesture(trackWidth: trackWidth))
+
+                // 5. Playhead
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.white)
+                    .frame(width: 3, height: trackHeight + 10)
+                    .shadow(color: .black.opacity(0.4), radius: 2)
+                    .offset(x: playheadX - 1.5, y: -5)
+                    .allowsHitTesting(false)
+
+                // 6. Handles (on top for gesture priority)
+                trimHandleView(isLeft: true, trackHeight: trackHeight)
+                    .frame(width: handleWidth, height: trackHeight)
+                    .offset(x: leftHandleOffset)
+                    .gesture(leftHandleDrag(trackWidth: trackWidth))
+
+                trimHandleView(isLeft: false, trackHeight: trackHeight)
+                    .frame(width: handleWidth, height: trackHeight)
+                    .offset(x: totalWidth - handleWidth - rightHandleOffset)
+                    .gesture(rightHandleDrag(trackWidth: trackWidth))
+
+                // 7. Tooltips (above timeline)
+                if isDraggingLeft {
+                    timeTooltip(time: trimStart)
+                        .position(x: leftHandleOffset + handleWidth / 2, y: -18)
+                }
+                if isDraggingRight {
+                    timeTooltip(time: totalDuration - trimEnd)
+                        .position(x: totalWidth - rightHandleOffset - handleWidth / 2, y: -18)
+                }
+                if isDraggingPlayhead {
+                    timeTooltip(time: currentTime)
+                        .position(x: playheadX, y: -18)
+                }
             }
+            .coordinateSpace(name: "timeline")
         }
         .task { await extractFrames() }
     }
@@ -334,104 +420,104 @@ struct FrameTimelineView: View {
                 }
             }
         }
-        .cornerRadius(6)
+        .cornerRadius(cornerRadius)
     }
 
-    // MARK: - Dimmed Overlays
+    // MARK: - Handle View
 
-    private enum Side { case leading, trailing }
-
-    private func dimmedOverlay(side: Side, offset: CGFloat, trackHeight: CGFloat, totalWidth: CGFloat = 0) -> some View {
-        Group {
-            switch side {
-            case .leading:
-                Rectangle()
-                    .fill(Color.black.opacity(0.5))
-                    .frame(width: handleWidth + offset, height: trackHeight)
-                    .allowsHitTesting(false)
-            case .trailing:
-                Rectangle()
-                    .fill(Color.black.opacity(0.5))
-                    .frame(width: handleWidth + offset, height: trackHeight)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .allowsHitTesting(false)
-            }
-        }
-    }
-
-    // MARK: - Trim Border
-
-    private func trimBorder(leftOffset: CGFloat, rightOffset: CGFloat, totalWidth: CGFloat, trackHeight: CGFloat) -> some View {
-        let x = handleWidth + leftOffset
-        let w = totalWidth - handleWidth * 2 - leftOffset - rightOffset
-        return RoundedRectangle(cornerRadius: 6)
-            .strokeBorder(Color.yellow, lineWidth: 3)
-            .frame(width: max(0, w), height: trackHeight)
-            .offset(x: x)
-            .allowsHitTesting(false)
-    }
-
-    // MARK: - Handles (fixed drag logic)
-
-    private func leftHandle(trackHeight: CGFloat, trackWidth: CGFloat) -> some View {
-        let leftOffset = totalDuration > 0 ? (trimStart / totalDuration) * trackWidth : 0
-
-        return handleView(systemName: "chevron.compact.left")
-            .frame(width: handleWidth, height: trackHeight)
-            .offset(x: leftOffset)
-            .gesture(
-                DragGesture()
-                    .updating($dragStartTrimStart) { _, state, _ in
-                        if state == nil { state = trimStart }
-                    }
-                    .onChanged { value in
-                        guard let startValue = dragStartTrimStart else { return }
-                        let delta = (value.translation.width / trackWidth) * totalDuration
-                        let maxTrim = totalDuration - trimEnd - 0.1
-                        trimStart = max(0, min(startValue + delta, maxTrim))
-                    }
-            )
-    }
-
-    private func rightHandle(trackHeight: CGFloat, trackWidth: CGFloat, totalWidth: CGFloat) -> some View {
-        let rightOffset = totalDuration > 0 ? (trimEnd / totalDuration) * trackWidth : 0
-
-        return handleView(systemName: "chevron.compact.right")
-            .frame(width: handleWidth, height: trackHeight)
-            .offset(x: totalWidth - handleWidth - rightOffset)
-            .gesture(
-                DragGesture()
-                    .updating($dragStartTrimEnd) { _, state, _ in
-                        if state == nil { state = trimEnd }
-                    }
-                    .onChanged { value in
-                        guard let startValue = dragStartTrimEnd else { return }
-                        let delta = -(value.translation.width / trackWidth) * totalDuration
-                        let maxTrim = totalDuration - trimStart - 0.1
-                        trimEnd = max(0, min(startValue + delta, maxTrim))
-                    }
-            )
-    }
-
-    private func handleView(systemName: String) -> some View {
+    private func trimHandleView(isLeft: Bool, trackHeight: CGFloat) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 4)
+            Rectangle()
                 .fill(Color.yellow)
-            Image(systemName: systemName)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(.black)
+            Image(systemName: isLeft ? "chevron.compact.left" : "chevron.compact.right")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.black.opacity(0.6))
         }
+        .clipShape(
+            .rect(
+                topLeadingRadius: isLeft ? cornerRadius : 0,
+                bottomLeadingRadius: isLeft ? cornerRadius : 0,
+                bottomTrailingRadius: isLeft ? 0 : cornerRadius,
+                topTrailingRadius: isLeft ? 0 : cornerRadius
+            )
+        )
+        .contentShape(Rectangle())
     }
 
-    // MARK: - Playhead
+    // MARK: - Gestures
 
-    private func playheadIndicator(trackWidth: CGFloat, trackHeight: CGFloat) -> some View {
-        let fraction = totalDuration > 0 ? currentTime / totalDuration : 0
-        let x = handleWidth + fraction * trackWidth
-        return Rectangle()
-            .fill(Color.white)
-            .frame(width: 2, height: trackHeight + 8)
-            .offset(x: x - 1)
+    private func leftHandleDrag(trackWidth: CGFloat) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                if !isDraggingLeft {
+                    isDraggingLeft = true
+                    isDragging = true
+                    dragInitialTrimStart = trimStart
+                    onDragStarted()
+                }
+                let delta = (value.translation.width / trackWidth) * totalDuration
+                let maxTrim = totalDuration - trimEnd - 0.1
+                trimStart = max(0, min(dragInitialTrimStart + delta, maxTrim))
+                onSeek(trimStart)
+            }
+            .onEnded { _ in
+                isDraggingLeft = false
+                isDragging = false
+                onHandleDragEnded()
+            }
+    }
+
+    private func rightHandleDrag(trackWidth: CGFloat) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                if !isDraggingRight {
+                    isDraggingRight = true
+                    isDragging = true
+                    dragInitialTrimEnd = trimEnd
+                    onDragStarted()
+                }
+                let delta = -(value.translation.width / trackWidth) * totalDuration
+                let maxTrim = totalDuration - trimStart - 0.1
+                trimEnd = max(0, min(dragInitialTrimEnd + delta, maxTrim))
+                onSeek(totalDuration - trimEnd)
+            }
+            .onEnded { _ in
+                isDraggingRight = false
+                isDragging = false
+                onHandleDragEnded()
+            }
+    }
+
+    private func scrubGesture(trackWidth: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("timeline"))
+            .onChanged { value in
+                if !isDraggingPlayhead {
+                    isDraggingPlayhead = true
+                    isDragging = true
+                    onDragStarted()
+                }
+                let x = value.location.x - handleWidth
+                let fraction = max(0, min(1, x / trackWidth))
+                let time = fraction * totalDuration
+                let clampedTime = max(trimStart, min(totalDuration - trimEnd, time))
+                onSeek(clampedTime)
+            }
+            .onEnded { _ in
+                isDraggingPlayhead = false
+                isDragging = false
+            }
+    }
+
+    // MARK: - Tooltip
+
+    private func timeTooltip(time: TimeInterval) -> some View {
+        Text(formatTrimTime(time))
+            .font(.system(size: 12, weight: .semibold))
+            .monospacedDigit()
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color(white: 0.15)))
             .allowsHitTesting(false)
     }
 
