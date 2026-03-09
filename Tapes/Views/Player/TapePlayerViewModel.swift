@@ -1012,11 +1012,11 @@ final class TapePlayerViewModel: ObservableObject {
 
         let clip = tape.clips[index]
         let capturedBuilder = builder
-        let motionEffect = capturedBuilder.imageConfiguration.defaultMotionEffect
+        let motionEffect = TapeCompositionBuilder.MotionEffect.from(style: clip.motionStyle)
         let scaleMode = clip.overrideScaleMode ?? capturedBuilder.imageConfiguration.baseScaleMode
         let task = Task<URL, Error> { [weak self] in
             let image = try await capturedBuilder.loadImage(for: clip)
-            let duration = clip.duration > 0 ? clip.duration : 3.0
+            let duration = clip.duration > 0 ? clip.duration : 4.0
             let asset = try await capturedBuilder.createVideoAsset(
                 from: image,
                 clip: clip,

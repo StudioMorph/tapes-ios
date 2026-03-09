@@ -318,10 +318,18 @@ struct TapeCompositionBuilder {
         }
 
         let context = try await resolveClipContext(for: clip, index: clipIndex)
+
+        let effectiveDuration: CMTime
+        if clip.isTrimmed && clip.trimmedDuration > 0 {
+            effectiveDuration = CMTime(seconds: clip.trimmedDuration, preferredTimescale: 600)
+        } else {
+            effectiveDuration = context.duration
+        }
+
         let metadata = ClipMetadata(
             index: clipIndex,
             clip: clip,
-            duration: context.duration,
+            duration: effectiveDuration,
             naturalSize: context.naturalSize,
             motionEffect: context.motionEffect
         )
@@ -329,7 +337,7 @@ struct TapeCompositionBuilder {
             clipIndex: clipIndex,
             metadata: metadata,
             assetContext: context,
-            timeRange: CMTimeRange(start: .zero, duration: context.duration),
+            timeRange: CMTimeRange(start: .zero, duration: effectiveDuration),
             incomingTransition: nil,
             outgoingTransition: nil,
             motionEffect: metadata.motionEffect
@@ -338,11 +346,28 @@ struct TapeCompositionBuilder {
         let singleTimeline = Timeline(
             segments: [segment],
             renderSize: timeline.renderSize,
-            totalDuration: context.duration,
+            totalDuration: effectiveDuration,
             transitionSequence: []
         )
 
-        let playerItem = AVPlayerItem(asset: context.asset)
+        let playerItem: AVPlayerItem
+        if clip.isTrimmed {
+            let composition = AVMutableComposition()
+            let sourceStart = CMTime(seconds: clip.trimStart, preferredTimescale: 600)
+            let sourceRange = CMTimeRange(start: sourceStart, duration: effectiveDuration)
+
+            if let compVideoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                try compVideoTrack.insertTimeRange(sourceRange, of: context.videoTrack, at: .zero)
+                compVideoTrack.preferredTransform = context.preferredTransform
+            }
+            if let assetAudioTrack = context.audioTrack,
+               let compAudioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                try compAudioTrack.insertTimeRange(sourceRange, of: assetAudioTrack, at: .zero)
+            }
+            playerItem = AVPlayerItem(asset: composition)
+        } else {
+            playerItem = AVPlayerItem(asset: context.asset)
+        }
         return PlayerComposition(playerItem: playerItem, timeline: singleTimeline)
     }
 
