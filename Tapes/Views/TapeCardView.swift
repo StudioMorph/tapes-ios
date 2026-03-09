@@ -49,6 +49,8 @@ struct TapeCardView: View {
     @State private var showingSeamTransition = false
     @State private var showingClipTrim = false
     @State private var clipToTrim: Clip? = nil
+    @State private var showingImageSettings = false
+    @State private var imageSettingsClipID: UUID? = nil
     @State private var importSource: ImportSource? = nil
     @FocusState private var isTitleFocused: Bool
     
@@ -219,9 +221,14 @@ struct TapeCardView: View {
                         showingMediaPicker = true
                     },
                     onClipTap: { clip in
-                        guard clip.clipType == .video, !clip.isPlaceholder else { return }
-                        clipToTrim = clip
-                        showingClipTrim = true
+                        guard !clip.isPlaceholder else { return }
+                        if clip.clipType == .video {
+                            clipToTrim = clip
+                            showingClipTrim = true
+                        } else if clip.clipType == .image {
+                            imageSettingsClipID = clip.id
+                            showingImageSettings = true
+                        }
                     }
                 )
                 .id("carousel-\(tape.clips.count)")
@@ -355,6 +362,19 @@ struct TapeCardView: View {
                         tapeStore.updateTape(tape)
                     }
                 )
+            }
+        }
+        .sheet(isPresented: $showingImageSettings) {
+            if let clipID = imageSettingsClipID {
+                ImageClipSettingsView(
+                    tape: $tape,
+                    clipID: clipID,
+                    onDismiss: {
+                        showingImageSettings = false
+                        imageSettingsClipID = nil
+                    }
+                )
+                .environmentObject(tapeStore)
             }
         }
     }

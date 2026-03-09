@@ -9,6 +9,37 @@ public enum ClipType: String, Codable, CaseIterable {
     case image
 }
 
+public enum MotionStyle: String, Codable, CaseIterable {
+    case none
+    case kenBurns
+    case pan
+    case zoomIn
+    case zoomOut
+    case drift
+
+    public var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .kenBurns: return "Ken Burns"
+        case .pan: return "Pan"
+        case .zoomIn: return "Zoom In"
+        case .zoomOut: return "Zoom Out"
+        case .drift: return "Drift"
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .none: return "Static image, no movement"
+        case .kenBurns: return "Classic slow zoom and pan"
+        case .pan: return "Horizontal pan across the image"
+        case .zoomIn: return "Gradual zoom into the image"
+        case .zoomOut: return "Gradual zoom out from the image"
+        case .drift: return "Subtle slow floating movement"
+        }
+    }
+}
+
 public struct Clip: Identifiable, Codable, Equatable {
     public var id: UUID
     public var assetLocalId: String?
@@ -21,6 +52,8 @@ public struct Clip: Identifiable, Codable, Equatable {
     public var overrideScaleMode: ScaleMode?
     public var trimStart: TimeInterval
     public var trimEnd: TimeInterval
+    public var motionStyle: MotionStyle
+    public var imageDuration: TimeInterval
     public var createdAt: Date
     public var updatedAt: Date
     public var isPlaceholder: Bool
@@ -37,6 +70,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         case overrideScaleMode
         case trimStart
         case trimEnd
+        case motionStyle
+        case imageDuration
         case createdAt
         case updatedAt
         case isPlaceholder
@@ -54,6 +89,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         overrideScaleMode: ScaleMode? = nil,
         trimStart: TimeInterval = 0,
         trimEnd: TimeInterval = 0,
+        motionStyle: MotionStyle = .kenBurns,
+        imageDuration: TimeInterval = 4.0,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         isPlaceholder: Bool = false
@@ -69,6 +106,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         self.overrideScaleMode = overrideScaleMode
         self.trimStart = trimStart
         self.trimEnd = trimEnd
+        self.motionStyle = motionStyle
+        self.imageDuration = imageDuration
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isPlaceholder = isPlaceholder
@@ -87,6 +126,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         overrideScaleMode = try container.decodeIfPresent(ScaleMode.self, forKey: .overrideScaleMode)
         trimStart = try container.decodeIfPresent(TimeInterval.self, forKey: .trimStart) ?? 0
         trimEnd = try container.decodeIfPresent(TimeInterval.self, forKey: .trimEnd) ?? 0
+        motionStyle = try container.decodeIfPresent(MotionStyle.self, forKey: .motionStyle) ?? .kenBurns
+        imageDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .imageDuration) ?? 4.0
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .isPlaceholder) ?? false
@@ -105,6 +146,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(overrideScaleMode, forKey: .overrideScaleMode)
         if trimStart > 0 { try container.encode(trimStart, forKey: .trimStart) }
         if trimEnd > 0 { try container.encode(trimEnd, forKey: .trimEnd) }
+        if motionStyle != .kenBurns { try container.encode(motionStyle, forKey: .motionStyle) }
+        if imageDuration != 4.0 { try container.encode(imageDuration, forKey: .imageDuration) }
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         if isPlaceholder {
