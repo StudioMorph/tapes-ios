@@ -46,6 +46,7 @@ struct TapeCardView: View {
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
+    @State private var showingSeamTransition = false
     @State private var importSource: ImportSource? = nil
     @FocusState private var isTitleFocused: Bool
     
@@ -63,6 +64,13 @@ struct TapeCardView: View {
     // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
         return tape.clips.count // Clip-space: 0 = start, N = end
+    }
+
+    /// The pair of clip IDs straddling the current FAB position, or nil if the FAB is at start/end.
+    private var seamClipIDs: (left: UUID, right: UUID)? {
+        let pos = savedCarouselPosition
+        guard pos >= 1, pos < tape.clips.count else { return nil }
+        return (tape.clips[pos - 1].id, tape.clips[pos].id)
     }
 
     private var displayedTitle: String {
@@ -233,8 +241,9 @@ struct TapeCardView: View {
                             handleMediaInsertion(picked: capturedMedia, source: .centerFAB)
                         }
                     case .transition:
-                        // Handle transition action
-                        break
+                        if seamClipIDs != nil {
+                            showingSeamTransition = true
+                        }
                     }
                 }
                 .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
@@ -314,6 +323,16 @@ struct TapeCardView: View {
         .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {
             CameraView(coordinator: cameraCoordinator)
                 .ignoresSafeArea(.all, edges: .all)
+        }
+        .sheet(isPresented: $showingSeamTransition) {
+            if let ids = seamClipIDs {
+                SeamTransitionView(
+                    tape: $tape,
+                    leftClipID: ids.left,
+                    rightClipID: ids.right,
+                    onDismiss: { showingSeamTransition = false }
+                )
+            }
         }
     }
     

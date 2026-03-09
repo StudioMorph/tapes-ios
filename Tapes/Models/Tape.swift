@@ -75,6 +75,23 @@ public enum TransitionType: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - Seam Transition Override
+
+public struct SeamTransition: Codable, Equatable {
+    public var style: TransitionType
+    public var duration: Double
+
+    public init(style: TransitionType = .crossfade, duration: Double = 0.5) {
+        self.style = style
+        self.duration = duration
+    }
+
+    /// Stable key for the boundary between two adjacent clips.
+    public static func key(leftClipID: UUID, rightClipID: UUID) -> String {
+        "\(leftClipID.uuidString)_\(rightClipID.uuidString)"
+    }
+}
+
 // MARK: - Tape Model
 
 public struct Tape: Identifiable, Codable, Equatable {
@@ -84,6 +101,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var scaleMode: ScaleMode
     public var transition: TransitionType
     public var transitionDuration: Double
+    public var seamTransitions: [String: SeamTransition]
     public var clips: [Clip]
     public var createdAt: Date
     public var updatedAt: Date
@@ -97,6 +115,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         scaleMode: ScaleMode = .fit,
         transition: TransitionType = .none,
         transitionDuration: Double = 0.5,
+        seamTransitions: [String: SeamTransition] = [:],
         clips: [Clip] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -109,6 +128,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.scaleMode = scaleMode
         self.transition = transition
         self.transitionDuration = transitionDuration
+        self.seamTransitions = seamTransitions
         self.clips = clips
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -120,6 +140,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     
     private enum CodingKeys: String, CodingKey {
         case id, title, orientation, scaleMode, transition, transitionDuration
+        case seamTransitions
         case clips, createdAt, updatedAt, hasReceivedFirstContent, albumLocalIdentifier
     }
     
@@ -134,11 +155,11 @@ public struct Tape: Identifiable, Codable, Equatable {
         scaleMode = try container.decode(ScaleMode.self, forKey: .scaleMode)
         transition = try container.decode(TransitionType.self, forKey: .transition)
         transitionDuration = try container.decode(Double.self, forKey: .transitionDuration)
+        seamTransitions = try container.decodeIfPresent([String: SeamTransition].self, forKey: .seamTransitions) ?? [:]
         clips = try container.decode([Clip].self, forKey: .clips)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         
-        // Backward compatibility: default to false if key is missing
         hasReceivedFirstContent = try container.decodeIfPresent(Bool.self, forKey: .hasReceivedFirstContent) ?? false
         albumLocalIdentifier = try container.decodeIfPresent(String.self, forKey: .albumLocalIdentifier)
     }
@@ -215,6 +236,21 @@ public struct Tape: Identifiable, Codable, Equatable {
         updatedAt = Date()
     }
     
+    // MARK: - Seam Transition Overrides
+
+    /// Returns the override for the boundary between two adjacent clips, if any.
+    public func seamTransition(leftClipID: UUID, rightClipID: UUID) -> SeamTransition? {
+        let key = SeamTransition.key(leftClipID: leftClipID, rightClipID: rightClipID)
+        return seamTransitions[key]
+    }
+
+    /// Sets or removes the override for a specific seam.
+    public mutating func setSeamTransition(_ override: SeamTransition?, leftClipID: UUID, rightClipID: UUID) {
+        let key = SeamTransition.key(leftClipID: leftClipID, rightClipID: rightClipID)
+        seamTransitions[key] = override
+        updatedAt = Date()
+    }
+
     public func removingPlaceholders() -> Tape {
         var copy = self
         copy.clips.removeAll { $0.isPlaceholder }

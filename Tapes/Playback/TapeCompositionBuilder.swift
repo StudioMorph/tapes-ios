@@ -664,18 +664,25 @@ struct TapeCompositionBuilder {
         guard metadata.count > 1 else { return [] }
 
         let baseStyle = tape.transition
-        let styles: [TransitionType]
+        let defaultStyles: [TransitionType]
         switch baseStyle {
         case .none, .crossfade, .slideLR, .slideRL:
-            styles = Array(repeating: baseStyle, count: metadata.count - 1)
+            defaultStyles = Array(repeating: baseStyle, count: metadata.count - 1)
         case .randomise:
-            styles = generateRandomSequence(boundaries: metadata.count - 1, tapeID: tape.id)
+            defaultStyles = generateRandomSequence(boundaries: metadata.count - 1, tapeID: tape.id)
         }
 
         var descriptors: [TransitionDescriptor?] = []
-        descriptors.reserveCapacity(styles.count)
+        descriptors.reserveCapacity(defaultStyles.count)
 
-        for (index, style) in styles.enumerated() {
+        for index in 0..<defaultStyles.count {
+            let leftClipID = metadata[index].clip.id
+            let rightClipID = metadata[index + 1].clip.id
+            let seamOverride = tape.seamTransition(leftClipID: leftClipID, rightClipID: rightClipID)
+
+            let style = seamOverride?.style ?? defaultStyles[index]
+            let durationSeconds = seamOverride?.duration ?? tape.transitionDuration
+
             if style == .none {
                 descriptors.append(nil)
                 continue
@@ -685,7 +692,7 @@ struct TapeCompositionBuilder {
             let nextDuration = metadata[index + 1].duration
             let maxDurationCurrent = CMTimeMultiplyByFloat64(currentDuration, multiplier: 0.5)
             let maxDurationNext = CMTimeMultiplyByFloat64(nextDuration, multiplier: 0.5)
-            let rawDuration = CMTime(seconds: tape.transitionDuration, preferredTimescale: 600)
+            let rawDuration = CMTime(seconds: durationSeconds, preferredTimescale: 600)
             let capped = minTime(rawDuration, maxDurationCurrent, maxDurationNext)
             if CMTimeCompare(capped, .zero) <= 0 {
                 descriptors.append(nil)
@@ -697,24 +704,29 @@ struct TapeCompositionBuilder {
         return descriptors
     }
     
-    // Legacy method for backward compatibility
     private func buildTransitionDescriptors(for tape: Tape, assets: [ClipAssetContext]) -> [TransitionDescriptor?] {
         guard assets.count > 1 else { return [] }
 
         let baseStyle = tape.transition
-        let styles: [TransitionType]
+        let defaultStyles: [TransitionType]
         switch baseStyle {
         case .none, .crossfade, .slideLR, .slideRL:
-            styles = Array(repeating: baseStyle, count: assets.count - 1)
+            defaultStyles = Array(repeating: baseStyle, count: assets.count - 1)
         case .randomise:
-            styles = generateRandomSequence(boundaries: assets.count - 1, tapeID: tape.id)
+            defaultStyles = generateRandomSequence(boundaries: assets.count - 1, tapeID: tape.id)
         }
 
         var descriptors: [TransitionDescriptor?] = []
-        descriptors.reserveCapacity(styles.count)
+        descriptors.reserveCapacity(defaultStyles.count)
 
-        for index in 0..<styles.count {
-            let style = styles[index]
+        for index in 0..<defaultStyles.count {
+            let leftClipID = assets[index].clip.id
+            let rightClipID = assets[index + 1].clip.id
+            let seamOverride = tape.seamTransition(leftClipID: leftClipID, rightClipID: rightClipID)
+
+            let style = seamOverride?.style ?? defaultStyles[index]
+            let durationSeconds = seamOverride?.duration ?? tape.transitionDuration
+
             if style == .none {
                 descriptors.append(nil)
                 continue
@@ -725,7 +737,7 @@ struct TapeCompositionBuilder {
 
             let maxDurationCurrent = CMTimeMultiplyByFloat64(currentAsset.duration, multiplier: 0.5)
             let maxDurationNext = CMTimeMultiplyByFloat64(nextAsset.duration, multiplier: 0.5)
-            let rawDuration = CMTime(seconds: tape.transitionDuration, preferredTimescale: 600)
+            let rawDuration = CMTime(seconds: durationSeconds, preferredTimescale: 600)
             let capped = minTime(rawDuration, maxDurationCurrent, maxDurationNext)
             if CMTimeCompare(capped, .zero) <= 0 {
                 descriptors.append(nil)
