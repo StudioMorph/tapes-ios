@@ -19,6 +19,8 @@ public struct Clip: Identifiable, Codable, Equatable {
     public var thumbnail: Data?
     public var rotateQuarterTurns: Int
     public var overrideScaleMode: ScaleMode?
+    public var trimStart: TimeInterval
+    public var trimEnd: TimeInterval
     public var createdAt: Date
     public var updatedAt: Date
     public var isPlaceholder: Bool
@@ -33,6 +35,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         case thumbnail
         case rotateQuarterTurns
         case overrideScaleMode
+        case trimStart
+        case trimEnd
         case createdAt
         case updatedAt
         case isPlaceholder
@@ -48,6 +52,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         thumbnail: Data? = nil,
         rotateQuarterTurns: Int = 0,
         overrideScaleMode: ScaleMode? = nil,
+        trimStart: TimeInterval = 0,
+        trimEnd: TimeInterval = 0,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         isPlaceholder: Bool = false
@@ -61,6 +67,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         self.thumbnail = thumbnail
         self.rotateQuarterTurns = rotateQuarterTurns
         self.overrideScaleMode = overrideScaleMode
+        self.trimStart = trimStart
+        self.trimEnd = trimEnd
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isPlaceholder = isPlaceholder
@@ -77,6 +85,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         thumbnail = try container.decodeIfPresent(Data.self, forKey: .thumbnail)
         rotateQuarterTurns = try container.decode(Int.self, forKey: .rotateQuarterTurns)
         overrideScaleMode = try container.decodeIfPresent(ScaleMode.self, forKey: .overrideScaleMode)
+        trimStart = try container.decodeIfPresent(TimeInterval.self, forKey: .trimStart) ?? 0
+        trimEnd = try container.decodeIfPresent(TimeInterval.self, forKey: .trimEnd) ?? 0
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .isPlaceholder) ?? false
@@ -93,6 +103,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(thumbnail, forKey: .thumbnail)
         try container.encode(rotateQuarterTurns, forKey: .rotateQuarterTurns)
         try container.encodeIfPresent(overrideScaleMode, forKey: .overrideScaleMode)
+        if trimStart > 0 { try container.encode(trimStart, forKey: .trimStart) }
+        if trimEnd > 0 { try container.encode(trimEnd, forKey: .trimEnd) }
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         if isPlaceholder {
@@ -113,8 +125,29 @@ public struct Clip: Identifiable, Codable, Equatable {
     public var hasScaleOverride: Bool {
         return overrideScaleMode != nil
     }
-    
+
+    /// Effective playable duration after trimming.
+    public var trimmedDuration: TimeInterval {
+        max(0, duration - trimStart - trimEnd)
+    }
+
+    public var isTrimmed: Bool {
+        trimStart > 0 || trimEnd > 0
+    }
+
     // MARK: - Mutating Methods
+
+    public mutating func setTrim(start: TimeInterval, end: TimeInterval) {
+        trimStart = max(0, start)
+        trimEnd = max(0, end)
+        updatedAt = Date()
+    }
+
+    public mutating func clearTrim() {
+        trimStart = 0
+        trimEnd = 0
+        updatedAt = Date()
+    }
     
     public mutating func rotate() {
         rotateQuarterTurns = (rotateQuarterTurns + 1) % 4

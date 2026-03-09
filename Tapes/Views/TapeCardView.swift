@@ -47,6 +47,8 @@ struct TapeCardView: View {
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var showingSeamTransition = false
+    @State private var showingClipTrim = false
+    @State private var clipToTrim: Clip? = nil
     @State private var importSource: ImportSource? = nil
     @FocusState private var isTitleFocused: Bool
     
@@ -215,9 +217,14 @@ struct TapeCardView: View {
                             importSource = .centerFAB // Fallback
                         }
                         showingMediaPicker = true
+                    },
+                    onClipTap: { clip in
+                        guard clip.clipType == .video, !clip.isPlaceholder else { return }
+                        clipToTrim = clip
+                        showingClipTrim = true
                     }
                 )
-                .id("carousel-\(tape.clips.count)") // Force view update when clips change
+                .id("carousel-\(tape.clips.count)")
                 .zIndex(0) // always behind the line and FAB
                 
                 // 2) Red center line (between clips and FAB)
@@ -331,6 +338,22 @@ struct TapeCardView: View {
                     leftClipID: ids.left,
                     rightClipID: ids.right,
                     onDismiss: { showingSeamTransition = false }
+                )
+            }
+        }
+        .fullScreenCover(isPresented: $showingClipTrim) {
+            if let clipToTrim,
+               let clipIndex = tape.clips.firstIndex(where: { $0.id == clipToTrim.id }) {
+                ClipTrimView(
+                    clip: $tape.clips[clipIndex],
+                    onDismiss: {
+                        showingClipTrim = false
+                        self.clipToTrim = nil
+                    },
+                    onSave: { updatedClip in
+                        tape.updateClip(updatedClip)
+                        tapeStore.updateTape(tape)
+                    }
                 )
             }
         }

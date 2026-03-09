@@ -3,6 +3,7 @@ import SwiftUI
 struct ThumbnailView: View {
     let item: CarouselItem
     let onPlaceholderTap: (CarouselItem) -> Void
+    var onClipTap: ((Clip) -> Void)? = nil
     
     var body: some View {
         ZStack {
@@ -15,7 +16,7 @@ struct ThumbnailView: View {
             case .clip(let clip):
                 ClipThumbnailView(clip: clip)
                     .onTapGesture {
-                        // TODO: This should open the TapePlayerView, not play individual videos
+                        onClipTap?(clip)
                     }
             case .endPlus:
                 EndPlusView()
@@ -112,11 +113,18 @@ private struct ResolvedClipThumbnail: View {
                 Spacer()
                 HStack {
                     Spacer()
-                    DurationBadge(duration: clip.duration)
+                    DurationBadge(duration: clip.isTrimmed ? clip.trimmedDuration : clip.duration)
                         .opacity(clip.duration > 0 ? 1 : 0)
                 }
             }
             .padding(8)
+
+            if clip.clipType == .video {
+                Image(systemName: "scissors")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
+            }
         }
         .overlay(alignment: .topTrailing) {
             Text(clip.hasThumbnail ? "thumb" : "no thumb")

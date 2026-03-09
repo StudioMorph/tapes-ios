@@ -11,6 +11,7 @@ struct ClipCarousel: View {
     @Binding var pendingTargetItemIndex: Int?
     @Binding var pendingToken: UUID?
     let onPlaceholderTap: (CarouselItem) -> Void
+    var onClipTap: ((Clip) -> Void)? = nil
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
@@ -59,9 +60,9 @@ struct ClipCarousel: View {
                 Color.clear.frame(width: 16)
                 
                 ForEach(items) { item in
-                    ThumbnailView(item: item, onPlaceholderTap: onPlaceholderTap)
+                    ThumbnailView(item: item, onPlaceholderTap: onPlaceholderTap, onClipTap: onClipTap)
                         .frame(width: thumbSize.width, height: thumbSize.height)
-                        .id(item.id) // Force SwiftUI to recognize each item
+                        .id(item.id)
                 }
                 
                 // Trailing 16pt padding INSIDE the card

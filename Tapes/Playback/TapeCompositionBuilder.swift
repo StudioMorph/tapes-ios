@@ -349,10 +349,14 @@ struct TapeCompositionBuilder {
             )
             segmentsWithContexts.append(segmentWithContext)
             
+            let clip = segment.metadata.clip
+            let sourceStart = CMTime(seconds: clip.trimStart, preferredTimescale: 600)
+            let sourceDuration = clip.isTrimmed ? resolvedTimeRange.duration : assetContext.duration
+            let sourceRange = CMTimeRange(start: sourceStart, duration: sourceDuration)
+
             let trackIndex = videoTracks.isEmpty ? 0 : segment.clipIndex % videoTracks.count
             if trackIndex < videoTracks.count {
                 let videoTrack = videoTracks[trackIndex]
-                let sourceRange = CMTimeRange(start: .zero, duration: assetContext.duration)
                 try videoTrack.insertTimeRange(sourceRange, of: assetContext.videoTrack, at: resolvedTimeRange.start)
                 videoTrackMap[segment.clipIndex] = videoTrack
             }
@@ -361,7 +365,6 @@ struct TapeCompositionBuilder {
                let sourceAudioTrack = assetContext.audioTrack,
                trackIndex < audioTracks.count {
                 let audioTrack = audioTracks[trackIndex]
-                let sourceRange = CMTimeRange(start: .zero, duration: assetContext.duration)
                 try audioTrack.insertTimeRange(sourceRange, of: sourceAudioTrack, at: resolvedTimeRange.start)
                 audioTrackMap[segment.clipIndex] = audioTrack
 
@@ -627,11 +630,10 @@ struct TapeCompositionBuilder {
             
             switch clip.clipType {
             case .video:
-                // For videos, use clip.duration if available (should be stored in Clip model)
                 if clip.duration > 0 {
-                    duration = CMTime(seconds: clip.duration, preferredTimescale: 600)
+                    let effectiveDuration = clip.trimmedDuration > 0 ? clip.trimmedDuration : clip.duration
+                    duration = CMTime(seconds: effectiveDuration, preferredTimescale: 600)
                 } else {
-                    // Fallback: use default duration if missing (should be rare)
                     duration = CMTime(seconds: 1.0, preferredTimescale: 600)
                     TapesLog.player.warning("TapeCompositionBuilder: Clip \(index) missing duration, using default 1.0s")
                 }
