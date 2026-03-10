@@ -186,6 +186,78 @@ public class TapesStore: ObservableObject {
     @Published public var albumAssociationError: String?
     @Published public private(set) var clipLoadingStates: [UUID: ClipLoadingState] = [:]
     @Published public var jigglingTapeID: UUID? = nil
+
+    // MARK: - Floating Clip (drag-to-move)
+    @Published public var floatingClip: Clip? = nil
+    @Published public var floatingSourceTapeID: UUID? = nil
+    @Published public var floatingSourceIndex: Int? = nil
+    @Published public var floatingPosition: CGPoint = .zero
+    @Published public var floatingOriginalFrame: CGRect = .zero
+    @Published public var floatingThumbSize: CGSize = .zero
+
+    public var isFloatingClip: Bool { floatingClip != nil }
+
+    public func liftClip(_ clip: Clip, fromTape tapeID: UUID, atIndex index: Int, originFrame: CGRect, thumbSize: CGSize) {
+        if floatingClip != nil {
+            returnFloatingClip()
+        }
+        floatingClip = clip
+        floatingSourceTapeID = tapeID
+        floatingSourceIndex = index
+        floatingOriginalFrame = originFrame
+        floatingThumbSize = thumbSize
+        floatingPosition = CGPoint(x: originFrame.midX, y: originFrame.midY)
+    }
+
+    public func returnFloatingClip() {
+        clearFloatingState()
+    }
+
+    public func dropFloatingClip(onTape tapeID: UUID, atIndex index: Int) {
+        guard let clip = floatingClip,
+              let sourceTapeID = floatingSourceTapeID,
+              floatingSourceIndex != nil else {
+            clearFloatingState()
+            return
+        }
+
+        if sourceTapeID == tapeID {
+            guard var tape = getTape(by: tapeID) else {
+                clearFloatingState()
+                return
+            }
+            tape.removeClip(clip)
+            let adjustedIndex = min(index, tape.clips.count)
+            tape.addClip(clip, at: adjustedIndex)
+            updateTape(tape)
+        } else {
+            guard var sourceTape = getTape(by: sourceTapeID) else {
+                clearFloatingState()
+                return
+            }
+            sourceTape.removeClip(clip)
+            updateTape(sourceTape)
+
+            guard var destTape = getTape(by: tapeID) else {
+                clearFloatingState()
+                return
+            }
+            let safeIndex = min(index, destTape.clips.count)
+            destTape.addClip(clip, at: safeIndex)
+            updateTape(destTape)
+        }
+
+        clearFloatingState()
+    }
+
+    private func clearFloatingState() {
+        floatingClip = nil
+        floatingSourceTapeID = nil
+        floatingSourceIndex = nil
+        floatingPosition = .zero
+        floatingOriginalFrame = .zero
+        floatingThumbSize = .zero
+    }
     
     private struct AlbumAssociationQueueEntry {
         let id: UUID

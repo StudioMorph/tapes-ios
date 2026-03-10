@@ -4,12 +4,14 @@ struct ThumbnailView: View {
     let item: CarouselItem
     let onPlaceholderTap: (CarouselItem) -> Void
     var onClipTap: ((Clip) -> Void)? = nil
-    
+    var tapeID: UUID = UUID()
+    var clipCount: Int = 0
+
     var body: some View {
         ZStack {
             switch item {
             case .startPlus:
-                StartPlusView()
+                StartPlusView(tapeID: tapeID)
                     .onTapGesture {
                         onPlaceholderTap(item)
                     }
@@ -19,7 +21,7 @@ struct ThumbnailView: View {
                         onClipTap?(clip)
                     }
             case .endPlus:
-                EndPlusView()
+                EndPlusView(tapeID: tapeID, clipCount: clipCount)
                     .onTapGesture {
                         onPlaceholderTap(item)
                     }
@@ -29,44 +31,82 @@ struct ThumbnailView: View {
 }
 
 struct StartPlusView: View {
+    @EnvironmentObject private var tapeStore: TapesStore
+    var tapeID: UUID = UUID()
+
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(Tokens.Colors.tertiaryBackground)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: Tokens.Radius.thumb,
-                        bottomLeadingRadius: Tokens.Radius.thumb,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 0
+        GeometryReader { geo in
+            let frame = geo.frame(in: .named("tapesListCoordinateSpace"))
+            ZStack {
+                Rectangle()
+                    .fill(Tokens.Colors.tertiaryBackground)
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: Tokens.Radius.thumb,
+                            bottomLeadingRadius: Tokens.Radius.thumb,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 0
+                        )
                     )
-                )
-            
-            Image(systemName: "plus")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundColor(Tokens.Colors.primaryText)
+
+                if tapeStore.isFloatingClip {
+                    dashedPhotoStackIcon()
+                        .preference(key: DropTargetPreferenceKey.self, value: [
+                            DropTargetInfo(tapeID: tapeID, insertionIndex: 0, frame: frame, kind: .startPlus)
+                        ])
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(Tokens.Colors.primaryText)
+                }
+            }
         }
     }
 }
 
 struct EndPlusView: View {
+    @EnvironmentObject private var tapeStore: TapesStore
+    var tapeID: UUID = UUID()
+    var clipCount: Int = 0
+
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(Tokens.Colors.tertiaryBackground)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 0,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: Tokens.Radius.thumb,
-                        topTrailingRadius: Tokens.Radius.thumb
+        GeometryReader { geo in
+            let frame = geo.frame(in: .named("tapesListCoordinateSpace"))
+            ZStack {
+                Rectangle()
+                    .fill(Tokens.Colors.tertiaryBackground)
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 0,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: Tokens.Radius.thumb,
+                            topTrailingRadius: Tokens.Radius.thumb
+                        )
                     )
-                )
-            
-            Image(systemName: "plus")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundColor(Tokens.Colors.primaryText)
+
+                if tapeStore.isFloatingClip {
+                    dashedPhotoStackIcon()
+                        .preference(key: DropTargetPreferenceKey.self, value: [
+                            DropTargetInfo(tapeID: tapeID, insertionIndex: clipCount, frame: frame, kind: .endPlus)
+                        ])
+                } else {
+                    Image(systemName: "plus")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(Tokens.Colors.primaryText)
+                }
+            }
         }
+    }
+}
+
+private func dashedPhotoStackIcon() -> some View {
+    ZStack {
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .strokeBorder(Tokens.Colors.primaryText.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            .frame(width: 28, height: 28)
+        Image(systemName: "photo.stack")
+            .font(.system(size: 14, weight: .medium))
+            .foregroundColor(Tokens.Colors.primaryText)
     }
 }
 

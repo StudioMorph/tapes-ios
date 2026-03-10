@@ -1,5 +1,24 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let floatingClipDragEnded = Notification.Name("floatingClipDragEnded")
+}
+
+struct DropTargetInfo: Equatable {
+    let tapeID: UUID
+    let insertionIndex: Int
+    let frame: CGRect
+    let kind: Kind
+    enum Kind: Equatable { case startPlus, endPlus, fab }
+}
+
+struct DropTargetPreferenceKey: PreferenceKey {
+    static var defaultValue: [DropTargetInfo] = []
+    static func reduce(value: inout [DropTargetInfo], nextValue: () -> [DropTargetInfo]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
 struct ClipCarousel: View {
     @Binding var tape: Tape
     let thumbSize: CGSize
@@ -63,6 +82,7 @@ struct ClipCarousel: View {
                 ForEach(items) { item in
                     JiggleableClipView(
                         item: item,
+                        tapeID: tape.id,
                         thumbSize: thumbSize,
                         onPlaceholderTap: onPlaceholderTap,
                         onClipTap: onClipTap,
@@ -85,6 +105,7 @@ struct ClipCarousel: View {
 private struct JiggleableClipView: View {
     @EnvironmentObject private var tapeStore: TapesStore
     let item: CarouselItem
+    let tapeID: UUID
     let thumbSize: CGSize
     let onPlaceholderTap: (CarouselItem) -> Void
     var onClipTap: ((Clip) -> Void)? = nil
@@ -92,6 +113,11 @@ private struct JiggleableClipView: View {
 
     private var isJiggling: Bool {
         tapeStore.jigglingTapeID != nil
+    }
+
+    private var isThisClipFloating: Bool {
+        guard case .clip(let clip) = item else { return false }
+        return tapeStore.floatingClip?.id == clip.id
     }
 
     var body: some View {
@@ -102,34 +128,67 @@ private struct JiggleableClipView: View {
                 let baseAngle = 1.5 + seed * 1.5
                 let speed = 8.0 + seed * 4.0
                 let angle = baseAngle * sin(time * speed)
-                ThumbnailView(
-                    item: item,
-                    onPlaceholderTap: onPlaceholderTap,
-                    onClipTap: onClipTap
-                )
-                .frame(width: thumbSize.width, height: thumbSize.height)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(alignment: .topTrailing) {
-                    Button {
-                        onClipDelete?(clip)
-                    } label: {
-                        Image(systemName: "minus")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Tokens.Colors.primaryText)
-                            .frame(width: 24, height: 24)
-                            .background(.ultraThinMaterial, in: Circle())
-                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+
+                let isLifted = tapeStore.floatingClip?.id == clip.id
+                GeometryReader { geo in
+                    let globalFrame = geo.frame(in: .named("tapesListCoordinateSpace"))
+                    ThumbnailView(
+                        item: item,
+                        onPlaceholderTap: onPlaceholderTap,
+                        onClipTap: onClipTap,
+                        tapeID: tapeID,
+                        clipCount: tapeStore.getTape(by: tapeID)?.clips.count ?? 0
+                    )
+                    .frame(width: thumbSize.width, height: thumbSize.height)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(alignment: .top) {
+                        if !isLifted {
+                            Button {
+                                onClipDelete?(clip)
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(Tokens.Colors.primaryText)
+                                    .frame(width: 24, height: 24)
+                                    .background(.ultraThinMaterial, in: Circle())
+                                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                            }
+                            .offset(y: -12)
+                        }
                     }
-                    .offset(x: 12, y: -12)
+                    .scaleEffect(isLifted ? 0.001 : 0.92)
+                    .rotationEffect(.degrees(isLifted ? 0 : angle))
+                    .opacity(isLifted ? 0 : 1)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isLifted)
+                    .gesture(
+                        DragGesture(minimumDistance: 20, coordinateSpace: .named("tapesListCoordinateSpace"))
+                            .onChanged { value in
+                                if !tapeStore.isFloatingClip {
+                                    let clipIndex = tapeStore.getTape(by: tapeID)?.clips.firstIndex(where: { $0.id == clip.id }) ?? 0
+                                    tapeStore.liftClip(clip, fromTape: tapeID, atIndex: clipIndex, originFrame: globalFrame, thumbSize: thumbSize)
+                                }
+                                tapeStore.floatingPosition = value.location
+                            }
+                            .onEnded { value in
+                                if tapeStore.isFloatingClip {
+                                    NotificationCenter.default.post(
+                                        name: .floatingClipDragEnded,
+                                        object: nil,
+                                        userInfo: ["x": value.location.x, "y": value.location.y]
+                                    )
+                                }
+                            }
+                    )
                 }
-                .scaleEffect(0.92)
-                .rotationEffect(.degrees(angle))
+                .frame(width: thumbSize.width, height: thumbSize.height)
             }
         } else {
             ThumbnailView(
                 item: item,
                 onPlaceholderTap: onPlaceholderTap,
-                onClipTap: onClipTap
+                onClipTap: onClipTap,
+                tapeID: tapeID,
+                clipCount: tapeStore.getTape(by: tapeID)?.clips.count ?? 0
             )
             .frame(width: thumbSize.width, height: thumbSize.height)
             .clipped()

@@ -56,6 +56,7 @@ struct TapeCardView: View {
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingPhotoLibraryDelete = false
+    @State private var jiggleTask: Task<Void, Never>? = nil
     @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
@@ -251,32 +252,36 @@ struct TapeCardView: View {
                 
                 // 2) Red center line (between clips and FAB)
                 Rectangle()
-                    .fill(Tokens.Colors.systemRed.opacity(0.9))
+                    .fill(tapeStore.isFloatingClip ? Tokens.Colors.tertiaryBackground : Tokens.Colors.systemRed.opacity(0.9))
                     .frame(width: 2, height: thumbH)
                     .allowsHitTesting(false)
-                    .zIndex(1) // above thumbnails, below FAB
+                    .zIndex(1)
+                    .animation(.easeInOut(duration: 0.25), value: tapeStore.isFloatingClip)
                 
-                // 3) Floating action button (camera)
-                FabSwipableIcon(mode: $fabMode) {
-                    // Handle FAB tap action based on mode
-                    switch fabMode {
-                    case .gallery:
-                        importSource = .centerFAB
-                        showingMediaPicker = true
-                    case .camera:
-                        // Launch native camera
-                        importSource = .centerFAB
-                        cameraCoordinator.presentCamera { capturedMedia in
-                            handleMediaInsertion(picked: capturedMedia, source: .centerFAB)
-                        }
-                    case .transition:
-                        if seamClipIDs != nil {
-                            showingSeamTransition = true
+                // 3) Floating action button / drop target
+                if tapeStore.isFloatingClip {
+                    dropTargetFAB(thumbH: thumbH)
+                        .zIndex(2)
+                } else {
+                    FabSwipableIcon(mode: $fabMode) {
+                        switch fabMode {
+                        case .gallery:
+                            importSource = .centerFAB
+                            showingMediaPicker = true
+                        case .camera:
+                            importSource = .centerFAB
+                            cameraCoordinator.presentCamera { capturedMedia in
+                                handleMediaInsertion(picked: capturedMedia, source: .centerFAB)
+                            }
+                        case .transition:
+                            if seamClipIDs != nil {
+                                showingSeamTransition = true
+                            }
                         }
                     }
+                    .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
+                    .zIndex(2)
                 }
-                .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
-                .zIndex(2) // on top of everything
             }
             .overlay(alignment: .topLeading) {
                 if let progress = tapeStore.batchProgress(for: tape.id),
@@ -297,9 +302,18 @@ struct TapeCardView: View {
             .onPreferenceChange(CardWidthKey.self) { width in
                 if width > 0 { containerWidth = width }
             }
-            .onLongPressGesture(minimumDuration: 1.5) {
-                guard !tape.clips.isEmpty else { return }
-                enterJiggleMode()
+            .onLongPressGesture(minimumDuration: .infinity, perform: {}) { pressing in
+                if pressing {
+                    jiggleTask = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(1))
+                        guard !Task.isCancelled else { return }
+                        guard !tape.clips.isEmpty else { return }
+                        enterJiggleMode()
+                    }
+                } else {
+                    jiggleTask?.cancel()
+                    jiggleTask = nil
+                }
             }
         }
         .background(
@@ -446,6 +460,11 @@ struct TapeCardView: View {
     }
 
     private func exitJiggleMode() {
+        if tapeStore.isFloatingClip {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                tapeStore.returnFloatingClip()
+            }
+        }
         tapeStore.jigglingTapeID = nil
     }
 
@@ -468,6 +487,38 @@ struct TapeCardView: View {
             try? await PHPhotoLibrary.shared().performChanges {
                 PHAssetChangeRequest.deleteAssets([asset] as NSArray)
             }
+        }
+    }
+
+    // MARK: - Drop Target FAB
+
+    @ViewBuilder
+    private func dropTargetFAB(thumbH: CGFloat) -> some View {
+        let fabInsertionIndex = insertionIndex
+        GeometryReader { geo in
+            let frame = geo.frame(in: .named("tapesListCoordinateSpace"))
+            Circle()
+                .fill(Tokens.Colors.tertiaryBackground)
+                .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
+                .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                .overlay {
+                    photoStackDashedIcon()
+                }
+                .preference(key: DropTargetPreferenceKey.self, value: [
+                    DropTargetInfo(tapeID: tape.id, insertionIndex: fabInsertionIndex, frame: frame, kind: .fab)
+                ])
+        }
+        .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
+    }
+
+    private func photoStackDashedIcon() -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .strokeBorder(Tokens.Colors.primaryText.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                .frame(width: 28, height: 28)
+            Image(systemName: "photo.stack")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Tokens.Colors.primaryText)
         }
     }
 
