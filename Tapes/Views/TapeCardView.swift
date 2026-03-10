@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Photos
 import PhotosUI
 import UniformTypeIdentifiers
 
@@ -52,6 +53,9 @@ struct TapeCardView: View {
     @State private var showingImageSettings = false
     @State private var imageSettingsClipID: UUID? = nil
     @State private var importSource: ImportSource? = nil
+    @State private var clipToDelete: Clip? = nil
+    @State private var showingDeleteConfirmation = false
+    @State private var showingPhotoLibraryDelete = false
     @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
@@ -209,19 +213,26 @@ struct TapeCardView: View {
                     pendingTargetItemIndex: $pendingTargetItemIndex,
                     pendingToken: $pendingToken,
                     onPlaceholderTap: { item in
-                        // Store import source and show picker
+                        guard !isJiggling else {
+                            exitJiggleMode()
+                            return
+                        }
                         switch item {
                         case .startPlus:
                             importSource = .leftPlaceholder
                         case .endPlus:
                             importSource = .rightPlaceholder
                         case .clip:
-                            importSource = .centerFAB // Fallback
+                            importSource = .centerFAB
                         }
                         showingMediaPicker = true
                     },
                     onClipTap: { clip in
                         guard !clip.isPlaceholder else { return }
+                        if isJiggling {
+                            exitJiggleMode()
+                            return
+                        }
                         if clip.clipType == .video {
                             clipToTrim = clip
                             showingClipTrim = true
@@ -229,10 +240,14 @@ struct TapeCardView: View {
                             imageSettingsClipID = clip.id
                             showingImageSettings = true
                         }
+                    },
+                    onClipDelete: { clip in
+                        clipToDelete = clip
+                        showingDeleteConfirmation = true
                     }
                 )
                 .id("carousel-\(tape.clips.count)")
-                .zIndex(0) // always behind the line and FAB
+                .zIndex(0)
                 
                 // 2) Red center line (between clips and FAB)
                 Rectangle()
@@ -272,6 +287,7 @@ struct TapeCardView: View {
                 }
             }
             .frame(height: thumbH)
+
             .padding(.vertical, Tokens.Spacing.m)
             .background(
                 GeometryReader { geometry in
@@ -281,11 +297,18 @@ struct TapeCardView: View {
             .onPreferenceChange(CardWidthKey.self) { width in
                 if width > 0 { containerWidth = width }
             }
+            .onLongPressGesture(minimumDuration: 1.5) {
+                guard !tape.clips.isEmpty else { return }
+                enterJiggleMode()
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.secondaryBackground)
         )
+        .onTapGesture {
+            if isJiggling { exitJiggleMode() }
+        }
         .onAppear {
             if isNewSession {
                 savedCarouselPosition = initialCarouselPosition
@@ -377,8 +400,77 @@ struct TapeCardView: View {
                 .environmentObject(tapeStore)
             }
         }
+        .alert("Delete Clip?", isPresented: $showingDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                if let clip = clipToDelete, clip.assetLocalId != nil {
+                    showingPhotoLibraryDelete = true
+                } else {
+                    deleteClipFromTape()
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                clipToDelete = nil
+            }
+        } message: {
+            Text("This will remove the clip from the tape.")
+        }
+        .alert("Also delete from Photos?", isPresented: $showingPhotoLibraryDelete) {
+            Button("Delete from Photos", role: .destructive) {
+                let assetId = clipToDelete?.assetLocalId
+                deleteClipFromTape()
+                if let assetId {
+                    deleteAssetFromPhotoLibrary(assetId: assetId)
+                }
+            }
+            Button("Keep in Photos") {
+                deleteClipFromTape()
+            }
+            Button("Cancel", role: .cancel) {
+                clipToDelete = nil
+            }
+        } message: {
+            Text("Would you also like to delete this media from your photo library?")
+        }
     }
     
+    // MARK: - Jiggle Mode
+
+    private var isJiggling: Bool {
+        tapeStore.jigglingTapeID == tape.id
+    }
+
+    private func enterJiggleMode() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        tapeStore.jigglingTapeID = tape.id
+    }
+
+    private func exitJiggleMode() {
+        tapeStore.jigglingTapeID = nil
+    }
+
+    private func deleteClipFromTape() {
+        guard let clip = clipToDelete else { return }
+        tapeStore.deleteClip(from: tape.id, clip: clip)
+        if let updated = tapeStore.getTape(by: tape.id) {
+            tape = updated
+        }
+        clipToDelete = nil
+        if tape.clips.isEmpty {
+            exitJiggleMode()
+        }
+    }
+
+    private func deleteAssetFromPhotoLibrary(assetId: String) {
+        Task {
+            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
+            guard let asset = fetchResult.firstObject else { return }
+            try? await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.deleteAssets([asset] as NSArray)
+            }
+        }
+    }
+
     // MARK: - Helper Functions
     
     /// Handle media insertion from camera or other sources

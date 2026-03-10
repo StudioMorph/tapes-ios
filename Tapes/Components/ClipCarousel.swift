@@ -12,6 +12,7 @@ struct ClipCarousel: View {
     @Binding var pendingToken: UUID?
     let onPlaceholderTap: (CarouselItem) -> Void
     var onClipTap: ((Clip) -> Void)? = nil
+    var onClipDelete: ((Clip) -> Void)? = nil
     
     // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
@@ -60,9 +61,14 @@ struct ClipCarousel: View {
                 Color.clear.frame(width: 16)
                 
                 ForEach(items) { item in
-                    ThumbnailView(item: item, onPlaceholderTap: onPlaceholderTap, onClipTap: onClipTap)
-                        .frame(width: thumbSize.width, height: thumbSize.height)
-                        .id(item.id)
+                    JiggleableClipView(
+                        item: item,
+                        thumbSize: thumbSize,
+                        onPlaceholderTap: onPlaceholderTap,
+                        onClipTap: onClipTap,
+                        onClipDelete: onClipDelete
+                    )
+                    .id(item.id)
                 }
                 
                 // Trailing 16pt padding INSIDE the card
@@ -70,11 +76,66 @@ struct ClipCarousel: View {
             }
             .id(carouselId) // Force re-evaluation when tape changes
         }
-        .frame(height: thumbSize.height) // hug
+        .frame(height: thumbSize.height)
     }
     
 }
 
+
+private struct JiggleableClipView: View {
+    @EnvironmentObject private var tapeStore: TapesStore
+    let item: CarouselItem
+    let thumbSize: CGSize
+    let onPlaceholderTap: (CarouselItem) -> Void
+    var onClipTap: ((Clip) -> Void)? = nil
+    var onClipDelete: ((Clip) -> Void)? = nil
+
+    private var isJiggling: Bool {
+        tapeStore.jigglingTapeID != nil
+    }
+
+    var body: some View {
+        if isJiggling, case .clip(let clip) = item, !clip.isPlaceholder {
+            let seed = Double(clip.id.hashValue & 0xFF) / 255.0
+            TimelineView(.animation) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                let baseAngle = 1.5 + seed * 1.5
+                let speed = 8.0 + seed * 4.0
+                let angle = baseAngle * sin(time * speed)
+                ThumbnailView(
+                    item: item,
+                    onPlaceholderTap: onPlaceholderTap,
+                    onClipTap: onClipTap
+                )
+                .frame(width: thumbSize.width, height: thumbSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(alignment: .topTrailing) {
+                    Button {
+                        onClipDelete?(clip)
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Tokens.Colors.primaryText)
+                            .frame(width: 24, height: 24)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                    }
+                    .offset(x: 12, y: -12)
+                }
+                .scaleEffect(0.92)
+                .rotationEffect(.degrees(angle))
+            }
+        } else {
+            ThumbnailView(
+                item: item,
+                onPlaceholderTap: onPlaceholderTap,
+                onClipTap: onClipTap
+            )
+            .frame(width: thumbSize.width, height: thumbSize.height)
+            .clipped()
+        }
+    }
+}
 
 public enum CarouselItem: Identifiable {
     case startPlus

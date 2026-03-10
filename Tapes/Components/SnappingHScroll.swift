@@ -43,6 +43,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         let scrollView = UIScrollView()
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.alwaysBounceHorizontal = true
+        scrollView.clipsToBounds = false
         scrollView.delegate = context.coordinator
         scrollView.decelerationRate = .fast
 
@@ -53,6 +54,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             }
         )
         hosting.view.backgroundColor = .clear
+        hosting.view.clipsToBounds = false
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
 
         scrollView.addSubview(hosting.view)

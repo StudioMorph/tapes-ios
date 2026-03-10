@@ -185,6 +185,7 @@ public class TapesStore: ObservableObject {
     @Published public var pendingTapeRevealID: UUID?
     @Published public var albumAssociationError: String?
     @Published public private(set) var clipLoadingStates: [UUID: ClipLoadingState] = [:]
+    @Published public var jigglingTapeID: UUID? = nil
     
     private struct AlbumAssociationQueueEntry {
         let id: UUID

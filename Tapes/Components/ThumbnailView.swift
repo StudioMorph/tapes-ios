@@ -73,13 +73,17 @@ struct EndPlusView: View {
 struct ClipThumbnailView: View {
     @EnvironmentObject private var tapeStore: TapesStore
     let clip: Clip
+
+    private var isJiggling: Bool {
+        tapeStore.jigglingTapeID != nil
+    }
     
     var body: some View {
         Group {
             if clip.isPlaceholder {
                 PlaceholderClipView(state: tapeStore.clipLoadingStates[clip.id])
             } else {
-                ResolvedClipThumbnail(clip: clip)
+                ResolvedClipThumbnail(clip: clip, isJiggling: isJiggling)
             }
         }
         .id("clip-\(clip.id)-\(clip.hasThumbnail)-\(clip.isPlaceholder)")
@@ -88,7 +92,8 @@ struct ClipThumbnailView: View {
 
 private struct ResolvedClipThumbnail: View {
     let clip: Clip
-    
+    var isJiggling: Bool = false
+
     var body: some View {
         ZStack {
             Rectangle()
@@ -119,11 +124,13 @@ private struct ResolvedClipThumbnail: View {
             }
             .padding(8)
 
-            Image(systemName: "ellipsis")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 28, height: 28)
-                .background(.ultraThinMaterial, in: Circle())
+            if !isJiggling {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 28, height: 28)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
         }
         .overlay(alignment: .topTrailing) {
             Text(clip.hasThumbnail ? "thumb" : "no thumb")
