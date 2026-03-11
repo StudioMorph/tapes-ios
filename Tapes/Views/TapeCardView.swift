@@ -252,14 +252,14 @@ struct TapeCardView: View {
                 
                 // 2) Red center line (between clips and FAB)
                 Rectangle()
-                    .fill(tapeStore.isFloatingClip ? Tokens.Colors.tertiaryBackground : Tokens.Colors.systemRed.opacity(0.9))
+                    .fill(isJiggling && tapeStore.isFloatingClip ? Tokens.Colors.tertiaryBackground : Tokens.Colors.systemRed.opacity(0.9))
                     .frame(width: 2, height: thumbH)
                     .allowsHitTesting(false)
                     .zIndex(1)
                     .animation(.easeInOut(duration: 0.25), value: tapeStore.isFloatingClip)
                 
                 // 3) Floating action button / drop target
-                if tapeStore.isFloatingClip {
+                if isJiggling && tapeStore.isFloatingClip {
                     dropTargetFAB(thumbH: thumbH)
                         .zIndex(2)
                 } else {
@@ -322,6 +322,17 @@ struct TapeCardView: View {
         )
         .onTapGesture {
             if isJiggling { exitJiggleMode() }
+        }
+        .onChange(of: tapeStore.dropCompletedTapeID) { _, newID in
+            guard newID == tape.id,
+                  let dropIndex = tapeStore.dropCompletedAtIndex else { return }
+            let targetClipPos = dropIndex + 1
+            let targetItemIndex = targetClipPos + 1
+            let token = UUID()
+            pendingToken = token
+            pendingTargetItemIndex = targetItemIndex
+            tapeStore.dropCompletedTapeID = nil
+            tapeStore.dropCompletedAtIndex = nil
         }
         .onAppear {
             if isNewSession {
@@ -494,9 +505,14 @@ struct TapeCardView: View {
 
     @ViewBuilder
     private func dropTargetFAB(thumbH: CGFloat) -> some View {
-        let fabInsertionIndex = insertionIndex
+        let floatingBeforeFAB: Bool = {
+            guard tapeStore.floatingSourceTapeID == tape.id,
+                  let srcIdx = tapeStore.floatingSourceIndex else { return false }
+            return srcIdx < savedCarouselPosition
+        }()
+        let fabInsertionIndex = savedCarouselPosition - (floatingBeforeFAB ? 1 : 0)
         GeometryReader { geo in
-            let frame = geo.frame(in: .named("tapesListCoordinateSpace"))
+            let frame = geo.frame(in: .global)
             Circle()
                 .fill(Tokens.Colors.tertiaryBackground)
                 .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)

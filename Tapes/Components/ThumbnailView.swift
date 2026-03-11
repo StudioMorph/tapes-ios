@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ThumbnailView: View {
+    @EnvironmentObject private var tapeStore: TapesStore
     let item: CarouselItem
     let onPlaceholderTap: (CarouselItem) -> Void
     var onClipTap: ((Clip) -> Void)? = nil
@@ -13,16 +14,18 @@ struct ThumbnailView: View {
             case .startPlus:
                 StartPlusView(tapeID: tapeID)
                     .onTapGesture {
+                        guard !tapeStore.isFloatingClip else { return }
                         onPlaceholderTap(item)
                     }
             case .clip(let clip):
-                ClipThumbnailView(clip: clip)
+                ClipThumbnailView(clip: clip, tapeID: tapeID)
                     .onTapGesture {
                         onClipTap?(clip)
                     }
             case .endPlus:
                 EndPlusView(tapeID: tapeID, clipCount: clipCount)
                     .onTapGesture {
+                        guard !tapeStore.isFloatingClip else { return }
                         onPlaceholderTap(item)
                     }
             }
@@ -36,7 +39,7 @@ struct StartPlusView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let frame = geo.frame(in: .named("tapesListCoordinateSpace"))
+            let frame = geo.frame(in: .global)
             ZStack {
                 Rectangle()
                     .fill(Tokens.Colors.tertiaryBackground)
@@ -49,7 +52,7 @@ struct StartPlusView: View {
                         )
                     )
 
-                if tapeStore.isFloatingClip {
+                if tapeStore.isFloatingClip && tapeStore.jigglingTapeID == tapeID {
                     dashedPhotoStackIcon()
                         .preference(key: DropTargetPreferenceKey.self, value: [
                             DropTargetInfo(tapeID: tapeID, insertionIndex: 0, frame: frame, kind: .startPlus)
@@ -71,7 +74,7 @@ struct EndPlusView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let frame = geo.frame(in: .named("tapesListCoordinateSpace"))
+            let frame = geo.frame(in: .global)
             ZStack {
                 Rectangle()
                     .fill(Tokens.Colors.tertiaryBackground)
@@ -84,7 +87,7 @@ struct EndPlusView: View {
                         )
                     )
 
-                if tapeStore.isFloatingClip {
+                if tapeStore.isFloatingClip && tapeStore.jigglingTapeID == tapeID {
                     dashedPhotoStackIcon()
                         .preference(key: DropTargetPreferenceKey.self, value: [
                             DropTargetInfo(tapeID: tapeID, insertionIndex: clipCount, frame: frame, kind: .endPlus)
@@ -113,9 +116,10 @@ private func dashedPhotoStackIcon() -> some View {
 struct ClipThumbnailView: View {
     @EnvironmentObject private var tapeStore: TapesStore
     let clip: Clip
+    var tapeID: UUID = UUID()
 
     private var isJiggling: Bool {
-        tapeStore.jigglingTapeID != nil
+        tapeStore.jigglingTapeID == tapeID
     }
     
     var body: some View {

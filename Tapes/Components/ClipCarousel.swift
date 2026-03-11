@@ -1,9 +1,5 @@
 import SwiftUI
 
-extension Notification.Name {
-    static let floatingClipDragEnded = Notification.Name("floatingClipDragEnded")
-}
-
 struct DropTargetInfo: Equatable {
     let tapeID: UUID
     let insertionIndex: Int
@@ -20,6 +16,7 @@ struct DropTargetPreferenceKey: PreferenceKey {
 }
 
 struct ClipCarousel: View {
+    @EnvironmentObject private var tapeStore: TapesStore
     @Binding var tape: Tape
     let thumbSize: CGSize
     @Binding var insertionIndex: Int
@@ -33,29 +30,36 @@ struct ClipCarousel: View {
     var onClipTap: ((Clip) -> Void)? = nil
     var onClipDelete: ((Clip) -> Void)? = nil
     
-    // Direct observation of tape.clips - no caching
     var items: [CarouselItem] {
-        if tape.clips.isEmpty {
+        let visibleClips = tape.clips.filter { $0.id != tapeStore.floatingClip?.id }
+        if visibleClips.isEmpty {
             return [.startPlus]
         }
-        return [.startPlus] + tape.clips.map { .clip($0) } + [.endPlus]
+        return [.startPlus] + visibleClips.map { .clip($0) } + [.endPlus]
     }
     
-    // Force re-evaluation when tape changes
     private var tapeHash: Int {
-        tape.clips.map { "\($0.id)-\($0.hasThumbnail)" }.joined().hashValue
+        let floatingID = tapeStore.floatingClip?.id.uuidString ?? "none"
+        return (tape.clips.map { "\($0.id)-\($0.hasThumbnail)" }.joined() + "-f:\(floatingID)").hashValue
     }
     
     var body: some View {
         // Force re-evaluation by using the hash as an ID
         let carouselId = "carousel-\(tape.id)-\(tapeHash)"
         GeometryReader { container in
+            let floatingIsBeforeFAB: Bool = {
+                guard tapeStore.floatingSourceTapeID == tape.id,
+                      let srcIdx = tapeStore.floatingSourceIndex else { return false }
+                return srcIdx < savedCarouselPosition
+            }()
+            let adjustedSnapIndex = savedCarouselPosition + 1 - (floatingIsBeforeFAB ? 1 : 0)
+
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
                            trailingInset: 16,
                            containerWidth: container.size.width,
                            targetSnapIndex: pendingTargetItemIndex,
-                           currentSnapIndex: isNewSession ? (initialCarouselPosition + 1) : (savedCarouselPosition + 1),
+                           currentSnapIndex: isNewSession ? (initialCarouselPosition + 1) : adjustedSnapIndex,
                            pendingToken: pendingToken,
                            tapeId: tape.id,
                            onSnapped: { leftIndex, rightIndex in
@@ -112,12 +116,7 @@ private struct JiggleableClipView: View {
     var onClipDelete: ((Clip) -> Void)? = nil
 
     private var isJiggling: Bool {
-        tapeStore.jigglingTapeID != nil
-    }
-
-    private var isThisClipFloating: Bool {
-        guard case .clip(let clip) = item else { return false }
-        return tapeStore.floatingClip?.id == clip.id
+        tapeStore.jigglingTapeID == tapeID
     }
 
     var body: some View {
@@ -129,9 +128,8 @@ private struct JiggleableClipView: View {
                 let speed = 8.0 + seed * 4.0
                 let angle = baseAngle * sin(time * speed)
 
-                let isLifted = tapeStore.floatingClip?.id == clip.id
                 GeometryReader { geo in
-                    let globalFrame = geo.frame(in: .named("tapesListCoordinateSpace"))
+                    let globalFrame = geo.frame(in: .global)
                     ThumbnailView(
                         item: item,
                         onPlaceholderTap: onPlaceholderTap,
@@ -142,42 +140,32 @@ private struct JiggleableClipView: View {
                     .frame(width: thumbSize.width, height: thumbSize.height)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(alignment: .top) {
-                        if !isLifted {
-                            Button {
-                                onClipDelete?(clip)
-                            } label: {
-                                Image(systemName: "minus")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(Tokens.Colors.primaryText)
-                                    .frame(width: 24, height: 24)
-                                    .background(.ultraThinMaterial, in: Circle())
-                                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                            }
-                            .offset(y: -12)
+                        Button {
+                            onClipDelete?(clip)
+                        } label: {
+                            Image(systemName: "minus")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(Tokens.Colors.primaryText)
+                                .frame(width: 24, height: 24)
+                                .background(.ultraThinMaterial, in: Circle())
+                                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                         }
+                        .offset(y: -12)
                     }
-                    .scaleEffect(isLifted ? 0.001 : 0.92)
-                    .rotationEffect(.degrees(isLifted ? 0 : angle))
-                    .opacity(isLifted ? 0 : 1)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isLifted)
+                    .scaleEffect(0.92)
+                    .rotationEffect(.degrees(angle))
                     .gesture(
-                        DragGesture(minimumDistance: 20, coordinateSpace: .named("tapesListCoordinateSpace"))
+                        DragGesture(minimumDistance: 10, coordinateSpace: .global)
                             .onChanged { value in
                                 if !tapeStore.isFloatingClip {
                                     let clipIndex = tapeStore.getTape(by: tapeID)?.clips.firstIndex(where: { $0.id == clip.id }) ?? 0
                                     tapeStore.liftClip(clip, fromTape: tapeID, atIndex: clipIndex, originFrame: globalFrame, thumbSize: thumbSize)
+                                    let gen = UIImpactFeedbackGenerator(style: .light)
+                                    gen.impactOccurred()
                                 }
                                 tapeStore.floatingPosition = value.location
                             }
-                            .onEnded { value in
-                                if tapeStore.isFloatingClip {
-                                    NotificationCenter.default.post(
-                                        name: .floatingClipDragEnded,
-                                        object: nil,
-                                        userInfo: ["x": value.location.x, "y": value.location.y]
-                                    )
-                                }
-                            }
+                            .onEnded { _ in }
                     )
                 }
                 .frame(width: thumbSize.width, height: thumbSize.height)

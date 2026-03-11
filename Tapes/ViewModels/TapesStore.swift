@@ -196,6 +196,8 @@ public class TapesStore: ObservableObject {
     @Published public var floatingThumbSize: CGSize = .zero
 
     public var isFloatingClip: Bool { floatingClip != nil }
+    @Published public var dropCompletedTapeID: UUID? = nil
+    @Published public var dropCompletedAtIndex: Int? = nil
 
     public func liftClip(_ clip: Clip, fromTape tapeID: UUID, atIndex index: Int, originFrame: CGRect, thumbSize: CGSize) {
         if floatingClip != nil {
@@ -214,38 +216,21 @@ public class TapesStore: ObservableObject {
     }
 
     public func dropFloatingClip(onTape tapeID: UUID, atIndex index: Int) {
-        guard let clip = floatingClip,
-              let sourceTapeID = floatingSourceTapeID,
-              floatingSourceIndex != nil else {
+        guard let clip = floatingClip else {
             clearFloatingState()
             return
         }
 
-        if sourceTapeID == tapeID {
-            guard var tape = getTape(by: tapeID) else {
-                clearFloatingState()
-                return
-            }
-            tape.removeClip(clip)
-            let adjustedIndex = min(index, tape.clips.count)
-            tape.addClip(clip, at: adjustedIndex)
-            updateTape(tape)
-        } else {
-            guard var sourceTape = getTape(by: sourceTapeID) else {
-                clearFloatingState()
-                return
-            }
-            sourceTape.removeClip(clip)
-            updateTape(sourceTape)
-
-            guard var destTape = getTape(by: tapeID) else {
-                clearFloatingState()
-                return
-            }
-            let safeIndex = min(index, destTape.clips.count)
-            destTape.addClip(clip, at: safeIndex)
-            updateTape(destTape)
+        guard var tape = getTape(by: tapeID) else {
+            clearFloatingState()
+            return
         }
+        tape.removeClip(clip)
+        let safeIndex = min(index, tape.clips.count)
+        tape.addClip(clip, at: safeIndex)
+        updateTape(tape)
+        dropCompletedTapeID = tapeID
+        dropCompletedAtIndex = safeIndex
 
         clearFloatingState()
     }

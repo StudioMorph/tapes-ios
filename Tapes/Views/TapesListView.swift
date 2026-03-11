@@ -46,22 +46,18 @@ struct TapesListView: View {
                 }
 
                 if let clip = tapesStore.floatingClip {
-                    floatingClipOverlay(clip: clip)
+                    GeometryReader { containerGeo in
+                        let origin = containerGeo.frame(in: .global).origin
+                        floatingClipOverlay(clip: clip, containerOrigin: origin)
+                    }
                 }
             }
-            .coordinateSpace(name: "tapesListCoordinateSpace")
             .onPreferenceChange(DropTargetPreferenceKey.self) { targets in
                 dropTargets = targets
             }
             .onChange(of: tapesStore.floatingPosition) { _, newPos in
                 if tapesStore.isFloatingClip {
                     updateHoverTarget(at: newPos)
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .floatingClipDragEnded)) { notification in
-                if let x = notification.userInfo?["x"] as? CGFloat,
-                   let y = notification.userInfo?["y"] as? CGFloat {
-                    handleFloatingDragEnd(location: CGPoint(x: x, y: y))
                 }
             }
             .navigationBarHidden(true)
@@ -98,10 +94,14 @@ struct TapesListView: View {
     // MARK: - Floating Clip Overlay
 
     @ViewBuilder
-    private func floatingClipOverlay(clip: Clip) -> some View {
+    private func floatingClipOverlay(clip: Clip, containerOrigin: CGPoint) -> some View {
         let size = tapesStore.floatingThumbSize
         let isHovering = hoveredTarget != nil
         let displayScale: CGFloat = isHovering ? 0.5 : 1.0
+        let localPos = CGPoint(
+            x: tapesStore.floatingPosition.x - containerOrigin.x,
+            y: tapesStore.floatingPosition.y - containerOrigin.y
+        )
 
         ZStack {
             if let thumbnail = clip.thumbnailImage {
@@ -134,24 +134,31 @@ struct TapesListView: View {
         }
         .scaleEffect(displayScale)
         .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isHovering)
-        .position(tapesStore.floatingPosition)
-        .allowsHitTesting(true)
+        .position(localPos)
+        .gesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                .onChanged { value in
+                    tapesStore.floatingPosition = value.location
+                }
+                .onEnded { value in
+                    let target = dropTargets.first {
+                        $0.frame.contains(value.location) && $0.tapeID == tapesStore.jigglingTapeID
+                    }
+                    if let target {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            tapesStore.dropFloatingClip(onTape: target.tapeID, atIndex: target.insertionIndex)
+                        }
+                    }
+                    hoveredTarget = nil
+                }
+        )
         .zIndex(999)
     }
 
-    private func handleFloatingDragEnd(location: CGPoint) {
-        let target = dropTargets.first { $0.frame.contains(location) }
-        if let target {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                tapesStore.dropFloatingClip(onTape: target.tapeID, atIndex: target.insertionIndex)
-            }
-        }
-        // If no target hit, clip remains floating — user can use return button or tap outside to cancel
-        hoveredTarget = nil
-    }
-
     private func updateHoverTarget(at location: CGPoint) {
-        let newTarget = dropTargets.first { $0.frame.contains(location) }
+        let newTarget = dropTargets.first {
+            $0.frame.contains(location) && $0.tapeID == tapesStore.jigglingTapeID
+        }
         if newTarget != hoveredTarget {
             if newTarget != nil {
                 let gen = UIImpactFeedbackGenerator(style: .light)
