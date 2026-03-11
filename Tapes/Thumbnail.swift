@@ -84,7 +84,7 @@ struct Thumbnail: View {
     
     private var thumbnailGesture: some Gesture {
         SimultaneousGesture(
-            LongPressGesture(minimumDuration: 0.5)
+            LongPressGesture(minimumDuration: 0.3)
                 .onChanged { _ in
                     isLongPressing = true
                 }
