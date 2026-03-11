@@ -15,6 +15,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     var onItemLongPressStarted: ((Int, CGPoint, CGRect) -> Bool)? = nil
     var onDragPositionChanged: ((CGPoint) -> Void)? = nil
     var onDragEnded: (() -> Void)? = nil
+    var contentHash: Int = 0
     let content: () -> Content
 
     init(itemWidth: CGFloat,
@@ -30,6 +31,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
          onItemLongPressStarted: ((Int, CGPoint, CGRect) -> Bool)? = nil,
          onDragPositionChanged: ((CGPoint) -> Void)? = nil,
          onDragEnded: (() -> Void)? = nil,
+         contentHash: Int = 0,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
         self.leadingInset = leadingInset
@@ -44,6 +46,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         self.onItemLongPressStarted = onItemLongPressStarted
         self.onDragPositionChanged = onDragPositionChanged
         self.onDragEnded = onDragEnded
+        self.contentHash = contentHash
         self.content = content
     }
 
@@ -80,6 +83,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         ])
 
         context.coordinator.hostingController = hosting
+        context.coordinator.lastContentHash = contentHash
         context.coordinator.scrollView = scrollView
         context.coordinator.updateCurrentSnapIndex(currentSnapIndex)
 
@@ -107,10 +111,33 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.longPressGesture?.isEnabled = isLongPressEnabled
 
-        if let hosting = context.coordinator.hostingController {
-            hosting.rootView = HStack(spacing: 0) {
-                content()
+        let needsRebuild = context.coordinator.lastContentHash != contentHash
+        context.coordinator.lastContentHash = contentHash
+
+        if needsRebuild {
+            context.coordinator.hostingController?.view.removeFromSuperview()
+
+            let hosting = UIHostingController(rootView: HStack(spacing: 0) { content() })
+            hosting.view.backgroundColor = .clear
+            hosting.view.clipsToBounds = false
+            hosting.view.translatesAutoresizingMaskIntoConstraints = false
+
+            uiView.addSubview(hosting.view)
+            NSLayoutConstraint.activate([
+                hosting.view.leadingAnchor.constraint(equalTo: uiView.contentLayoutGuide.leadingAnchor),
+                hosting.view.trailingAnchor.constraint(equalTo: uiView.contentLayoutGuide.trailingAnchor),
+                hosting.view.topAnchor.constraint(equalTo: uiView.contentLayoutGuide.topAnchor),
+                hosting.view.bottomAnchor.constraint(equalTo: uiView.contentLayoutGuide.bottomAnchor),
+                hosting.view.heightAnchor.constraint(equalTo: uiView.frameLayoutGuide.heightAnchor)
+            ])
+
+            context.coordinator.hostingController = hosting
+
+            DispatchQueue.main.async {
+                context.coordinator.fireOnSnapped()
             }
+        } else if let hosting = context.coordinator.hostingController {
+            hosting.rootView = HStack(spacing: 0) { content() }
         }
     }
     
@@ -170,9 +197,10 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
         var parent: SnappingHScroll
-        weak var hostingController: UIHostingController<HStack<Content>>?
+        var hostingController: UIHostingController<HStack<Content>>?
         weak var scrollView: UIScrollView?
         weak var longPressGesture: UILongPressGestureRecognizer?
+        var lastContentHash: Int = 0
         private var isDragging = false
         
         // State machine for position tracking
@@ -302,6 +330,11 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         func updateCurrentSnapIndex(_ index: Int) {
             currentSnapIndex = index
             isProgrammaticScroll = true
+        }
+
+        func fireOnSnapped() {
+            guard isValidSnapIndex(currentSnapIndex) else { return }
+            parent.onSnapped?(currentSnapIndex, currentSnapIndex + 1)
         }
 
         func scrollViewWillEndDragging(_ scrollView: UIScrollView,

@@ -47,8 +47,6 @@ struct ClipCarousel: View {
     }
     
     var body: some View {
-        // Force re-evaluation by using the hash as an ID
-        let carouselId = "carousel-\(tape.id)-\(tapeHash)"
         GeometryReader { container in
             // After a drop, use the drop index directly so the carousel
             // recreates at the correct position (onChange fires too late).
@@ -121,7 +119,8 @@ struct ClipCarousel: View {
                            },
                            onDragEnded: {
                                tapeStore.floatingDragDidEnd = true
-                           }) {
+                           },
+                           contentHash: tapeHash) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
@@ -140,7 +139,7 @@ struct ClipCarousel: View {
                 // Trailing 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
             }
-            .id(carouselId) // Force re-evaluation when tape changes
+            .id("carousel-\(tape.id)")
         }
         .frame(height: thumbSize.height)
     }
