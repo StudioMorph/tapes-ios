@@ -11,6 +11,10 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     let pendingToken: UUID?
     let tapeId: UUID
     let onSnapped: ((Int, Int) -> Void)?
+    var isLongPressEnabled: Bool = false
+    var onItemLongPressStarted: ((Int, CGPoint, CGRect) -> Bool)? = nil
+    var onDragPositionChanged: ((CGPoint) -> Void)? = nil
+    var onDragEnded: (() -> Void)? = nil
     let content: () -> Content
 
     init(itemWidth: CGFloat,
@@ -22,6 +26,10 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
          pendingToken: UUID? = nil,
          tapeId: UUID,
          onSnapped: ((Int, Int) -> Void)? = nil,
+         isLongPressEnabled: Bool = false,
+         onItemLongPressStarted: ((Int, CGPoint, CGRect) -> Bool)? = nil,
+         onDragPositionChanged: ((CGPoint) -> Void)? = nil,
+         onDragEnded: (() -> Void)? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
         self.leadingInset = leadingInset
@@ -32,6 +40,10 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         self.pendingToken = pendingToken
         self.tapeId = tapeId
         self.onSnapped = onSnapped
+        self.isLongPressEnabled = isLongPressEnabled
+        self.onItemLongPressStarted = onItemLongPressStarted
+        self.onDragPositionChanged = onDragPositionChanged
+        self.onDragEnded = onDragEnded
         self.content = content
     }
 
@@ -71,6 +83,16 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.updateCurrentSnapIndex(currentSnapIndex)
 
+        let longPress = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleLongPress(_:))
+        )
+        longPress.minimumPressDuration = 0.3
+        longPress.delegate = context.coordinator
+        longPress.isEnabled = isLongPressEnabled
+        scrollView.addGestureRecognizer(longPress)
+        context.coordinator.longPressGesture = longPress
+
         DispatchQueue.main.async {
             self.setInitialPosition(scrollView: scrollView)
             if let targetIndex = self.targetSnapIndex {
@@ -83,6 +105,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIScrollView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.longPressGesture?.isEnabled = isLongPressEnabled
 
         if let hosting = context.coordinator.hostingController {
             hosting.rootView = HStack(spacing: 0) {
@@ -145,10 +168,12 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         return max(0, Int(round(position)))
     }
 
-    final class Coordinator: NSObject, UIScrollViewDelegate {
+    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
         var parent: SnappingHScroll
         weak var hostingController: UIHostingController<HStack<Content>>?
         weak var scrollView: UIScrollView?
+        weak var longPressGesture: UILongPressGestureRecognizer?
+        private var isDragging = false
         
         // State machine for position tracking
         enum CarouselState {
@@ -163,9 +188,61 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         private var isUserScrolling: Bool = false
         var isProgrammaticScroll: Bool = false
 
-        // We need to know total content width (calculated on the fly)
         init(parent: SnappingHScroll) {
             self.parent = parent
+        }
+
+        // MARK: - Long press drag handling
+
+        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+            guard let scrollView = scrollView else { return }
+
+            switch gesture.state {
+            case .began:
+                let contentX = gesture.location(in: scrollView).x
+                let rawIndex = (contentX - parent.leadingInset) / parent.itemWidth
+                let itemIndex = Int(floor(rawIndex))
+                guard itemIndex >= 0 else { return }
+
+                let itemOriginX = parent.leadingInset + CGFloat(itemIndex) * parent.itemWidth
+                let itemFrame = CGRect(x: itemOriginX, y: 0, width: parent.itemWidth, height: scrollView.bounds.height)
+                let globalFrame = scrollView.convert(itemFrame, to: nil)
+                let globalPos = gesture.location(in: nil)
+
+                let didLift = parent.onItemLongPressStarted?(itemIndex, globalPos, globalFrame) ?? false
+                if didLift {
+                    isDragging = true
+                    scrollView.isScrollEnabled = false
+                }
+
+            case .changed:
+                if isDragging {
+                    let globalPos = gesture.location(in: nil)
+                    parent.onDragPositionChanged?(globalPos)
+                }
+
+            case .ended, .cancelled, .failed:
+                if isDragging {
+                    isDragging = false
+                    scrollView.isScrollEnabled = true
+                    parent.onDragEnded?()
+                }
+
+            default:
+                break
+            }
+        }
+
+        // MARK: - UIGestureRecognizerDelegate
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            if otherGestureRecognizer === scrollView?.panGestureRecognizer {
+                return false
+            }
+            return true
         }
         
         func scrollViewDidScroll(_ scrollView: UIScrollView) {

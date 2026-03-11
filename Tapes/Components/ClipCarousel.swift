@@ -78,7 +78,6 @@ struct ClipCarousel: View {
                                let clipLeft = max(0, snapIndex - 1)
                                savedCarouselPosition = clipLeft
                                
-                               // Extract seam clip IDs from the actual items at this snap position
                                let currentItems = items
                                let leftItemIdx = snapIndex - 1
                                let rightItemIdx = snapIndex
@@ -101,6 +100,27 @@ struct ClipCarousel: View {
                                if isNewSession {
                                    isNewSession = false
                                }
+                           },
+                           isLongPressEnabled: tapeStore.jigglingTapeID == tape.id,
+                           onItemLongPressStarted: { itemIndex, globalPos, globalFrame in
+                               let currentItems = items
+                               guard itemIndex >= 0 && itemIndex < currentItems.count,
+                                     case .clip(let clip) = currentItems[itemIndex],
+                                     !clip.isPlaceholder else { return false }
+                               guard !tapeStore.isFloatingClip else { return false }
+
+                               let clipIndex = tape.clips.firstIndex(where: { $0.id == clip.id }) ?? 0
+                               tapeStore.liftClip(clip, fromTape: tape.id, atIndex: clipIndex, originFrame: globalFrame, thumbSize: thumbSize)
+                               let gen = UIImpactFeedbackGenerator(style: .light)
+                               gen.impactOccurred()
+                               tapeStore.floatingPosition = globalPos
+                               return true
+                           },
+                           onDragPositionChanged: { globalPos in
+                               tapeStore.floatingPosition = globalPos
+                           },
+                           onDragEnded: {
+                               tapeStore.floatingDragDidEnd = true
                            }) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
@@ -150,47 +170,30 @@ private struct JiggleableClipView: View {
                 let speed = 8.0 + seed * 4.0
                 let angle = baseAngle * sin(time * speed)
 
-                GeometryReader { geo in
-                    let globalFrame = geo.frame(in: .global)
-                    ThumbnailView(
-                        item: item,
-                        onPlaceholderTap: onPlaceholderTap,
-                        onClipTap: onClipTap,
-                        tapeID: tapeID,
-                        clipCount: tapeStore.getTape(by: tapeID)?.clips.count ?? 0
-                    )
-                    .frame(width: thumbSize.width, height: thumbSize.height)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(alignment: .top) {
-                        Button {
-                            onClipDelete?(clip)
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(Tokens.Colors.primaryText)
-                                .frame(width: 24, height: 24)
-                                .background(.ultraThinMaterial, in: Circle())
-                                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                        }
-                        .offset(y: -12)
-                    }
-                    .scaleEffect(0.92)
-                    .rotationEffect(.degrees(angle))
-                    .gesture(
-                        DragGesture(minimumDistance: 10, coordinateSpace: .global)
-                            .onChanged { value in
-                                if !tapeStore.isFloatingClip {
-                                    let clipIndex = tapeStore.getTape(by: tapeID)?.clips.firstIndex(where: { $0.id == clip.id }) ?? 0
-                                    tapeStore.liftClip(clip, fromTape: tapeID, atIndex: clipIndex, originFrame: globalFrame, thumbSize: thumbSize)
-                                    let gen = UIImpactFeedbackGenerator(style: .light)
-                                    gen.impactOccurred()
-                                }
-                                tapeStore.floatingPosition = value.location
-                            }
-                            .onEnded { _ in }
-                    )
-                }
+                ThumbnailView(
+                    item: item,
+                    onPlaceholderTap: onPlaceholderTap,
+                    onClipTap: onClipTap,
+                    tapeID: tapeID,
+                    clipCount: tapeStore.getTape(by: tapeID)?.clips.count ?? 0
+                )
                 .frame(width: thumbSize.width, height: thumbSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(alignment: .top) {
+                    Button {
+                        onClipDelete?(clip)
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Tokens.Colors.primaryText)
+                            .frame(width: 24, height: 24)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                    }
+                    .offset(y: -12)
+                }
+                .scaleEffect(0.92)
+                .rotationEffect(.degrees(angle))
             }
         } else {
             ThumbnailView(

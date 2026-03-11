@@ -60,6 +60,20 @@ struct TapesListView: View {
                     updateHoverTarget(at: newPos)
                 }
             }
+            .onChange(of: tapesStore.floatingDragDidEnd) { _, didEnd in
+                guard didEnd, tapesStore.isFloatingClip else { return }
+                let location = tapesStore.floatingPosition
+                let target = dropTargets.first {
+                    $0.frame.contains(location) && $0.tapeID == tapesStore.jigglingTapeID
+                }
+                if let target {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        tapesStore.dropFloatingClip(onTape: target.tapeID, atIndex: target.insertionIndex, afterClipID: target.seamLeftClipID, beforeClipID: target.seamRightClipID)
+                    }
+                }
+                hoveredTarget = nil
+                tapesStore.floatingDragDidEnd = false
+            }
             .navigationBarHidden(true)
         }
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {

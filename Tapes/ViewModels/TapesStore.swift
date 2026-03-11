@@ -194,6 +194,7 @@ public class TapesStore: ObservableObject {
     @Published public var floatingPosition: CGPoint = .zero
     @Published public var floatingOriginalFrame: CGRect = .zero
     @Published public var floatingThumbSize: CGSize = .zero
+    @Published public var floatingDragDidEnd = false
 
     public var isFloatingClip: Bool { floatingClip != nil }
     @Published public var dropCompletedTapeID: UUID? = nil
