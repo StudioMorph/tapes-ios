@@ -210,7 +210,6 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             guard state == .idle || state == .settling,
                   isValidSnapIndex(currentSnapIndex) else { return }
             
-            // Only update position when carousel is truly at rest
             if let onSnapped = parent.onSnapped {
                 let leftIndex = currentSnapIndex
                 let rightIndex = leftIndex + 1
@@ -274,11 +273,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             // Assign final target
             targetContentOffset.pointee.x = snappedOffsetX
             
-            // Update current snap index for state machine
             currentSnapIndex = Int(n)
-            
-            // Don't call onSnapped here - let the state machine handle it
-            // when the carousel is truly at rest
         }
     }
 }

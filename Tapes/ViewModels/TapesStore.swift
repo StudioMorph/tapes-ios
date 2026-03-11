@@ -215,7 +215,7 @@ public class TapesStore: ObservableObject {
         clearFloatingState()
     }
 
-    public func dropFloatingClip(onTape tapeID: UUID, atIndex index: Int) {
+    public func dropFloatingClip(onTape tapeID: UUID, atIndex index: Int, afterClipID: UUID? = nil, beforeClipID: UUID? = nil) {
         guard let clip = floatingClip else {
             clearFloatingState()
             return
@@ -226,11 +226,23 @@ public class TapesStore: ObservableObject {
             return
         }
         tape.removeClip(clip)
-        let safeIndex = min(index, tape.clips.count)
-        tape.addClip(clip, at: safeIndex)
+
+        let insertionIndex: Int
+        if let afterID = afterClipID,
+           let afterIdx = tape.clips.firstIndex(where: { $0.id == afterID }) {
+            insertionIndex = afterIdx + 1
+        } else if let beforeID = beforeClipID,
+                  let beforeIdx = tape.clips.firstIndex(where: { $0.id == beforeID }) {
+            insertionIndex = beforeIdx
+        } else {
+            insertionIndex = min(index, tape.clips.count)
+        }
+
+        print("[SEAM] drop: afterClipID=\(afterClipID?.uuidString.prefix(4) ?? "nil") beforeClipID=\(beforeClipID?.uuidString.prefix(4) ?? "nil") insertionIndex=\(insertionIndex) clipsAfterRemoval=\(tape.clips.map { String($0.id.uuidString.prefix(4)) })")
+        tape.addClip(clip, at: insertionIndex)
         updateTape(tape)
         dropCompletedTapeID = tapeID
-        dropCompletedAtIndex = safeIndex
+        dropCompletedAtIndex = insertionIndex
 
         clearFloatingState()
     }

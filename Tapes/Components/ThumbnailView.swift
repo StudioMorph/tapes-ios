@@ -55,7 +55,7 @@ struct StartPlusView: View {
                 if tapeStore.isFloatingClip && tapeStore.jigglingTapeID == tapeID {
                     dashedPhotoStackIcon()
                         .preference(key: DropTargetPreferenceKey.self, value: [
-                            DropTargetInfo(tapeID: tapeID, insertionIndex: 0, frame: frame, kind: .startPlus)
+                            DropTargetInfo(tapeID: tapeID, insertionIndex: 0, seamLeftClipID: nil, seamRightClipID: nil, frame: frame, kind: .startPlus)
                         ])
                 } else {
                     Image(systemName: "plus")
@@ -90,7 +90,7 @@ struct EndPlusView: View {
                 if tapeStore.isFloatingClip && tapeStore.jigglingTapeID == tapeID {
                     dashedPhotoStackIcon()
                         .preference(key: DropTargetPreferenceKey.self, value: [
-                            DropTargetInfo(tapeID: tapeID, insertionIndex: clipCount, frame: frame, kind: .endPlus)
+                            DropTargetInfo(tapeID: tapeID, insertionIndex: clipCount, seamLeftClipID: nil, seamRightClipID: nil, frame: frame, kind: .endPlus)
                         ])
                 } else {
                     Image(systemName: "plus")

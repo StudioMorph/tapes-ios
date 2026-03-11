@@ -70,6 +70,8 @@ struct TapeCardView: View {
     @State private var pendingTargetItemIndex: Int? = nil
     @State private var pendingToken: UUID? = nil
     @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
+    @State private var dropSeamLeftClipID: UUID? = nil
+    @State private var dropSeamRightClipID: UUID? = nil
     // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
         return tape.clips.count // Clip-space: 0 = start, N = end
@@ -203,50 +205,7 @@ struct TapeCardView: View {
             let (thumbW, thumbH) = thumbDimensions(for: containerWidth)
             ZStack(alignment: .center) {
                 // 1) Thumbnails / scrollable carousel
-                ClipCarousel(
-                    tape: $tape,
-                    thumbSize: CGSize(width: thumbW, height: thumbH),
-                    insertionIndex: $insertionIndex,
-                    savedCarouselPosition: $savedCarouselPosition,
-                    pendingAdvancement: $pendingAdvancement,
-                    isNewSession: $isNewSession,
-                    initialCarouselPosition: initialCarouselPosition,
-                    pendingTargetItemIndex: $pendingTargetItemIndex,
-                    pendingToken: $pendingToken,
-                    onPlaceholderTap: { item in
-                        guard !isJiggling else {
-                            exitJiggleMode()
-                            return
-                        }
-                        switch item {
-                        case .startPlus:
-                            importSource = .leftPlaceholder
-                        case .endPlus:
-                            importSource = .rightPlaceholder
-                        case .clip:
-                            importSource = .centerFAB
-                        }
-                        showingMediaPicker = true
-                    },
-                    onClipTap: { clip in
-                        guard !clip.isPlaceholder else { return }
-                        if isJiggling {
-                            exitJiggleMode()
-                            return
-                        }
-                        if clip.clipType == .video {
-                            clipToTrim = clip
-                            showingClipTrim = true
-                        } else if clip.clipType == .image {
-                            imageSettingsClipID = clip.id
-                            showingImageSettings = true
-                        }
-                    },
-                    onClipDelete: { clip in
-                        clipToDelete = clip
-                        showingDeleteConfirmation = true
-                    }
-                )
+                clipCarouselView(thumbW: thumbW, thumbH: thumbH)
                 .id("carousel-\(tape.clips.count)")
                 .zIndex(0)
                 
@@ -323,14 +282,26 @@ struct TapeCardView: View {
         .onTapGesture {
             if isJiggling { exitJiggleMode() }
         }
+        .onChange(of: tapeStore.isFloatingClip) { _, isFloating in
+            if isFloating {
+                pendingTargetItemIndex = nil
+                pendingToken = nil
+                // Compute initial seam clip IDs at lift time (savedCarouselPosition is in original space here)
+                let visibleClips = tape.clips.filter { $0.id != tapeStore.floatingClip?.id }
+                let floatingBefore = tapeStore.floatingSourceIndex.map { $0 < savedCarouselPosition } ?? false
+                let seamPos = savedCarouselPosition - (floatingBefore ? 1 : 0)
+                dropSeamLeftClipID = (seamPos >= 1 && seamPos - 1 < visibleClips.count) ? visibleClips[seamPos - 1].id : nil
+                dropSeamRightClipID = (seamPos >= 0 && seamPos < visibleClips.count) ? visibleClips[seamPos].id : nil
+                print("[SEAM] lift: savedPos=\(savedCarouselPosition) seamPos=\(seamPos) leftID=\(dropSeamLeftClipID?.uuidString.prefix(4) ?? "nil") rightID=\(dropSeamRightClipID?.uuidString.prefix(4) ?? "nil")")
+            } else {
+                dropSeamLeftClipID = nil
+                dropSeamRightClipID = nil
+            }
+        }
         .onChange(of: tapeStore.dropCompletedTapeID) { _, newID in
             guard newID == tape.id,
                   let dropIndex = tapeStore.dropCompletedAtIndex else { return }
-            let targetClipPos = dropIndex + 1
-            let targetItemIndex = targetClipPos + 1
-            let token = UUID()
-            pendingToken = token
-            pendingTargetItemIndex = targetItemIndex
+            savedCarouselPosition = dropIndex
             tapeStore.dropCompletedTapeID = nil
             tapeStore.dropCompletedAtIndex = nil
         }
@@ -491,6 +462,69 @@ struct TapeCardView: View {
         }
     }
 
+    @ViewBuilder
+    private func clipCarouselView(thumbW: CGFloat, thumbH: CGFloat) -> some View {
+        ClipCarousel(
+            tape: $tape,
+            thumbSize: CGSize(width: thumbW, height: thumbH),
+            insertionIndex: $insertionIndex,
+            savedCarouselPosition: $savedCarouselPosition,
+            pendingAdvancement: $pendingAdvancement,
+            isNewSession: $isNewSession,
+            initialCarouselPosition: initialCarouselPosition,
+            pendingTargetItemIndex: $pendingTargetItemIndex,
+            pendingToken: $pendingToken,
+            onPlaceholderTap: handlePlaceholderTap,
+            onClipTap: handleClipTap,
+            onClipDelete: handleClipDelete,
+            onSeamChanged: handleSeamChanged
+        )
+    }
+
+    private func handlePlaceholderTap(_ item: CarouselItem) {
+        guard !isJiggling else {
+            exitJiggleMode()
+            return
+        }
+        switch item {
+        case .startPlus:
+            importSource = .leftPlaceholder
+        case .endPlus:
+            importSource = .rightPlaceholder
+        case .clip:
+            importSource = .centerFAB
+        }
+        showingMediaPicker = true
+    }
+
+    private func handleClipTap(_ clip: Clip) {
+        guard !clip.isPlaceholder else { return }
+        if isJiggling {
+            exitJiggleMode()
+            return
+        }
+        if clip.clipType == .video {
+            clipToTrim = clip
+            showingClipTrim = true
+        } else if clip.clipType == .image {
+            imageSettingsClipID = clip.id
+            showingImageSettings = true
+        }
+    }
+
+    private func handleClipDelete(_ clip: Clip) {
+        clipToDelete = clip
+        showingDeleteConfirmation = true
+    }
+
+    private func handleSeamChanged(_ leftID: UUID?, _ rightID: UUID?) {
+        if tapeStore.isFloatingClip {
+            dropSeamLeftClipID = leftID
+            dropSeamRightClipID = rightID
+            print("[SEAM] scroll: leftID=\(leftID?.uuidString.prefix(4) ?? "nil") rightID=\(rightID?.uuidString.prefix(4) ?? "nil")")
+        }
+    }
+
     private func deleteAssetFromPhotoLibrary(assetId: String) {
         Task {
             let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
@@ -505,12 +539,6 @@ struct TapeCardView: View {
 
     @ViewBuilder
     private func dropTargetFAB(thumbH: CGFloat) -> some View {
-        let floatingBeforeFAB: Bool = {
-            guard tapeStore.floatingSourceTapeID == tape.id,
-                  let srcIdx = tapeStore.floatingSourceIndex else { return false }
-            return srcIdx < savedCarouselPosition
-        }()
-        let fabInsertionIndex = savedCarouselPosition - (floatingBeforeFAB ? 1 : 0)
         GeometryReader { geo in
             let frame = geo.frame(in: .global)
             Circle()
@@ -521,7 +549,7 @@ struct TapeCardView: View {
                     photoStackDashedIcon()
                 }
                 .preference(key: DropTargetPreferenceKey.self, value: [
-                    DropTargetInfo(tapeID: tape.id, insertionIndex: fabInsertionIndex, frame: frame, kind: .fab)
+                    DropTargetInfo(tapeID: tape.id, insertionIndex: savedCarouselPosition, seamLeftClipID: dropSeamLeftClipID, seamRightClipID: dropSeamRightClipID, frame: frame, kind: .fab)
                 ])
         }
         .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)

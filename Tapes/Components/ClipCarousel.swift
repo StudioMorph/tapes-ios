@@ -3,6 +3,8 @@ import SwiftUI
 struct DropTargetInfo: Equatable {
     let tapeID: UUID
     let insertionIndex: Int
+    let seamLeftClipID: UUID?
+    let seamRightClipID: UUID?
     let frame: CGRect
     let kind: Kind
     enum Kind: Equatable { case startPlus, endPlus, fab }
@@ -29,6 +31,7 @@ struct ClipCarousel: View {
     let onPlaceholderTap: (CarouselItem) -> Void
     var onClipTap: ((Clip) -> Void)? = nil
     var onClipDelete: ((Clip) -> Void)? = nil
+    var onSeamChanged: ((UUID?, UUID?) -> Void)? = nil
     
     var items: [CarouselItem] {
         let visibleClips = tape.clips.filter { $0.id != tapeStore.floatingClip?.id }
@@ -47,35 +50,54 @@ struct ClipCarousel: View {
         // Force re-evaluation by using the hash as an ID
         let carouselId = "carousel-\(tape.id)-\(tapeHash)"
         GeometryReader { container in
+            // After a drop, use the drop index directly so the carousel
+            // recreates at the correct position (onChange fires too late).
+            let effectiveSavedPos: Int = {
+                if !tapeStore.isFloatingClip,
+                   tapeStore.dropCompletedTapeID == tape.id,
+                   let dropIdx = tapeStore.dropCompletedAtIndex {
+                    return dropIdx
+                }
+                return savedCarouselPosition
+            }()
             let floatingIsBeforeFAB: Bool = {
                 guard tapeStore.floatingSourceTapeID == tape.id,
                       let srcIdx = tapeStore.floatingSourceIndex else { return false }
-                return srcIdx < savedCarouselPosition
+                return srcIdx < effectiveSavedPos
             }()
-            let adjustedSnapIndex = savedCarouselPosition + 1 - (floatingIsBeforeFAB ? 1 : 0)
-
+            let adjustedSnapIndex = effectiveSavedPos + 1 - (floatingIsBeforeFAB ? 1 : 0)
             SnappingHScroll(itemWidth: thumbSize.width,
                            leadingInset: 16,
                            trailingInset: 16,
                            containerWidth: container.size.width,
-                           targetSnapIndex: pendingTargetItemIndex,
+                           targetSnapIndex: tapeStore.isFloatingClip ? nil : pendingTargetItemIndex,
                            currentSnapIndex: isNewSession ? (initialCarouselPosition + 1) : adjustedSnapIndex,
                            pendingToken: pendingToken,
                            tapeId: tape.id,
-                           onSnapped: { leftIndex, rightIndex in
-                               // Convert from item-space to clip-space
-                               let clipLeft = max(0, leftIndex - 1)
-                               
-                               // Update saved position when carousel snaps
-                               let oldPosition = savedCarouselPosition
+                           onSnapped: { snapIndex, _ in
+                               let clipLeft = max(0, snapIndex - 1)
                                savedCarouselPosition = clipLeft
-                               // Clear pending target after applying it
+                               
+                               // Extract seam clip IDs from the actual items at this snap position
+                               let currentItems = items
+                               let leftItemIdx = snapIndex - 1
+                               let rightItemIdx = snapIndex
+                               var leftID: UUID? = nil
+                               var rightID: UUID? = nil
+                               if leftItemIdx >= 0 && leftItemIdx < currentItems.count,
+                                  case .clip(let clip) = currentItems[leftItemIdx] {
+                                   leftID = clip.id
+                               }
+                               if rightItemIdx >= 0 && rightItemIdx < currentItems.count,
+                                  case .clip(let clip) = currentItems[rightItemIdx] {
+                                   rightID = clip.id
+                               }
+                               onSeamChanged?(leftID, rightID)
+                               
                                if pendingTargetItemIndex != nil {
                                    pendingTargetItemIndex = nil
                                    pendingToken = nil
                                }
-                               
-                               // Mark session as "opened" after first positioning
                                if isNewSession {
                                    isNewSession = false
                                }

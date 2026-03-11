@@ -146,7 +146,7 @@ struct TapesListView: View {
                     }
                     if let target {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            tapesStore.dropFloatingClip(onTape: target.tapeID, atIndex: target.insertionIndex)
+                            tapesStore.dropFloatingClip(onTape: target.tapeID, atIndex: target.insertionIndex, afterClipID: target.seamLeftClipID, beforeClipID: target.seamRightClipID)
                         }
                     }
                     hoveredTarget = nil
