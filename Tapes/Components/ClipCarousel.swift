@@ -165,11 +165,13 @@ private struct JiggleableClipView: View {
     var body: some View {
         if isJiggling, case .clip(let clip) = item, !clip.isPlaceholder {
             let seed = Double(clip.id.hashValue & 0xFF) / 255.0
+            let phase = Double((clip.id.hashValue >> 8) & 0xFF) / 255.0 * .pi * 2
             TimelineView(.animation) { timeline in
                 let time = timeline.date.timeIntervalSinceReferenceDate
-                let baseAngle = 1.5 + seed * 1.5
-                let speed = 8.0 + seed * 4.0
-                let angle = baseAngle * sin(time * speed)
+
+                let rotAngle = (0.8 + seed * 0.5) * sin(time * (18.0 + seed * 7.0) + phase)
+                let offsetX = (0.25 + seed * 0.25) * sin(time * (16.0 + seed * 6.0) + phase + 1.2)
+                let offsetY = (0.35 + seed * 0.35) * cos(time * (17.0 + seed * 6.5) + phase + 2.4)
 
                 ThumbnailView(
                     item: item,
@@ -194,7 +196,8 @@ private struct JiggleableClipView: View {
                     .offset(y: -12)
                 }
                 .scaleEffect(0.92)
-                .rotationEffect(.degrees(angle))
+                .offset(x: offsetX, y: offsetY)
+                .rotationEffect(.degrees(rotAngle))
             }
         } else {
             ThumbnailView(
