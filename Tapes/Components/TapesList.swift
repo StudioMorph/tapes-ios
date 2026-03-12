@@ -92,6 +92,7 @@ struct TapesList: View {
             .background(Tokens.Colors.primaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+            .compositingGroup()
             .opacity(tapeStore.jigglingTapeID != nil && tapeStore.jigglingTapeID != tapeID ? 0.4 : 1)
             .disabled(tapeStore.jigglingTapeID != nil && tapeStore.jigglingTapeID != tapeID)
             .animation(.easeInOut(duration: 0.25), value: tapeStore.jigglingTapeID)
