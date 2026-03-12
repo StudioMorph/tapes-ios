@@ -28,6 +28,9 @@ struct HeaderView: View {
             if isJiggling {
                 Button("Done") {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        if tapeStore.isFloatingClip {
+                            tapeStore.returnFloatingClip()
+                        }
                         tapeStore.jigglingTapeID = nil
                     }
                 }
