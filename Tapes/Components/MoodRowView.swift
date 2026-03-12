@@ -31,6 +31,12 @@ struct MoodRowView: View {
                     if isSelected && mood != .none {
                         actionButtons
                     }
+
+                    if isSelected && mood == .none {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(Tokens.Typography.title)
+                    }
                 }
                 .padding(.vertical, Tokens.Spacing.m)
                 .padding(.horizontal, Tokens.Spacing.m)
