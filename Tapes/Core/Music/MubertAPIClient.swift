@@ -145,15 +145,20 @@ actor MubertAPIClient {
     private static let maxPollAttempts = 30
     private static let pollInterval: UInt64 = 2_000_000_000 // 2 seconds
 
-    private static let loopTrackDuration = 30
+    static let loopTrackDuration = 30
 
-    /// Generates a background music track for the given mood.
-    /// Returns a local file URL. Tracks are cached by mood for instant replay.
-    func generateTrack(mood: Mood, durationSeconds: Int) async throws -> URL {
+    /// Generates a background music track for the given mood and tape.
+    /// Reports progress via the callback (0.0–1.0). Tracks are cached per-tape.
+    func generateTrack(
+        mood: Mood,
+        tapeID: UUID,
+        onProgress: @Sendable @escaping (Double) -> Void
+    ) async throws -> URL {
         guard mood != .none else { throw APIError.noMoodSelected }
 
-        if let cached = cachedTrackURL(for: mood) {
-            log.info("Using cached track for mood=\(mood.rawValue)")
+        if let cached = cachedTrackURL(for: tapeID) {
+            log.info("Using cached track for tape=\(tapeID.uuidString.prefix(8))")
+            onProgress(1.0)
             return cached
         }
 
@@ -168,7 +173,8 @@ actor MubertAPIClient {
             "mode": "track"
         ]
 
-        log.info("Requesting track: mood=\(mood.rawValue) playlist=\(mood.playlistIndex) duration=\(trackDuration)s (loops)")
+        onProgress(0.05)
+        log.info("Requesting track: mood=\(mood.rawValue) playlist=\(mood.playlistIndex) tape=\(tapeID.uuidString.prefix(8))")
 
         var request = URLRequest(url: URL(string: baseURL)!)
         request.httpMethod = "POST"
@@ -184,21 +190,20 @@ actor MubertAPIClient {
         }
 
         log.info("API response status: \(httpResponse.statusCode)")
+        onProgress(0.1)
 
         if httpResponse.statusCode == 401 {
             let responseBody = String(data: data, encoding: .utf8) ?? "(empty)"
             log.warning("API returned 401 — falling back to mock. Body: \(responseBody)")
-            return try await downloadMockTrack(mood: mood, duration: durationSeconds)
+            let url = try await downloadMockTrack(mood: mood, tapeID: tapeID)
+            onProgress(1.0)
+            return url
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
             log.error("API error \(httpResponse.statusCode): \(message)")
             throw APIError.serverError(message)
-        }
-
-        if let responseStr = String(data: data, encoding: .utf8) {
-            log.debug("API response body: \(responseStr)")
         }
 
         let trackResponse = try JSONDecoder().decode(TrackResponse.self, from: data)
@@ -209,20 +214,30 @@ actor MubertAPIClient {
         if let gen = trackResponse.data?.generations?.first,
            gen.status == "done", let urlStr = gen.url, let url = URL(string: urlStr) {
             log.info("Track immediately ready: \(urlStr)")
-            return try await downloadTrack(from: url, mood: mood)
+            onProgress(0.9)
+            let local = try await downloadTrack(from: url, tapeID: tapeID)
+            onProgress(1.0)
+            return local
         }
 
         log.info("Track processing, polling id=\(trackID)")
-        return try await pollForTrack(id: trackID, mood: mood)
+        return try await pollForTrack(id: trackID, tapeID: tapeID, onProgress: onProgress)
     }
 
     // MARK: - Polling
 
-    private func pollForTrack(id: String, mood: Mood) async throws -> URL {
+    private func pollForTrack(
+        id: String,
+        tapeID: UUID,
+        onProgress: @Sendable @escaping (Double) -> Void
+    ) async throws -> URL {
         let pollURL = URL(string: "\(baseURL)/\(id)")!
 
         for attempt in 0..<Self.maxPollAttempts {
             try await Task.sleep(nanoseconds: Self.pollInterval)
+
+            let fraction = 0.1 + 0.8 * (Double(attempt + 1) / Double(Self.maxPollAttempts))
+            onProgress(fraction)
 
             var request = URLRequest(url: pollURL)
             request.httpMethod = "GET"
@@ -237,7 +252,10 @@ actor MubertAPIClient {
                 log.info("Poll \(attempt + 1)/\(Self.maxPollAttempts): status=\(gen.status)")
                 if gen.status == "done", let urlStr = gen.url, let url = URL(string: urlStr) {
                     log.info("Track ready: \(urlStr)")
-                    return try await downloadTrack(from: url, mood: mood)
+                    onProgress(0.95)
+                    let local = try await downloadTrack(from: url, tapeID: tapeID)
+                    onProgress(1.0)
+                    return local
                 }
             }
         }
@@ -246,26 +264,32 @@ actor MubertAPIClient {
         throw APIError.serverError("Track generation timed out.")
     }
 
-    // MARK: - Cache
+    // MARK: - Cache (per-tape)
 
     private func trackCacheDir() -> URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
             .appendingPathComponent("mubert_tracks", isDirectory: true)
     }
 
-    private func cachedTrackURL(for mood: Mood) -> URL? {
-        let file = trackCacheDir().appendingPathComponent("\(mood.rawValue).mp3")
+    func cachedTrackURL(for tapeID: UUID) -> URL? {
+        let file = trackCacheDir().appendingPathComponent("\(tapeID.uuidString).mp3")
         return FileManager.default.fileExists(atPath: file.path) ? file : nil
+    }
+
+    func clearCache(for tapeID: UUID) {
+        let file = trackCacheDir().appendingPathComponent("\(tapeID.uuidString).mp3")
+        try? FileManager.default.removeItem(at: file)
+        log.info("Cleared cache for tape=\(tapeID.uuidString.prefix(8))")
     }
 
     // MARK: - Download
 
-    private func downloadTrack(from remoteURL: URL, mood: Mood) async throws -> URL {
+    private func downloadTrack(from remoteURL: URL, tapeID: UUID) async throws -> URL {
         let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
         let cacheDir = trackCacheDir()
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
-        let localURL = cacheDir.appendingPathComponent("\(mood.rawValue).mp3")
+        let localURL = cacheDir.appendingPathComponent("\(tapeID.uuidString).mp3")
 
         if FileManager.default.fileExists(atPath: localURL.path) {
             try FileManager.default.removeItem(at: localURL)
@@ -277,18 +301,15 @@ actor MubertAPIClient {
 
     // MARK: - Mock Fallback
 
-    /// Returns a simple tone audio file for development when the API isn't available.
-    private func downloadMockTrack(mood: Mood, duration: Int) async throws -> URL {
+    private func downloadMockTrack(mood: Mood, tapeID: UUID) async throws -> URL {
         log.warning("Using mock audio track (API unavailable)")
         let cacheDir = trackCacheDir()
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
-        let localURL = cacheDir.appendingPathComponent("mock_\(mood.rawValue).wav")
+        let localURL = cacheDir.appendingPathComponent("\(tapeID.uuidString).mp3")
 
-        if !FileManager.default.fileExists(atPath: localURL.path) {
-            let toneWav = generateToneWav(durationSeconds: Self.loopTrackDuration, frequency: 220)
-            try toneWav.write(to: localURL)
-        }
+        let toneWav = generateToneWav(durationSeconds: Self.loopTrackDuration, frequency: 220)
+        try toneWav.write(to: localURL)
         return localURL
     }
 

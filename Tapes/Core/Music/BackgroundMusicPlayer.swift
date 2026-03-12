@@ -23,9 +23,10 @@ final class BackgroundMusicPlayer: ObservableObject {
 
     // MARK: - Prepare
 
-    /// Generates (or loads from cache) a background track and prepares it for playback.
+    /// Loads (or waits for) a background track for the given mood and tape.
+    /// If the track is already cached, loads instantly. If still generating, waits with polling.
     /// If the video already called syncPlay() before this finishes, playback starts automatically.
-    func prepare(mood: MubertAPIClient.Mood, durationSeconds: Int, volume: Float) async {
+    func prepare(mood: MubertAPIClient.Mood, tapeID: UUID, volume: Float) async {
         guard mood != .none else {
             stop()
             return
@@ -35,13 +36,22 @@ final class BackgroundMusicPlayer: ObservableObject {
         error = nil
         pendingPlay = false
 
-        log.info("Preparing background music: mood=\(mood.rawValue), duration=\(durationSeconds)s, volume=\(volume)")
+        log.info("Preparing background music: mood=\(mood.rawValue), tape=\(tapeID.uuidString.prefix(8)), volume=\(volume)")
 
         do {
-            let localURL = try await MubertAPIClient.shared.generateTrack(
-                mood: mood,
-                durationSeconds: durationSeconds
-            )
+            let localURL: URL
+
+            if let cached = await MubertAPIClient.shared.cachedTrackURL(for: tapeID) {
+                log.info("Track already cached")
+                localURL = cached
+            } else {
+                log.info("Track not cached, generating...")
+                localURL = try await MubertAPIClient.shared.generateTrack(
+                    mood: mood,
+                    tapeID: tapeID,
+                    onProgress: { _ in }
+                )
+            }
 
             guard !Task.isCancelled else { return }
 

@@ -5,7 +5,8 @@ struct TapeSettingsView: View {
     let onDismiss: () -> Void
     let onTapeDeleted: (() -> Void)?
     @EnvironmentObject var tapesStore: TapesStore
-    
+    @StateObject private var trackGen = TrackGenerationManager()
+
     // UI-only state
     @State private var selectedTransition: TransitionType
     @State private var transitionDuration: Double
@@ -16,7 +17,7 @@ struct TapeSettingsView: View {
     @State private var isDeleting = false
     @State private var deleteError: String?
     @State private var showingDeleteError = false
-    
+
     init(tape: Binding<Tape>, onDismiss: @escaping () -> Void = {}, onTapeDeleted: (() -> Void)? = nil) {
         self._tape = tape
         self.onDismiss = onDismiss
@@ -78,6 +79,12 @@ struct TapeSettingsView: View {
                 }
             }
         }
+        .onAppear {
+            if selectedMood != .none {
+                trackGen.loadCachedState(for: tape.id)
+            }
+        }
+        .onDisappear { trackGen.stopPreview() }
         .onChange(of: transitionDuration) { _ in hasChanges = true }
         .onChange(of: tape) { _ in resetToBindingValues() }
         .alert("Delete this Tape?", isPresented: $showingDeleteConfirmation) {
@@ -137,20 +144,19 @@ struct TapeSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             SectionHeader(title: "Background Music")
 
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: Tokens.Spacing.s),
-                GridItem(.flexible(), spacing: Tokens.Spacing.s),
-                GridItem(.flexible(), spacing: Tokens.Spacing.s)
-            ], spacing: Tokens.Spacing.s) {
+            VStack(spacing: Tokens.Spacing.s) {
                 ForEach(MubertAPIClient.Mood.allCases) { mood in
-                    MoodOptionCell(
+                    MoodRowView(
                         mood: mood,
-                        isSelected: selectedMood == mood
-                    ) {
-                        selectedMood = mood
-                        hasChanges = true
-                        provideHapticFeedback()
-                    }
+                        isSelected: selectedMood == mood,
+                        isGenerating: selectedMood == mood && trackGen.isGenerating,
+                        isReady: selectedMood == mood && trackGen.isReady,
+                        isPreviewing: selectedMood == mood && trackGen.isPreviewing,
+                        progress: selectedMood == mood ? trackGen.progress : 0,
+                        onSelect: { selectMood(mood) },
+                        onPreview: { trackGen.togglePreview() },
+                        onRegenerate: { trackGen.regenerate(mood: mood, tapeID: tape.id) }
+                    )
                 }
             }
         }
@@ -193,15 +199,37 @@ struct TapeSettingsView: View {
     
     // MARK: - Helper Methods
     
+    private func selectMood(_ mood: MubertAPIClient.Mood) {
+        guard mood != selectedMood else { return }
+
+        trackGen.cancel()
+        if selectedMood != .none {
+            Task { await MubertAPIClient.shared.clearCache(for: tape.id) }
+        }
+
+        selectedMood = mood
+        hasChanges = true
+        provideHapticFeedback()
+
+        if mood != .none {
+            trackGen.generate(mood: mood, tapeID: tape.id)
+        }
+    }
+
     private func resetToBindingValues() {
         selectedTransition = tape.transition
         transitionDuration = tape.transitionDuration
         selectedMood = tape.musicMood
         musicVolume = Double(tape.musicVolume)
         hasChanges = false
+        trackGen.cancel()
+        if selectedMood != .none {
+            trackGen.loadCachedState(for: tape.id)
+        }
     }
-    
+
     private func saveChanges() {
+        trackGen.stopPreview()
         var updated = tape
         updated.updateSettings(
             orientation: tape.orientation,

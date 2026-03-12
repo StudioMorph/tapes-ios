@@ -119,13 +119,13 @@ final class TapePlayerViewModel: ObservableObject {
         configureAudioSession()
         registerSystemObservers()
 
-        // Kick off background music generation concurrently — don't block clip loading
+        // Kick off background music loading concurrently — don't block clip loading
         if tape.musicMood != .none {
             let mood = tape.musicMood
-            let dur = max(15, Int(tape.duration))
+            let tapeID = tape.id
             let vol = tape.musicVolume
             Task {
-                await backgroundMusic.prepare(mood: mood, durationSeconds: dur, volume: vol)
+                await backgroundMusic.prepare(mood: mood, tapeID: tapeID, volume: vol)
                 if self.isPlaying {
                     backgroundMusic.syncPlay()
                 }
