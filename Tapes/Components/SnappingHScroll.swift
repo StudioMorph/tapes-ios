@@ -16,6 +16,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     var onDragPositionChanged: ((CGPoint) -> Void)? = nil
     var onDragEnded: (() -> Void)? = nil
     var contentHash: Int = 0
+    var onScrollFractionChanged: ((CGFloat) -> Void)? = nil
     let content: () -> Content
 
     init(itemWidth: CGFloat,
@@ -32,6 +33,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
          onDragPositionChanged: ((CGPoint) -> Void)? = nil,
          onDragEnded: (() -> Void)? = nil,
          contentHash: Int = 0,
+         onScrollFractionChanged: ((CGFloat) -> Void)? = nil,
          @ViewBuilder content: @escaping () -> Content) {
         self.itemWidth = itemWidth
         self.leadingInset = leadingInset
@@ -47,6 +49,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         self.onDragPositionChanged = onDragPositionChanged
         self.onDragEnded = onDragEnded
         self.contentHash = contentHash
+        self.onScrollFractionChanged = onScrollFractionChanged
         self.content = content
     }
 
@@ -274,13 +277,17 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         }
         
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            // Update state based on scroll behavior
             if isUserScrolling {
                 state = .scrolling
-                isProgrammaticScroll = false // Reset programmatic scroll flag when user starts scrolling
+                isProgrammaticScroll = false
             } else if state == .scrolling {
                 state = .snapping
             }
+
+            guard parent.itemWidth > 0 else { return }
+            let centerX = parent.containerWidth / 2.0
+            let fraction = (scrollView.contentOffset.x + centerX - parent.leadingInset) / parent.itemWidth
+            parent.onScrollFractionChanged?(fraction)
         }
         
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {

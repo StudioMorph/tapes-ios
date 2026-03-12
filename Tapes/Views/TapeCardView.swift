@@ -72,6 +72,7 @@ struct TapeCardView: View {
     @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
     @State private var dropSeamLeftClipID: UUID? = nil
     @State private var dropSeamRightClipID: UUID? = nil
+    @State private var scrollFraction: CGFloat = 0
     // Initial carousel position - set to last position in clip-space
     private var initialCarouselPosition: Int {
         return tape.clips.count // Clip-space: 0 = start, N = end
@@ -210,24 +211,28 @@ struct TapeCardView: View {
                 .zIndex(0)
                 
                 // 2) Red center line (between clips and FAB)
+                let fabOpacity: Double = {
+                    guard isJiggling, tapeStore.isFloatingClip else { return 1 }
+                    let visibleCount = CGFloat(tape.clips.count - 1)
+                    let clipFraction = scrollFraction - 1
+                    let distFromStart = clipFraction
+                    let distFromEnd = visibleCount - clipFraction
+                    return Double(min(1, max(0, min(distFromStart, distFromEnd))))
+                }()
                 Rectangle()
                     .fill(isJiggling && tapeStore.isFloatingClip ? Tokens.Colors.tertiaryBackground : Tokens.Colors.systemRed.opacity(0.9))
                     .frame(width: 2, height: thumbH)
+                    .opacity(fabOpacity)
                     .allowsHitTesting(false)
                     .zIndex(1)
                     .animation(.easeInOut(duration: 0.25), value: tapeStore.isFloatingClip)
                 
                 // 3) Floating action button / drop target
                 if isJiggling && tapeStore.isFloatingClip {
-                    let fabAtEdge = savedCarouselPosition <= 0 || savedCarouselPosition >= tape.clips.count - 1
-                    if !fabAtEdge {
-                        dropTargetFAB(thumbH: thumbH)
-                            .zIndex(2)
-                    } else {
-                        Color.clear
-                            .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
-                            .zIndex(2)
-                    }
+                    dropTargetFAB(thumbH: thumbH)
+                        .opacity(fabOpacity)
+                        .allowsHitTesting(fabOpacity > 0.5)
+                        .zIndex(2)
                 } else {
                     FabSwipableIcon(mode: $fabMode) {
                         switch fabMode {
@@ -484,7 +489,10 @@ struct TapeCardView: View {
             onPlaceholderTap: handlePlaceholderTap,
             onClipTap: handleClipTap,
             onClipDelete: handleClipDelete,
-            onSeamChanged: handleSeamChanged
+            onSeamChanged: handleSeamChanged,
+            onScrollFractionChanged: { fraction in
+                scrollFraction = fraction
+            }
         )
     }
 

@@ -32,6 +32,7 @@ struct ClipCarousel: View {
     var onClipTap: ((Clip) -> Void)? = nil
     var onClipDelete: ((Clip) -> Void)? = nil
     var onSeamChanged: ((UUID?, UUID?) -> Void)? = nil
+    var onScrollFractionChanged: ((CGFloat) -> Void)? = nil
     
     var items: [CarouselItem] {
         let visibleClips = tape.clips.filter { $0.id != tapeStore.floatingClip?.id }
@@ -120,7 +121,8 @@ struct ClipCarousel: View {
                            onDragEnded: {
                                tapeStore.floatingDragDidEnd = true
                            },
-                           contentHash: tapeHash) {
+                           contentHash: tapeHash,
+                           onScrollFractionChanged: onScrollFractionChanged) {
                 // Leading 16pt padding INSIDE the card
                 Color.clear.frame(width: 16)
                 
