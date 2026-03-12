@@ -7,18 +7,20 @@ struct MoodRowView: View {
     let isReady: Bool
     let isPreviewing: Bool
     let progress: Double
+    @Binding var volume: Double
     let onSelect: () -> Void
     let onPreview: () -> Void
     let onRegenerate: () -> Void
+    let onVolumeChanged: () -> Void
 
     var body: some View {
         Button(action: onSelect) {
             VStack(spacing: 0) {
                 HStack(spacing: Tokens.Spacing.m) {
                     Image(systemName: mood.icon)
-                        .font(.body)
-                        .foregroundColor(isSelected ? .blue : Tokens.Colors.secondaryText)
-                        .frame(width: 24)
+                        .font(.title3)
+                        .foregroundColor(Tokens.Colors.primaryText)
+                        .frame(width: 28)
 
                     Text(mood.displayName)
                         .font(Tokens.Typography.headline)
@@ -29,17 +31,15 @@ struct MoodRowView: View {
                     if isSelected && mood != .none {
                         actionButtons
                     }
-
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(.body)
-                    }
                 }
                 .padding(.vertical, Tokens.Spacing.m)
                 .padding(.horizontal, Tokens.Spacing.m)
 
                 if isSelected && mood != .none {
+                    volumeSlider
+                        .padding(.horizontal, Tokens.Spacing.m)
+                        .padding(.bottom, Tokens.Spacing.m)
+
                     progressBar
                 }
             }
@@ -58,9 +58,9 @@ struct MoodRowView: View {
         HStack(spacing: Tokens.Spacing.xl) {
             Button(action: onPreview) {
                 previewIcon
-                    .font(.body)
+                    .font(.title3)
                     .foregroundColor(isReady ? .blue : Tokens.Colors.tertiaryText)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
             }
             .disabled(!isReady)
             .buttonStyle(.plain)
@@ -68,9 +68,9 @@ struct MoodRowView: View {
 
             Button(action: onRegenerate) {
                 Image(systemName: "arrow.trianglehead.2.clockwise")
-                    .font(.body)
+                    .font(.title3)
                     .foregroundColor(isReady ? Tokens.Colors.primaryText : Tokens.Colors.tertiaryText)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 28, height: 28)
             }
             .disabled(isGenerating)
             .buttonStyle(.plain)
@@ -87,6 +87,30 @@ struct MoodRowView: View {
         }
     }
 
+    // MARK: - Volume Slider
+
+    private var volumeSlider: some View {
+        HStack(spacing: Tokens.Spacing.s) {
+            Image(systemName: "speaker.fill")
+                .font(.caption)
+                .foregroundColor(isReady ? Tokens.Colors.secondaryText : Tokens.Colors.tertiaryText)
+
+            Slider(value: $volume, in: 0.05...1.0, step: 0.05)
+                .tint(isReady ? .blue : Tokens.Colors.tertiaryText)
+                .disabled(!isReady)
+                .onChange(of: volume) { _ in onVolumeChanged() }
+
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.caption)
+                .foregroundColor(isReady ? Tokens.Colors.secondaryText : Tokens.Colors.tertiaryText)
+
+            Text("\(Int(volume * 100))%")
+                .font(.caption)
+                .foregroundColor(isReady ? Tokens.Colors.secondaryText : Tokens.Colors.tertiaryText)
+                .frame(width: 36, alignment: .trailing)
+        }
+    }
+
     // MARK: - Progress Bar
 
     @ViewBuilder
@@ -98,7 +122,7 @@ struct MoodRowView: View {
                         .fill(Tokens.Colors.tertiaryBackground)
 
                     Rectangle()
-                        .fill(Color.green)
+                        .fill(isReady ? Color.blue : Color.green)
                         .frame(width: geo.size.width * progress)
                         .animation(.linear(duration: 0.3), value: progress)
                 }
@@ -147,22 +171,26 @@ struct SoundWaveAnimationView: View {
         MoodRowView(
             mood: .none, isSelected: true, isGenerating: false,
             isReady: false, isPreviewing: false, progress: 0,
-            onSelect: {}, onPreview: {}, onRegenerate: {}
+            volume: .constant(0.8),
+            onSelect: {}, onPreview: {}, onRegenerate: {}, onVolumeChanged: {}
         )
         MoodRowView(
             mood: .chill, isSelected: true, isGenerating: true,
             isReady: false, isPreviewing: false, progress: 0.6,
-            onSelect: {}, onPreview: {}, onRegenerate: {}
+            volume: .constant(0.8),
+            onSelect: {}, onPreview: {}, onRegenerate: {}, onVolumeChanged: {}
         )
         MoodRowView(
             mood: .epic, isSelected: true, isGenerating: false,
             isReady: true, isPreviewing: false, progress: 1,
-            onSelect: {}, onPreview: {}, onRegenerate: {}
+            volume: .constant(0.8),
+            onSelect: {}, onPreview: {}, onRegenerate: {}, onVolumeChanged: {}
         )
         MoodRowView(
             mood: .cinematic, isSelected: false, isGenerating: false,
             isReady: false, isPreviewing: false, progress: 0,
-            onSelect: {}, onPreview: {}, onRegenerate: {}
+            volume: .constant(0.8),
+            onSelect: {}, onPreview: {}, onRegenerate: {}, onVolumeChanged: {}
         )
     }
     .padding()

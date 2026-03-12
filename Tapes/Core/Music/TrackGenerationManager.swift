@@ -88,15 +88,15 @@ final class TrackGenerationManager: ObservableObject {
 
     // MARK: - Preview
 
-    func togglePreview() {
+    func togglePreview(volume: Float = 0.8) {
         if isPreviewing {
             stopPreview()
         } else {
-            startPreview()
+            startPreview(volume: volume)
         }
     }
 
-    private func startPreview() {
+    private func startPreview(volume: Float) {
         guard let url = cachedTrackURL else { return }
 
         do {
@@ -106,13 +106,13 @@ final class TrackGenerationManager: ObservableObject {
 
             let player = try AVAudioPlayer(contentsOf: url)
             player.numberOfLoops = -1
-            player.volume = 0.8
+            player.volume = volume
             player.prepareToPlay()
             player.play()
 
             previewPlayer = player
             isPreviewing = true
-            log.info("Preview started")
+            log.info("Preview started at volume=\(volume)")
         } catch {
             log.error("Preview failed: \(error.localizedDescription)")
         }
@@ -122,6 +122,10 @@ final class TrackGenerationManager: ObservableObject {
         previewPlayer?.stop()
         previewPlayer = nil
         isPreviewing = false
+    }
+
+    func updatePreviewVolume(_ volume: Float) {
+        previewPlayer?.volume = volume
     }
 
     // MARK: - Query

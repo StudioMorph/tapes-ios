@@ -43,13 +43,8 @@ struct TapeSettingsView: View {
                     backgroundMusicSection
                         .accessibilitySortPriority(3)
 
-                    if selectedMood != .none {
-                        musicVolumeSection
-                            .accessibilitySortPriority(4)
-                    }
-
                     destructiveActionSection
-                        .accessibilitySortPriority(5)
+                        .accessibilitySortPriority(4)
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
@@ -153,37 +148,17 @@ struct TapeSettingsView: View {
                         isReady: selectedMood == mood && trackGen.isReady,
                         isPreviewing: selectedMood == mood && trackGen.isPreviewing,
                         progress: selectedMood == mood ? trackGen.progress : 0,
+                        volume: $musicVolume,
                         onSelect: { selectMood(mood) },
-                        onPreview: { trackGen.togglePreview() },
-                        onRegenerate: { trackGen.regenerate(mood: mood, tapeID: tape.id) }
+                        onPreview: { trackGen.togglePreview(volume: Float(musicVolume)) },
+                        onRegenerate: { trackGen.regenerate(mood: mood, tapeID: tape.id) },
+                        onVolumeChanged: {
+                            hasChanges = true
+                            trackGen.updatePreviewVolume(Float(musicVolume))
+                        }
                     )
                 }
             }
-        }
-    }
-
-    private var musicVolumeSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            SectionHeader(title: "Music Volume")
-
-            HStack(spacing: Tokens.Spacing.m) {
-                Image(systemName: "speaker.fill")
-                    .foregroundColor(Tokens.Colors.secondaryText)
-                    .font(.caption)
-
-                Slider(value: $musicVolume, in: 0.05...1.0, step: 0.05)
-                    .tint(Tokens.Colors.systemRed)
-                    .onChange(of: musicVolume) { _ in hasChanges = true }
-
-                Image(systemName: "speaker.wave.3.fill")
-                    .foregroundColor(Tokens.Colors.secondaryText)
-                    .font(.caption)
-            }
-
-            Text("\(Int(musicVolume * 100))%")
-                .font(.caption)
-                .foregroundColor(Tokens.Colors.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
