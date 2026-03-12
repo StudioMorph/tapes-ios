@@ -281,7 +281,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     public static var sampleTapes: [Tape] {
         [
             Tape(
-                title: "New Reel",
+                title: "New Tape",
                 orientation: .portrait,
                 scaleMode: .fit,
                 transition: .none,

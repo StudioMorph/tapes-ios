@@ -298,7 +298,7 @@ public class TapesStore: ObservableObject {
     #if DEBUG
     func resetForDebug() {
         tapes = [Tape(
-            title: "New Reel",
+            title: "New Tape",
             orientation: .portrait,
             scaleMode: .fit,
             transition: .none,
@@ -1259,7 +1259,7 @@ extension TapesStore {
 
         if tapes.isEmpty {
             let newReel = Tape(
-                title: "New Reel",
+                title: "New Tape",
                 orientation: .portrait,
                 scaleMode: .fit,
                 transition: .none,
@@ -1285,7 +1285,7 @@ extension TapesStore {
     /// Insert a new empty tape at index 0
     public func insertEmptyTapeAtTop(animated: Bool = true) {
         let newEmptyTape = Tape(
-            title: "New Reel",
+            title: "New Tape",
             orientation: .portrait,
             scaleMode: .fit,
             transition: .none,

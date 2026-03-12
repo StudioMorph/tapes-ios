@@ -240,7 +240,7 @@ public final class TapeAlbumService: TapeAlbumServicing {
     
     private func albumTitle(forTitle title: String) -> String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let suffix = trimmed.isEmpty ? "New Reel" : trimmed
+        let suffix = trimmed.isEmpty ? "New Tape" : trimmed
         return suffix
     }
     
