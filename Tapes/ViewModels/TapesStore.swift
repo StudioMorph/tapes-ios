@@ -179,6 +179,11 @@ private actor TapePersistenceActor {
 public class TapesStore: ObservableObject {
     @Published public var tapes: [Tape] = []
     @Published public private(set) var isLoaded = false
+
+    /// Number of tapes that have received content (excludes empty placeholder tapes).
+    public var contentTapeCount: Int {
+        tapes.filter { $0.hasReceivedFirstContent || !$0.clips.isEmpty }.count
+    }
     @Published public var selectedTape: Tape?
     @Published public var showingSettingsSheet = false
     @Published public var latestInsertedTapeID: UUID?

@@ -43,6 +43,7 @@ struct TapeCardView: View {
     let titleEditingConfig: TitleEditingConfig?
 
     @EnvironmentObject var tapeStore: TapesStore
+    @EnvironmentObject var entitlementManager: EntitlementManager
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
@@ -56,6 +57,7 @@ struct TapeCardView: View {
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingPhotoLibraryDelete = false
+    @State private var showingPaywall = false
     @State private var jiggleTask: Task<Void, Never>? = nil
     @FocusState private var isTitleFocused: Bool
     
@@ -439,6 +441,9 @@ struct TapeCardView: View {
         } message: {
             Text("Would you also like to delete this media from your photo library?")
         }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
+        }
     }
     
     // MARK: - Jiggle Mode
@@ -501,6 +506,13 @@ struct TapeCardView: View {
             exitJiggleMode()
             return
         }
+
+        if !tape.hasReceivedFirstContent,
+           !entitlementManager.canCreateTape(currentCount: tapeStore.contentTapeCount) {
+            showingPaywall = true
+            return
+        }
+
         switch item {
         case .startPlus:
             importSource = .leftPlaceholder
@@ -691,7 +703,7 @@ struct TapeCardView: View {
     }
     
 
-    /// Check if this tape just received its first content and create new empty tape if needed
+    /// Check if this tape just received its first content and create new empty tape if needed.
     private func checkAndCreateEmptyTapeIfNeeded() {
         guard tape.clips.count > 0, !tape.hasReceivedFirstContent else { return }
         var updated = tape
@@ -770,7 +782,8 @@ private struct BatchProgressChip: View {
         onClipInsertedAtPlaceholder: { _, _ in },
         onMediaInserted: { _, _ in }
     )
-    .environmentObject(TapesStore())  // lightweight preview store
+    .environmentObject(TapesStore())
+    .environmentObject(EntitlementManager())
     .padding()
     .background(Tokens.Colors.primaryBackground)
 }

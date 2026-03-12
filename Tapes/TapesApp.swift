@@ -9,7 +9,9 @@ import SwiftUI
 
 @main
 struct TapesApp: App {
-    @StateObject private var tapeStore = TapesStore()   // single source of truth
+    @StateObject private var tapeStore = TapesStore()
+    @StateObject private var authManager = AuthManager()
+    @StateObject private var entitlementManager = EntitlementManager()
 
     init() {
         cleanupTempImports()
@@ -19,6 +21,8 @@ struct TapesApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(tapeStore)
+                .environmentObject(authManager)
+                .environmentObject(entitlementManager)
         }
     }
 }

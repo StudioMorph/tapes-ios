@@ -1,0 +1,66 @@
+{
+  "identifier" : "F45A8C2E-3B7D-4A1E-9F6C-D8E2A1B3C4D5",
+  "nonRenewableSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_GB",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "cycleCount"
+      }
+    ],
+    "_timeRate" : 6
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "group.tapes.premium",
+      "localizations" : [
+
+      ],
+      "name" : "Tapes Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "2.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
+          "introductoryOffer" : {
+            "displayPrice" : "0.99",
+            "internalID" : "B2C3D4E5-F6A7-8901-BCDE-F12345678901",
+            "paymentMode" : "payUpFront",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Unlimited tapes, all features, cancel anytime.",
+              "displayName" : "Tapes Monthly",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "com.tapes.premium.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Tapes Monthly",
+          "subscriptionGroupID" : "group.tapes.premium",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
