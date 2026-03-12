@@ -219,8 +219,15 @@ struct TapeCardView: View {
                 
                 // 3) Floating action button / drop target
                 if isJiggling && tapeStore.isFloatingClip {
-                    dropTargetFAB(thumbH: thumbH)
-                        .zIndex(2)
+                    let fabAtEdge = savedCarouselPosition <= 0 || savedCarouselPosition >= tape.clips.count - 1
+                    if !fabAtEdge {
+                        dropTargetFAB(thumbH: thumbH)
+                            .zIndex(2)
+                    } else {
+                        Color.clear
+                            .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
+                            .zIndex(2)
+                    }
                 } else {
                     FabSwipableIcon(mode: $fabMode) {
                         switch fabMode {
