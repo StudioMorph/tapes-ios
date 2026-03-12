@@ -107,7 +107,9 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var updatedAt: Date
     public var hasReceivedFirstContent: Bool
     public var albumLocalIdentifier: String?
-    
+    public var backgroundMusicMood: String?
+    public var backgroundMusicVolume: Double?
+
     public init(
         id: UUID = UUID(),
         title: String = "New Tape",
@@ -120,7 +122,9 @@ public struct Tape: Identifiable, Codable, Equatable {
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         hasReceivedFirstContent: Bool = false,
-        albumLocalIdentifier: String? = nil
+        albumLocalIdentifier: String? = nil,
+        backgroundMusicMood: String? = nil,
+        backgroundMusicVolume: Double? = nil
     ) {
         self.id = id
         self.title = title
@@ -134,6 +138,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.updatedAt = updatedAt
         self.hasReceivedFirstContent = hasReceivedFirstContent
         self.albumLocalIdentifier = albumLocalIdentifier
+        self.backgroundMusicMood = backgroundMusicMood
+        self.backgroundMusicVolume = backgroundMusicVolume
     }
     
     // MARK: - Coding Keys
@@ -142,6 +148,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case id, title, orientation, scaleMode, transition, transitionDuration
         case seamTransitions
         case clips, createdAt, updatedAt, hasReceivedFirstContent, albumLocalIdentifier
+        case backgroundMusicMood, backgroundMusicVolume
     }
     
     // MARK: - Custom Decoder for Backward Compatibility
@@ -162,6 +169,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         
         hasReceivedFirstContent = try container.decodeIfPresent(Bool.self, forKey: .hasReceivedFirstContent) ?? false
         albumLocalIdentifier = try container.decodeIfPresent(String.self, forKey: .albumLocalIdentifier)
+        backgroundMusicMood = try container.decodeIfPresent(String.self, forKey: .backgroundMusicMood)
+        backgroundMusicVolume = try container.decodeIfPresent(Double.self, forKey: .backgroundMusicVolume)
     }
     
     // MARK: - Computed Properties
@@ -177,6 +186,16 @@ public struct Tape: Identifiable, Codable, Equatable {
     
     public var isEmpty: Bool {
         return clips.isEmpty
+    }
+
+    var musicMood: MubertAPIClient.Mood {
+        guard let raw = backgroundMusicMood,
+              let mood = MubertAPIClient.Mood(rawValue: raw) else { return .none }
+        return mood
+    }
+
+    var musicVolume: Float {
+        Float(backgroundMusicVolume ?? 0.3)
     }
     
     public var clipCount: Int {

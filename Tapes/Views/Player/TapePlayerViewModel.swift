@@ -101,6 +101,8 @@ final class TapePlayerViewModel: ObservableObject {
     private static let cacheCapacity = 10
     private static let maxConcurrentPreRenders = 2
 
+    let backgroundMusic = BackgroundMusicPlayer()
+
     // MARK: - Init
 
     init(tape: Tape) {
@@ -117,10 +119,25 @@ final class TapePlayerViewModel: ObservableObject {
         configureAudioSession()
         registerSystemObservers()
 
+        // Kick off background music generation concurrently — don't block clip loading
+        if tape.musicMood != .none {
+            let mood = tape.musicMood
+            let dur = max(15, Int(tape.duration))
+            let vol = tape.musicVolume
+            Task {
+                await backgroundMusic.prepare(mood: mood, durationSeconds: dur, volume: vol)
+                if self.isPlaying {
+                    backgroundMusic.syncPlay()
+                }
+            }
+        }
+
         do {
             let tl = try await builder.prepareTimeline(for: tape)
             timeline = updateTimelineRenderSize(tl)
             try await loadClip(index: 0, autoplay: true, forceSlot: .primary)
+            isPlaying = true
+            backgroundMusic.syncPlay()
             startSequentialPreload(from: 1)
         } catch {
             loadError = error.localizedDescription
@@ -131,6 +148,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     func shutdown() {
         isTornDown = true
+        backgroundMusic.syncStop()
         cancelTransition()
         pausePlayers()
         activePlayer()?.replaceCurrentItem(with: nil)
@@ -163,10 +181,12 @@ final class TapePlayerViewModel: ObservableObject {
         guard let active = activePlayer() else { return }
         if isPlaying {
             pausePlayers()
+            backgroundMusic.syncPause()
         } else {
             active.play()
             if isTransitioning { inactivePlayer()?.play() }
             isPlaying = true
+            backgroundMusic.syncPlay()
         }
         resetControlsTimer()
     }
@@ -474,7 +494,7 @@ final class TapePlayerViewModel: ObservableObject {
     private func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback)
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
             try session.setActive(true)
         } catch {
             TapesLog.player.error("TapePlayerVM: Audio session configuration failed: \(error.localizedDescription)")
@@ -909,6 +929,7 @@ final class TapePlayerViewModel: ObservableObject {
         } else {
             isFinished = true
             isPlaying = false
+            backgroundMusic.syncPause()
             withAnimation(.easeInOut(duration: 0.2)) { showingControls = true }
         }
     }

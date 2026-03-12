@@ -9,6 +9,8 @@ struct TapeSettingsView: View {
     // UI-only state
     @State private var selectedTransition: TransitionType
     @State private var transitionDuration: Double
+    @State private var selectedMood: MubertAPIClient.Mood
+    @State private var musicVolume: Double
     @State private var hasChanges = false
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
@@ -21,6 +23,8 @@ struct TapeSettingsView: View {
         self.onTapeDeleted = onTapeDeleted
         self._selectedTransition = State(initialValue: tape.wrappedValue.transition)
         self._transitionDuration = State(initialValue: tape.wrappedValue.transitionDuration)
+        self._selectedMood = State(initialValue: tape.wrappedValue.musicMood)
+        self._musicVolume = State(initialValue: Double(tape.wrappedValue.musicVolume))
     }
     
     var body: some View {
@@ -34,9 +38,17 @@ struct TapeSettingsView: View {
                         transitionDurationSection
                             .accessibilitySortPriority(2)
                     }
-                    
-                    destructiveActionSection
+
+                    backgroundMusicSection
                         .accessibilitySortPriority(3)
+
+                    if selectedMood != .none {
+                        musicVolumeSection
+                            .accessibilitySortPriority(4)
+                    }
+
+                    destructiveActionSection
+                        .accessibilitySortPriority(5)
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
@@ -121,6 +133,54 @@ struct TapeSettingsView: View {
         }
     }
     
+    private var backgroundMusicSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+            SectionHeader(title: "Background Music")
+
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: Tokens.Spacing.s),
+                GridItem(.flexible(), spacing: Tokens.Spacing.s),
+                GridItem(.flexible(), spacing: Tokens.Spacing.s)
+            ], spacing: Tokens.Spacing.s) {
+                ForEach(MubertAPIClient.Mood.allCases) { mood in
+                    MoodOptionCell(
+                        mood: mood,
+                        isSelected: selectedMood == mood
+                    ) {
+                        selectedMood = mood
+                        hasChanges = true
+                        provideHapticFeedback()
+                    }
+                }
+            }
+        }
+    }
+
+    private var musicVolumeSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
+            SectionHeader(title: "Music Volume")
+
+            HStack(spacing: Tokens.Spacing.m) {
+                Image(systemName: "speaker.fill")
+                    .foregroundColor(Tokens.Colors.secondaryText)
+                    .font(.caption)
+
+                Slider(value: $musicVolume, in: 0.05...1.0, step: 0.05)
+                    .tint(Tokens.Colors.systemRed)
+                    .onChange(of: musicVolume) { _ in hasChanges = true }
+
+                Image(systemName: "speaker.wave.3.fill")
+                    .foregroundColor(Tokens.Colors.secondaryText)
+                    .font(.caption)
+            }
+
+            Text("\(Int(musicVolume * 100))%")
+                .font(.caption)
+                .foregroundColor(Tokens.Colors.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+
     private var destructiveActionSection: some View {
         DestructiveActionSection(
             isDeleting: isDeleting,
@@ -136,6 +196,8 @@ struct TapeSettingsView: View {
     private func resetToBindingValues() {
         selectedTransition = tape.transition
         transitionDuration = tape.transitionDuration
+        selectedMood = tape.musicMood
+        musicVolume = Double(tape.musicVolume)
         hasChanges = false
     }
     
@@ -147,6 +209,8 @@ struct TapeSettingsView: View {
             transition: selectedTransition,
             transitionDuration: transitionDuration
         )
+        updated.backgroundMusicMood = selectedMood == .none ? nil : selectedMood.rawValue
+        updated.backgroundMusicVolume = musicVolume
         tape = updated
         hasChanges = false
     }

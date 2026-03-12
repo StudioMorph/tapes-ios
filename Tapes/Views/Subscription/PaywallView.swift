@@ -117,11 +117,41 @@ struct PaywallView: View {
             if let product = subManager.monthlyProduct {
                 pricingCard(product: product)
             } else {
-                ProgressView()
-                    .tint(.white)
-                    .frame(height: 80)
+                fallbackPricingCard
             }
         }
+    }
+
+    private var fallbackPricingCard: some View {
+        VStack(spacing: Tokens.Spacing.s) {
+            Text("Start for just £0.99")
+                .font(.title2.bold())
+                .foregroundColor(.white)
+
+            Text("First 7 days · Then £2.99/month")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+
+            Text("Cancel anytime")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(Tokens.Spacing.l)
+        .background(
+            RoundedRectangle(cornerRadius: Tokens.Radius.card)
+                .fill(
+                    LinearGradient(
+                        colors: [Tokens.Colors.systemRed.opacity(0.3), Tokens.Colors.systemRed.opacity(0.1)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Tokens.Radius.card)
+                        .stroke(Tokens.Colors.systemRed.opacity(0.5), lineWidth: 1)
+                )
+        )
     }
 
     private func pricingCard(product: Product) -> some View {
