@@ -119,25 +119,35 @@ final class TapePlayerViewModel: ObservableObject {
         configureAudioSession()
         registerSystemObservers()
 
-        // Kick off background music loading concurrently — don't block clip loading
-        if tape.musicMood != .none {
-            let mood = tape.musicMood
-            let tapeID = tape.id
-            let vol = tape.musicVolume
-            Task {
-                await backgroundMusic.prepare(mood: mood, tapeID: tapeID, volume: vol)
-                if self.isPlaying {
-                    backgroundMusic.syncPlay()
-                }
-            }
-        }
+        let hasMood = tape.musicMood != .none
+
+        // Start music generation concurrently with video loading
+        let musicTask: Task<Void, Never>? = hasMood ? Task {
+            await backgroundMusic.prepare(
+                mood: tape.musicMood, tapeID: tape.id, volume: tape.musicVolume
+            )
+        } : nil
 
         do {
             let tl = try await builder.prepareTimeline(for: tape)
             timeline = updateTimelineRenderSize(tl)
-            try await loadClip(index: 0, autoplay: true, forceSlot: .primary)
-            isPlaying = true
-            backgroundMusic.syncPlay()
+
+            if hasMood {
+                // Load clip without autoplay — wait for music first
+                try await loadClip(index: 0, autoplay: false, forceSlot: .primary)
+
+                // Wait for music to be ready before starting playback
+                await musicTask?.value
+
+                // Start video and music together
+                activePlayer()?.play()
+                isPlaying = true
+                backgroundMusic.syncPlay()
+            } else {
+                try await loadClip(index: 0, autoplay: true, forceSlot: .primary)
+                isPlaying = true
+            }
+
             startSequentialPreload(from: 1)
         } catch {
             loadError = error.localizedDescription
