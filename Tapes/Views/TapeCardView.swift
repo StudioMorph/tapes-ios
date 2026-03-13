@@ -56,7 +56,6 @@ struct TapeCardView: View {
     @State private var importSource: ImportSource? = nil
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
-    @State private var showingPhotoLibraryDelete = false
     @State private var showingPaywall = false
     @State private var jiggleTask: Task<Void, Never>? = nil
     @FocusState private var isTitleFocused: Bool
@@ -412,34 +411,13 @@ struct TapeCardView: View {
         }
         .alert("Delete Clip?", isPresented: $showingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
-                if let clip = clipToDelete, clip.assetLocalId != nil {
-                    showingPhotoLibraryDelete = true
-                } else {
-                    deleteClipFromTape()
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                clipToDelete = nil
-            }
-        } message: {
-            Text("This will remove the clip from the tape.")
-        }
-        .alert("Also delete from Photos?", isPresented: $showingPhotoLibraryDelete) {
-            Button("Delete from Photos", role: .destructive) {
-                let assetId = clipToDelete?.assetLocalId
-                deleteClipFromTape()
-                if let assetId {
-                    deleteAssetFromPhotoLibrary(assetId: assetId)
-                }
-            }
-            Button("Keep in Photos") {
                 deleteClipFromTape()
             }
             Button("Cancel", role: .cancel) {
                 clipToDelete = nil
             }
         } message: {
-            Text("Would you also like to delete this media from your photo library?")
+            Text("This will remove the clip from the tape. The photo or video will remain in your library.")
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
@@ -549,16 +527,6 @@ struct TapeCardView: View {
             dropSeamLeftClipID = leftID
             dropSeamRightClipID = rightID
             print("[SEAM] scroll: leftID=\(leftID?.uuidString.prefix(4) ?? "nil") rightID=\(rightID?.uuidString.prefix(4) ?? "nil")")
-        }
-    }
-
-    private func deleteAssetFromPhotoLibrary(assetId: String) {
-        Task {
-            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
-            guard let asset = fetchResult.firstObject else { return }
-            try? await PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.deleteAssets([asset] as NSArray)
-            }
         }
     }
 

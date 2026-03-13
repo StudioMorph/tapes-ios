@@ -420,18 +420,27 @@ public class TapesStore: ObservableObject {
     
     public func deleteClip(from tapeId: UUID, clip: Clip) {
         guard var tape = getTape(by: tapeId) else { return }
-        
+
+        let albumId = tape.albumLocalIdentifier
+        let assetId = clip.assetLocalId
+
         tape.clips.removeAll { $0.id == clip.id }
         if clip.isPlaceholder {
             purgePlaceholderTrackingIfNeeded(for: clip.id)
         }
         scheduleMediaCleanup(for: [clip.id])
-        
+
         if tape.clips.isEmpty {
             tape.clips = []
         }
-        
+
         updateTape(tape)
+
+        if let albumId, let assetId, !assetId.isEmpty {
+            Task {
+                try? await albumService.removeAssets(withIdentifiers: [assetId], from: albumId)
+            }
+        }
     }
     
     public func updateClip(in tapeId: UUID, clip: Clip) {

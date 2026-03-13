@@ -35,6 +35,8 @@ public enum TapeAlbumServiceError: LocalizedError {
 public protocol TapeAlbumServicing {
     func ensureAlbum(for tape: Tape) async throws -> TapeAlbumAssociation
     func addAssets(withIdentifiers assetLocalIds: [String], to albumLocalIdentifier: String) async throws
+    /// Removes assets from the album only; does not delete them from the photo library.
+    func removeAssets(withIdentifiers assetLocalIds: [String], from albumLocalIdentifier: String) async throws
     func deleteAlbum(withLocalIdentifier localIdentifier: String) async throws
     /// Returns a new album identifier if the rename operation creates a replacement album.
     func renameAlbum(withLocalIdentifier localIdentifier: String, toMatch tape: Tape) async throws -> String?
@@ -115,7 +117,39 @@ public final class TapeAlbumService: TapeAlbumServicing {
             throw changeError
         }
     }
-    
+
+    public func removeAssets(withIdentifiers assetLocalIds: [String], from albumLocalIdentifier: String) async throws {
+        guard !assetLocalIds.isEmpty else { return }
+        try await requireAuthorization(for: .readWrite)
+
+        guard let album = fetchAlbum(localIdentifier: albumLocalIdentifier) else {
+            TapesLog.photos.warning("Album not found for removeAssets: \(albumLocalIdentifier, privacy: .public)")
+            throw TapeAlbumServiceError.albumNotFound
+        }
+
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: assetLocalIds, options: nil)
+        guard assets.count > 0 else { return }
+
+        var fetchedAssets: [PHAsset] = []
+        fetchedAssets.reserveCapacity(assets.count)
+        assets.enumerateObjects { asset, _, _ in
+            fetchedAssets.append(asset)
+        }
+
+        var changeError: TapeAlbumServiceError?
+        try await photoLibrary.performChanges {
+            guard let changeRequest = PHAssetCollectionChangeRequest(for: album) else {
+                changeError = .changeRequestFailed("Could not obtain change request for album.")
+                return
+            }
+            changeRequest.removeAssets(fetchedAssets as NSArray)
+        }
+        if let changeError {
+            throw changeError
+        }
+        TapesLog.photos.debug("Removed \(fetchedAssets.count, privacy: .public) asset(s) from album \(albumLocalIdentifier, privacy: .public)")
+    }
+
     public func deleteAlbum(withLocalIdentifier localIdentifier: String) async throws {
         guard !localIdentifier.isEmpty else { return }
         try await requireAuthorization(for: .readWrite)
