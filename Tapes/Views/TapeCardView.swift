@@ -34,6 +34,7 @@ struct TapeCardView: View {
     let isLandscape: Bool
     let onSettings: () -> Void
     let onPlay: () -> Void
+    let onMergeAndSave: () -> Void
     let onThumbnailDelete: (Clip) -> Void
     
     let onClipInserted: (Clip, Int) -> Void
@@ -56,6 +57,7 @@ struct TapeCardView: View {
     @State private var importSource: ImportSource? = nil
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
+    @State private var showingMergeAndSaveAlert = false
     @State private var showingPaywall = false
     @State private var jiggleTask: Task<Void, Never>? = nil
     @FocusState private var isTitleFocused: Bool
@@ -139,6 +141,7 @@ struct TapeCardView: View {
         isLandscape: Bool = false,
         onSettings: @escaping () -> Void,
         onPlay: @escaping () -> Void,
+        onMergeAndSave: @escaping () -> Void = {},
         onThumbnailDelete: @escaping (Clip) -> Void,
         onClipInserted: @escaping (Clip, Int) -> Void,
         onClipInsertedAtPlaceholder: @escaping (Clip, CarouselItem) -> Void,
@@ -152,6 +155,7 @@ struct TapeCardView: View {
         self.isLandscape = isLandscape
         self.onSettings = onSettings
         self.onPlay = onPlay
+        self.onMergeAndSave = onMergeAndSave
         self.onThumbnailDelete = onThumbnailDelete
         self.onClipInserted = onClipInserted
         self.onClipInsertedAtPlaceholder = onClipInsertedAtPlaceholder
@@ -185,9 +189,15 @@ struct TapeCardView: View {
                 // 32pt minimum gap
                 Spacer(minLength: 32)
                 
-                // Right group: gear 16 play
+                // Right group: merge/save 16 settings 16 play
                 HStack(spacing: 16) {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Tokens.Colors.primaryText)
+                        .onTapGesture { showingMergeAndSaveAlert = true }
+                        .id("merge-save-\(tapeID)")
+
+                    Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(Tokens.Colors.primaryText)
                         .onTapGesture { onSettings() }
@@ -418,6 +428,14 @@ struct TapeCardView: View {
             }
         } message: {
             Text("This will remove the clip from the tape. The photo or video will remain in your library.")
+        }
+        .alert("Merge and Save", isPresented: $showingMergeAndSaveAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Save") {
+                onMergeAndSave()
+            }
+        } message: {
+            Text("This will merge all the clips in this tape and save it as one video to your Photos app.")
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
@@ -743,12 +761,16 @@ private struct BatchProgressChip: View {
         tape: Binding.constant(Tape.sampleTapes[0]),
         tapeID: Tape.sampleTapes[0].id,
         tapeWidth: 375,
+        isLandscape: false,
         onSettings: {},
         onPlay: {},
+        onMergeAndSave: {},
         onThumbnailDelete: { _ in },
         onClipInserted: { _, _ in },
         onClipInsertedAtPlaceholder: { _, _ in },
-        onMediaInserted: { _, _ in }
+        onMediaInserted: { _, _ in },
+        onTitleFocusRequest: {},
+        titleEditingConfig: nil
     )
     .environmentObject(TapesStore())
     .environmentObject(EntitlementManager())

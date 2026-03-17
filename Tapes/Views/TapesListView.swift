@@ -3,8 +3,6 @@ import SwiftUI
 struct TapesListView: View {
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
-    @State private var showingPlayer = false
-    @State private var showingPlayOptions = false
     @State private var showingQAChecklist = false
     @State private var tapeToPreview: Tape?
     @State private var editingTapeID: UUID?
@@ -35,6 +33,7 @@ struct TapesListView: View {
                             draftTitle: $draftTitle,
                             onSettings: handleSettings,
                             onPlay: handlePlay,
+                            onMergeAndSave: handleMergeAndSave,
                             onThumbnailDelete: handleThumbnailDelete,
                             onClipInserted: handleClipInserted,
                             onClipInsertedAtPlaceholder: handleClipInsertedAtPlaceholder,
@@ -79,25 +78,10 @@ struct TapesListView: View {
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
         }
-        .confirmationDialog("Play Options", isPresented: $showingPlayOptions) {
-            Button("Preview Tape") {
-                if tapeToPreview == nil {
-                    tapeToPreview = tapesStore.tapes.first(where: { !$0.clips.isEmpty })
-                }
-                showingPlayer = tapeToPreview != nil
-            }
-            Button("Merge & Save") {
-                let tape = tapeToPreview ?? tapesStore.tapes.first(where: { !$0.clips.isEmpty })
-                if let tape {
-                    exportCoordinator.exportTape(tape) { newIdentifier in
-                        tapesStore.updateTapeAlbumIdentifier(newIdentifier, for: tape.id)
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-        .fullScreenCover(isPresented: $showingPlayer) {
-            playerView
+        .fullScreenCover(item: $tapeToPreview) { tape in
+            TapePlayerView(tape: tape, onDismiss: {
+                tapeToPreview = nil
+            })
         }
         .overlay(exportOverlay)
         .sheet(isPresented: $showingQAChecklist) {
@@ -190,7 +174,12 @@ struct TapesListView: View {
     
     private func handlePlay(_ tape: Tape) {
         tapeToPreview = tape
-        showingPlayOptions = true
+    }
+
+    private func handleMergeAndSave(_ tape: Tape) {
+        exportCoordinator.exportTape(tape) { newIdentifier in
+            tapesStore.updateTapeAlbumIdentifier(newIdentifier, for: tape.id)
+        }
     }
     
     private func handleThumbnailDelete(_ tape: Tape, _ clip: Clip) {
@@ -229,16 +218,6 @@ struct TapesListView: View {
                     showingDeleteSuccessToast = true
                 }
             )
-        }
-    }
-
-    @ViewBuilder
-    private var playerView: some View {
-        if let tape = tapeToPreview {
-            TapePlayerView(tape: tape, onDismiss: {
-                showingPlayer = false
-                tapeToPreview = nil
-            })
         }
     }
 
