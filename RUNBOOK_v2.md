@@ -67,7 +67,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 
 - **Player Controls**
   - Restart, Play/Pause, Clip index
-  - Play Action Sheet → Preview | Merge & Save
+  - Play button → full-screen player (preview only). Merge & Save only via tape card arrow.down.
 
 - **Cast Button**
   - iOS: AVRoutePickerView (AirPlayButton) — visible only if devices available
@@ -92,7 +92,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 
 - **Player**
   - Preview playback with transitions (WYSIWYG)
-  - Play options: Preview vs Merge & Save
+  - Play opens player; Merge & Save via card arrow.down only
 
 ---
 
@@ -154,7 +154,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Clamp ≤ 0.5s
 
 - **Export Implementation**
-  - iOS: AVMutableComposition + AVMutableAudioMix
+  - iOS: Reuses `TapeCompositionBuilder.buildExportComposition(for:)` (same pipeline as playback). Adds background music from cached Mubert track (looped, volume + fade-out). `TapeExporter.export(tape:)` → AVAssetExportSession → save to Photos. Single entry point: tape card arrow.down.
   - Android: FFmpegKit filtergraph (xfade + acrossfade)
 - **Preview Composition (iOS)**
   - Preview playback uses per-clip `AVPlayerItem` instances via `TapePlayerViewModel` (MVVM).
@@ -185,6 +185,9 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Tapes/Playback/TapeCompositionBuilder+ImageEncoding.swift
   - Tapes/Playback/StillImageVideoCompositor.swift (real-time image rendering)
   - Tapes/Playback/AsyncSemaphore.swift (concurrency primitive)
+  - Tapes/Export/TapeExporter.swift (export: builder + music + AVAssetExportSession)
+  - Tapes/Export/ExportCoordinator.swift (UI state, permissions, album association)
+  - Tapes/Export/iOSExporterBridge.swift (async bridge to TapeExporter)
 
 ### Android
 - **Dependencies**:

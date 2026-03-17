@@ -3,16 +3,6 @@ import SwiftUI
 import Photos
 import AVFoundation
 
-// MARK: - Transition Style (iOS Exporter Compatibility)
-
-enum TransitionStyle {
-    case none
-    case crossfade
-    case slideLR
-    case slideRL
-    case randomise
-}
-
 // MARK: - Export Coordinator
 
 @MainActor
@@ -21,84 +11,82 @@ public class ExportCoordinator: ObservableObject {
     @Published public var exportProgress: Double = 0.0
     @Published public var showCompletionToast: Bool = false
     @Published public var exportError: String?
-    
-    private var exportSession: AVAssetExportSession?
+
     private let albumService: TapeAlbumServicing
-    
+    private var exportTask: Task<Void, Never>?
+
     init(albumService: TapeAlbumServicing = TapeAlbumService()) {
         self.albumService = albumService
     }
-    
+
     // MARK: - Export Methods
-    
+
     public func exportTape(_ tape: Tape, albumUpdateHandler: @escaping (String) -> Void = { _ in }) {
         guard !isExporting else { return }
-        
+
         isExporting = true
         exportProgress = 0.0
         exportError = nil
-        
-        // Request photo library permission
-        requestPhotoLibraryPermission { [weak self] granted in
+
+        exportTask = Task { [weak self] in
+            guard let self else { return }
+
+            let granted = await self.requestPhotoLibraryPermission()
             guard granted else {
-                DispatchQueue.main.async {
-                    self?.isExporting = false
-                    self?.exportError = "Photo library access is required to save videos"
-                }
+                self.isExporting = false
+                self.exportError = "Photo library access is required to save videos"
                 return
             }
-            
-            // Start export
-            self?.startExport(tape, albumUpdateHandler: albumUpdateHandler)
-        }
-    }
-    
-    private func startExport(_ tape: Tape, albumUpdateHandler: @escaping (String) -> Void) {
-        // Use the iOS TapeExporter via bridge
-        iOSExporterBridge.export(tape: tape) { [weak self] url, assetIdentifier in
-            DispatchQueue.main.async {
-                self?.isExporting = false
-                
-                if let url = url {
-                    self?.exportProgress = 1.0
-                    self?.showCompletionToast = true
-                    
-                    self?.associateExportedAsset(tape: tape, assetIdentifier: assetIdentifier, albumUpdateHandler: albumUpdateHandler)
-                    
-                    // Clean up temporary file
-                    try? FileManager.default.removeItem(at: url)
-                } else {
-                    self?.exportError = "Export failed. Please try again."
-                }
+
+            do {
+                let result = try await iOSExporterBridge.export(tape: tape)
+
+                self.isExporting = false
+                self.exportProgress = 1.0
+                self.showCompletionToast = true
+
+                self.associateExportedAsset(
+                    tape: tape,
+                    assetIdentifier: result.assetIdentifier,
+                    albumUpdateHandler: albumUpdateHandler
+                )
+
+                try? FileManager.default.removeItem(at: result.url)
+            } catch {
+                self.isExporting = false
+                self.exportError = error.localizedDescription
             }
         }
     }
-    
-    private func requestPhotoLibraryPermission(completion: @escaping (Bool) -> Void) {
+
+    private func requestPhotoLibraryPermission() async -> Bool {
         let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
-        
+
         switch status {
         case .authorized, .limited:
-            completion(true)
+            return true
         case .denied, .restricted:
-            completion(false)
+            return false
         case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
-                completion(newStatus == .authorized || newStatus == .limited)
+            let newStatus = await withCheckedContinuation { continuation in
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
+                    continuation.resume(returning: newStatus)
+                }
             }
+            return newStatus == .authorized || newStatus == .limited
         @unknown default:
-            completion(false)
+            return false
         }
     }
-    
+
     public func dismissCompletionToast() {
         showCompletionToast = false
     }
-    
+
     public func clearError() {
         exportError = nil
     }
-    
+
     private func associateExportedAsset(tape: Tape, assetIdentifier: String?, albumUpdateHandler: @escaping (String) -> Void) {
         guard let assetIdentifier, !assetIdentifier.isEmpty else {
             TapesLog.photos.warning("Export succeeded but no asset identifier was returned for tape \(tape.id.uuidString, privacy: .public)")

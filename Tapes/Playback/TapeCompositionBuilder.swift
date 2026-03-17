@@ -182,6 +182,13 @@ struct TapeCompositionBuilder {
         let timeline: Timeline
     }
 
+    struct ExportableComposition: @unchecked Sendable {
+        let composition: AVMutableComposition
+        let videoComposition: AVMutableVideoComposition
+        let audioMix: AVMutableAudioMix?
+        let timeline: Timeline
+    }
+
     struct ResolvedAsset {
         let asset: AVAsset
         let isTemporary: Bool
@@ -262,6 +269,13 @@ struct TapeCompositionBuilder {
     func buildPlayerItem(for tape: Tape, contexts: [ClipAssetContext]) async throws -> PlayerComposition {
         let timeline = makeTimeline(for: tape, contexts: contexts)
         return try await buildPlayerComposition(for: tape, timeline: timeline)
+    }
+
+    @MainActor
+    func buildExportComposition(for tape: Tape) async throws -> ExportableComposition {
+        let contexts = try await loadAssets(for: tape.clips, startIndex: 0)
+        let timeline = makeTimeline(for: tape, contexts: contexts)
+        return try await buildCompositionComponents(for: tape, timeline: timeline)
     }
 
     @MainActor
@@ -384,6 +398,22 @@ struct TapeCompositionBuilder {
         for tape: Tape,
         timeline: Timeline
     ) async throws -> PlayerComposition {
+        let components = try await buildCompositionComponents(for: tape, timeline: timeline)
+
+        let playerItem = AVPlayerItem(asset: components.composition)
+        playerItem.videoComposition = components.videoComposition
+        if let audioMix = components.audioMix {
+            playerItem.audioMix = audioMix
+        }
+
+        return PlayerComposition(playerItem: playerItem, timeline: components.timeline)
+    }
+
+    @MainActor
+    func buildCompositionComponents(
+        for tape: Tape,
+        timeline: Timeline
+    ) async throws -> ExportableComposition {
         let composition = AVMutableComposition()
         let videoTracks = try createCompositionTracks(for: composition, mediaType: .video)
         let audioTracks = try createCompositionTracks(for: composition, mediaType: .audio)
@@ -391,24 +421,18 @@ struct TapeCompositionBuilder {
         var videoTrackMap: [Int: AVMutableCompositionTrack] = [:]
         var audioTrackMap: [Int: AVMutableCompositionTrack] = [:]
         var audioMixParameters: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
-        
-        // TIMELINE FIX: Resolve all asset contexts on-demand from metadata
-        // Build segments with resolved contexts for video instruction building
+
         var segmentsWithContexts: [Segment] = []
-        
         let isSingleClipTimeline = timeline.segments.count == 1
 
         for segment in timeline.segments {
-            // Resolve full asset context if not already available
             let assetContext: ClipAssetContext
             if let existing = segment.assetContext {
                 assetContext = existing
             } else {
-                // Resolve on-demand
                 assetContext = try await resolveClipContext(for: segment.metadata.clip, index: segment.metadata.index)
             }
-            
-            // Create segment with resolved context
+
             let resolvedTimeRange: CMTimeRange
             if isSingleClipTimeline {
                 resolvedTimeRange = CMTimeRange(start: .zero, duration: assetContext.duration)
@@ -426,7 +450,7 @@ struct TapeCompositionBuilder {
                 motionEffect: segment.motionEffect
             )
             segmentsWithContexts.append(segmentWithContext)
-            
+
             let clip = segment.metadata.clip
             let sourceStart = CMTime(seconds: clip.trimStart, preferredTimescale: 600)
             let sourceDuration = clip.isTrimmed ? resolvedTimeRange.duration : assetContext.duration
@@ -463,8 +487,7 @@ struct TapeCompositionBuilder {
                 audioMixParameters[key] = params
             }
         }
-        
-        // Create timeline with resolved contexts for video instruction building
+
         let resolvedTotalDuration: CMTime
         if isSingleClipTimeline, let onlySegment = segmentsWithContexts.first {
             resolvedTotalDuration = onlySegment.timeRange.duration
@@ -491,16 +514,21 @@ struct TapeCompositionBuilder {
         videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
         videoComposition.renderSize = timeline.renderSize
 
-        let playerItem = AVPlayerItem(asset: composition)
-        playerItem.videoComposition = videoComposition
-
+        let audioMix: AVMutableAudioMix?
         if !audioMixParameters.isEmpty {
-            let audioMix = AVMutableAudioMix()
-            audioMix.inputParameters = Array(audioMixParameters.values)
-            playerItem.audioMix = audioMix
+            let mix = AVMutableAudioMix()
+            mix.inputParameters = Array(audioMixParameters.values)
+            audioMix = mix
+        } else {
+            audioMix = nil
         }
 
-        return PlayerComposition(playerItem: playerItem, timeline: timeline)
+        return ExportableComposition(
+            composition: composition,
+            videoComposition: videoComposition,
+            audioMix: audioMix,
+            timeline: timelineWithContexts
+        )
     }
 
     // MARK: - Asset Loading
