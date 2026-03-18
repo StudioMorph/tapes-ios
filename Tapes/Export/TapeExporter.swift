@@ -12,7 +12,10 @@ public enum TapeExporter {
             throw ExportError.noClips
         }
 
-        let builder = TapeCompositionBuilder()
+        let builder = TapeCompositionBuilder(
+            imageConfiguration: .export,
+            videoDeliveryMode: .automatic
+        )
         let components = try await builder.buildExportComposition(for: tape)
 
         let composition = components.composition
@@ -118,7 +121,7 @@ public enum TapeExporter {
     ) async throws {
         guard let session = AVAssetExportSession(
             asset: asset,
-            presetName: AVAssetExportPreset1920x1080
+            presetName: AVAssetExportPresetHEVC1920x1080
         ) else {
             throw ExportError.exportSessionUnavailable
         }
@@ -127,7 +130,6 @@ public enum TapeExporter {
         session.outputFileType = .mp4
         session.videoComposition = videoComposition
         session.audioMix = audioMix
-        session.shouldOptimizeForNetworkUse = true
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             session.exportAsynchronously {

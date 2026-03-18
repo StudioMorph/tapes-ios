@@ -57,8 +57,9 @@ extension TapeCompositionBuilder {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
-        let frameDuration = CMTime(value: 1, timescale: 30)
-        let totalFrames = max(1, Int(duration * 30))
+        let fps = imageConfiguration.encodingFrameRate
+        let frameDuration = CMTime(value: 1, timescale: Int32(fps))
+        let totalFrames = max(1, Int(duration * Double(fps)))
         guard let pixelBufferPool = adaptor.pixelBufferPool else {
             throw BuilderError.imageEncodingFailed
         }

@@ -27,7 +27,10 @@ extension TapeCompositionBuilder {
         }
     }
 
-    static func fetchAVAssetFromPhotos(localIdentifier: String) async throws -> AVAsset {
+    static func fetchAVAssetFromPhotos(
+        localIdentifier: String,
+        deliveryMode: PHVideoRequestOptionsDeliveryMode = .highQualityFormat
+    ) async throws -> AVAsset {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard status == .authorized || status == .limited else {
             throw BuilderError.photosAccessDenied
@@ -50,7 +53,7 @@ extension TapeCompositionBuilder {
             TapesLog.player.info("TapeCompositionBuilder: [\(localIdentifier)] Starting fetch - type: \(mediaType == .video ? "video" : "unknown"), duration: \(String(format: "%.2f", duration))s, size: \(pixelWidth)x\(pixelHeight), created: \(creationDate?.description ?? "unknown"), modified: \(modificationDate?.description ?? "unknown")")
 
             let options = PHVideoRequestOptions()
-            options.deliveryMode = .highQualityFormat
+            options.deliveryMode = deliveryMode
             options.isNetworkAccessAllowed = true
 
             let startTime = Date()
@@ -136,7 +139,10 @@ extension TapeCompositionBuilder {
         }
 
         if let assetLocalId = clip.assetLocalId {
-            return try await Self.fetchAVAssetFromPhotos(localIdentifier: assetLocalId)
+            return try await Self.fetchAVAssetFromPhotos(
+                localIdentifier: assetLocalId,
+                deliveryMode: videoDeliveryMode
+            )
         }
 
         throw BuilderError.assetUnavailable(clipID: clip.id)

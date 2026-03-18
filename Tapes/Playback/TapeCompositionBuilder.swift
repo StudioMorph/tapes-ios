@@ -12,14 +12,17 @@ struct TapeCompositionBuilder {
 
     let assetResolver: AssetResolver
     let imageConfiguration: ImageClipConfiguration
+    let videoDeliveryMode: PHVideoRequestOptionsDeliveryMode
     let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
 
     init(
         assetResolver: @escaping AssetResolver = TapeCompositionBuilder.defaultAssetResolver,
-        imageConfiguration: ImageClipConfiguration = .default
+        imageConfiguration: ImageClipConfiguration = .default,
+        videoDeliveryMode: PHVideoRequestOptionsDeliveryMode = .highQualityFormat
     ) {
         self.assetResolver = assetResolver
         self.imageConfiguration = imageConfiguration
+        self.videoDeliveryMode = videoDeliveryMode
     }
 
     // MARK: - Nested Types
@@ -126,11 +129,20 @@ struct TapeCompositionBuilder {
         let defaultDuration: Double
         let defaultMotionEffect: MotionEffect
         let baseScaleMode: ScaleMode
+        let encodingFrameRate: Int
 
         static let `default` = ImageClipConfiguration(
             defaultDuration: 4.0,
             defaultMotionEffect: MotionEffect.defaultKenBurns,
-            baseScaleMode: .fill
+            baseScaleMode: .fill,
+            encodingFrameRate: 30
+        )
+
+        static let export = ImageClipConfiguration(
+            defaultDuration: 4.0,
+            defaultMotionEffect: MotionEffect.defaultKenBurns,
+            baseScaleMode: .fill,
+            encodingFrameRate: 2
         )
     }
 
