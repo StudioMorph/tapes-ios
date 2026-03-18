@@ -13,11 +13,12 @@ extension TapeCompositionBuilder {
             let image = try await loadImage(for: clip)
             let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
             let motionEffect = MotionEffect.from(style: clip.motionStyle)
+            let bakedMotion = imageConfiguration.bakeMotionEffect ? motionEffect : nil
             let asset = try await createVideoAsset(
                 from: image,
                 clip: clip,
                 duration: durationSeconds,
-                motionEffect: motionEffect
+                motionEffect: bakedMotion
             )
             return ResolvedAsset(
                 asset: asset,

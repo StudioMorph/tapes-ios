@@ -130,19 +130,22 @@ struct TapeCompositionBuilder {
         let defaultMotionEffect: MotionEffect
         let baseScaleMode: ScaleMode
         let encodingFrameRate: Int
+        let bakeMotionEffect: Bool
 
         static let `default` = ImageClipConfiguration(
             defaultDuration: 4.0,
             defaultMotionEffect: MotionEffect.defaultKenBurns,
             baseScaleMode: .fill,
-            encodingFrameRate: 30
+            encodingFrameRate: 30,
+            bakeMotionEffect: true
         )
 
         static let export = ImageClipConfiguration(
             defaultDuration: 4.0,
             defaultMotionEffect: MotionEffect.defaultKenBurns,
             baseScaleMode: .fill,
-            encodingFrameRate: 2
+            encodingFrameRate: 1,
+            bakeMotionEffect: false
         )
     }
 
