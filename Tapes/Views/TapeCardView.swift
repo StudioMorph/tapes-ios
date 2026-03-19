@@ -58,6 +58,7 @@ struct TapeCardView: View {
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingMergeAndSaveAlert = false
+    @State private var showingDeleteTapeAlert = false
     @State private var showingPaywall = false
     @State private var jiggleTask: Task<Void, Never>? = nil
     @FocusState private var isTitleFocused: Bool
@@ -432,6 +433,14 @@ struct TapeCardView: View {
         } message: {
             Text("This will remove the clip from the tape. The photo or video will remain in your library.")
         }
+        .alert("Delete this Tape?", isPresented: $showingDeleteTapeAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                tapeStore.deleteTape(tape)
+            }
+        } message: {
+            Text("This will delete the Tape and its album. Your photos and videos remain in your device's Library.")
+        }
         .alert("Merge and Save", isPresented: $showingMergeAndSaveAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Save") {
@@ -476,6 +485,7 @@ struct TapeCardView: View {
         clipToDelete = nil
         if tape.clips.isEmpty {
             exitJiggleMode()
+            showingDeleteTapeAlert = true
         }
     }
 
