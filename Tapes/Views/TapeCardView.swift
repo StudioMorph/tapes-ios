@@ -195,20 +195,20 @@ struct TapeCardView: View {
                 HStack(spacing: 16) {
                     Image(systemName: "arrow.down")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.primaryText)
-                        .onTapGesture { showingMergeAndSaveAlert = true }
+                        .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .onTapGesture { guard !isEmptyTape else { return }; showingMergeAndSaveAlert = true }
                         .id("merge-save-\(tapeID)")
 
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.primaryText)
-                        .onTapGesture { onSettings() }
+                        .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .onTapGesture { guard !isEmptyTape else { return }; onSettings() }
                         .id("settings-\(tapeID)")
                     
                     Image(systemName: "play.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Tokens.Colors.primaryText)
-                        .onTapGesture { onPlay() }
+                        .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .onTapGesture { guard !isEmptyTape else { return }; onPlay() }
                         .id("play-\(tapeID)")
                 }
             }
@@ -248,6 +248,11 @@ struct TapeCardView: View {
                         .zIndex(2)
                 } else {
                     FabSwipableIcon(mode: $fabMode) {
+                        if isEmptyTape && isAtFreeLimit {
+                            showingPaywall = true
+                            return
+                        }
+
                         switch fabMode {
                         case .gallery:
                             importSource = .centerFAB
@@ -502,8 +507,7 @@ struct TapeCardView: View {
             return
         }
 
-        if !tape.hasReceivedFirstContent,
-           !entitlementManager.canCreateTape(currentCount: tapeStore.contentTapeCount) {
+        if isEmptyTape && isAtFreeLimit {
             showingPaywall = true
             return
         }
@@ -694,11 +698,25 @@ struct TapeCardView: View {
         var updated = tape
         updated.hasReceivedFirstContent = true
         tapeStore.updateTape(updated)
+
+        guard entitlementManager.canCreateTape(currentCount: tapeStore.contentTapeCount) else { return }
         tapeStore.insertEmptyTapeAtTop()
+    }
+
+    private var isEmptyTape: Bool {
+        tape.clips.isEmpty && !tape.hasReceivedFirstContent
+    }
+
+    private var isAtFreeLimit: Bool {
+        !entitlementManager.canCreateTape(currentCount: tapeStore.contentTapeCount)
     }
 
     private func beginEditingTitle() {
         guard titleEditingConfig == nil else { return }
+        if isEmptyTape && isAtFreeLimit {
+            showingPaywall = true
+            return
+        }
         onTitleFocusRequest()
     }
 
