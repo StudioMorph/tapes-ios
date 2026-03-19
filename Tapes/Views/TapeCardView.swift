@@ -40,12 +40,12 @@ struct TapeCardView: View {
     let onClipInserted: (Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
     let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void
+    let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: () -> Void
     let titleEditingConfig: TitleEditingConfig?
 
     @EnvironmentObject var tapeStore: TapesStore
     @EnvironmentObject var entitlementManager: EntitlementManager
-    @StateObject private var cameraCoordinator = CameraCoordinator()
     @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
@@ -146,6 +146,7 @@ struct TapeCardView: View {
         onClipInserted: @escaping (Clip, Int) -> Void,
         onClipInsertedAtPlaceholder: @escaping (Clip, CarouselItem) -> Void,
         onMediaInserted: @escaping ([PickedMedia], InsertionStrategy) -> Void,
+        onCameraCapture: @escaping (@escaping ([PickedMedia]) -> Void) -> Void = { _ in },
         onTitleFocusRequest: @escaping () -> Void = {},
         titleEditingConfig: TitleEditingConfig? = nil
     ) {
@@ -160,6 +161,7 @@ struct TapeCardView: View {
         self.onClipInserted = onClipInserted
         self.onClipInsertedAtPlaceholder = onClipInsertedAtPlaceholder
         self.onMediaInserted = onMediaInserted
+        self.onCameraCapture = onCameraCapture
         self.onTitleFocusRequest = onTitleFocusRequest
         self.titleEditingConfig = titleEditingConfig
     }
@@ -252,7 +254,7 @@ struct TapeCardView: View {
                             showingMediaPicker = true
                         case .camera:
                             importSource = .centerFAB
-                            cameraCoordinator.presentCamera { capturedMedia in
+                            onCameraCapture { capturedMedia in
                                 handleMediaInsertion(picked: capturedMedia, source: .centerFAB)
                             }
                         case .transition:
@@ -375,10 +377,6 @@ struct TapeCardView: View {
                     }
                 }
             }
-        }
-        .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {
-            CameraView(coordinator: cameraCoordinator)
-                .ignoresSafeArea(.all, edges: .all)
         }
         .sheet(isPresented: $showingSeamTransition) {
             if let ids = seamClipIDs {
@@ -770,6 +768,7 @@ private struct BatchProgressChip: View {
         onClipInserted: { _, _ in },
         onClipInsertedAtPlaceholder: { _, _ in },
         onMediaInserted: { _, _ in },
+        onCameraCapture: { _ in },
         onTitleFocusRequest: {},
         titleEditingConfig: nil
     )

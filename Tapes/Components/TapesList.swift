@@ -19,6 +19,7 @@ struct TapesList: View {
     let onClipInserted: (Tape, Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Tape, Clip, CarouselItem) -> Void
     let onMediaInserted: (Tape, [PickedMedia], InsertionStrategy) -> Void
+    let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: (UUID, String) -> Void
     let onTitleCommit: () -> Void
 
@@ -88,6 +89,7 @@ struct TapesList: View {
                 onClipInserted: { clip, index in onClipInserted(currentTape, clip, index) },
                 onClipInsertedAtPlaceholder: { clip, placeholder in onClipInsertedAtPlaceholder(currentTape, clip, placeholder) },
                 onMediaInserted: { media, strategy in onMediaInserted(currentTape, media, strategy) },
+                onCameraCapture: onCameraCapture,
                 onTitleFocusRequest: { onTitleFocusRequest(tapeID, currentTape.title) },
                 titleEditingConfig: titleEditingConfig
             )
@@ -115,6 +117,7 @@ struct TapesList: View {
         onClipInserted: { _, _, _ in },
         onClipInsertedAtPlaceholder: { _, _, _ in },
         onMediaInserted: { _, _, _ in },
+        onCameraCapture: { _ in },
         onTitleFocusRequest: { _, _ in },
         onTitleCommit: {}
     )

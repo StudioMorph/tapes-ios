@@ -3,6 +3,7 @@ import SwiftUI
 struct TapesListView: View {
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
+    @StateObject private var cameraCoordinator = CameraCoordinator()
     @State private var tapeToPreview: Tape?
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
@@ -37,6 +38,7 @@ struct TapesListView: View {
                             onClipInserted: handleClipInserted,
                             onClipInsertedAtPlaceholder: handleClipInsertedAtPlaceholder,
                             onMediaInserted: handleMediaInserted,
+                            onCameraCapture: handleCameraCapture,
                             onTitleFocusRequest: handleTitleFocusRequest,
                             onTitleCommit: commitTitleEditing
                         )
@@ -81,6 +83,10 @@ struct TapesListView: View {
             TapePlayerView(tape: tape, onDismiss: {
                 tapeToPreview = nil
             })
+        }
+        .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {
+            CameraView(coordinator: cameraCoordinator)
+                .ignoresSafeArea(.all, edges: .all)
         }
         .overlay(exportOverlay)
     }
@@ -170,6 +176,10 @@ struct TapesListView: View {
     
     private func handlePlay(_ tape: Tape) {
         tapeToPreview = tape
+    }
+
+    private func handleCameraCapture(completion: @escaping ([PickedMedia]) -> Void) {
+        cameraCoordinator.presentCamera(completion: completion)
     }
 
     private func handleMergeAndSave(_ tape: Tape) {
