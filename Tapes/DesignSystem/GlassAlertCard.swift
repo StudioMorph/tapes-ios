@@ -8,30 +8,28 @@ struct GlassAlertButton {
     enum Style {
         case secondary
         case primary
+        case destructive
     }
 }
 
-struct GlassAlertCard: View {
+struct GlassAlertCard<Icon: View, MessageContent: View>: View {
     @Environment(\.colorScheme) private var colorScheme
 
-    let icon: String
-    let iconSize: CGFloat
     let title: String
-    let message: String
     let buttons: [GlassAlertButton]
+    let icon: Icon
+    let messageContent: MessageContent
 
     init(
-        icon: String,
-        iconSize: CGFloat = 48,
         title: String,
-        message: String,
-        buttons: [GlassAlertButton]
+        buttons: [GlassAlertButton],
+        @ViewBuilder icon: () -> Icon,
+        @ViewBuilder message: () -> MessageContent
     ) {
-        self.icon = icon
-        self.iconSize = iconSize
         self.title = title
-        self.message = message
         self.buttons = buttons
+        self.icon = icon()
+        self.messageContent = message()
     }
 
     var body: some View {
@@ -41,9 +39,7 @@ struct GlassAlertCard: View {
                 .onTapGesture { }
 
             VStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: iconSize, weight: .semibold))
-                    .foregroundStyle(Color.primary)
+                icon
                     .padding(.top, 14)
 
                 VStack(spacing: 10) {
@@ -52,10 +48,7 @@ struct GlassAlertCard: View {
                         .foregroundStyle(Color.primary)
                         .multilineTextAlignment(.center)
 
-                    Text(message)
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(Color.primary)
-                        .multilineTextAlignment(.center)
+                    messageContent
                 }
                 .padding(.bottom, 24)
                 .padding(.horizontal, 8)
@@ -89,7 +82,8 @@ struct GlassAlertCard: View {
 
     @ViewBuilder
     private func buttonView(for button: GlassAlertButton) -> some View {
-        if button.style == .primary {
+        switch button.style {
+        case .primary:
             Button {
                 button.action()
             } label: {
@@ -101,7 +95,8 @@ struct GlassAlertCard: View {
             .buttonBorderShape(.capsule)
             .tint(Color(red: 0, green: 0.533, blue: 1))
             .layoutPriority(1)
-        } else {
+
+        case .secondary:
             Button {
                 button.action()
             } label: {
@@ -111,6 +106,47 @@ struct GlassAlertCard: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
             .buttonBorderShape(.capsule)
+
+        case .destructive:
+            Button(role: .destructive) {
+                button.action()
+            } label: {
+                Text(button.title)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
         }
+    }
+}
+
+extension GlassAlertCard where Icon == AnyView, MessageContent == AnyView {
+    init(
+        systemImage: String,
+        iconSize: CGFloat = 48,
+        title: String,
+        message: String,
+        buttons: [GlassAlertButton]
+    ) {
+        self.init(
+            title: title,
+            buttons: buttons,
+            icon: {
+                AnyView(
+                    Image(systemName: systemImage)
+                        .font(.system(size: iconSize, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                )
+            },
+            message: {
+                AnyView(
+                    Text(message)
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(Color.primary)
+                        .multilineTextAlignment(.center)
+                )
+            }
+        )
     }
 }

@@ -30,7 +30,7 @@ struct HeaderView: View {
                             progress: exportCoordinator.progress,
                             lineWidth: 2.5,
                             size: 28,
-                            ringColor: Tokens.Colors.systemRed
+                            ringColor: .green
                         )
 
                         Image(systemName: "arrow.down")

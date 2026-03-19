@@ -16,8 +16,9 @@ Replaces the previous broken `TapeExporter` with a new implementation that reuse
 |-----------|------|
 | `TapeExportSession` | Class-based exporter holding the `AVAssetExportSession` for progress polling and cancellation. Builds composition via `TapeCompositionBuilder`, adds music, exports, saves to Photos. |
 | `ExportCoordinator` | Manages export lifecycle: progress polling (Timer-based), ETA calculation, cancellation, completion feedback (sound + haptics), local notifications, and dialog state. |
-| `ExportProgressDialog` | Custom HIG-inspired dialog showing circular progress ring, ETA, dismiss/cancel buttons. |
-| `ExportCompletionDialog` | Custom HIG-inspired dialog with "Done" and "Show in Photos" actions. |
+| `GlassAlertCard` | Reusable glass-styled alert component (`DesignSystem/`) with generic icon and message content, edge highlight, and three button styles (primary, secondary, destructive). Used by both progress and completion dialogs. |
+| `ExportProgressDialog` | Uses `GlassAlertCard` with a custom `CircularProgressRing` icon, ETA/hint message content, and Cancel Merge (destructive) / OK (primary) buttons. |
+| `ExportCompletionDialog` | Uses `GlassAlertCard` with `systemImage` convenience init and "Done" (secondary) / "Show in Photos" (primary) buttons. |
 | `CircularProgressRing` | Shared SwiftUI component used in the progress dialog and the header indicator. |
 | `HeaderView` (export indicator) | Shows a small circular progress ring with arrow.down icon next to "TAPES" when export is running and dialog is dismissed. Tapping reopens the progress dialog. |
 | `ExportNotificationHandler` | `UNUserNotificationCenterDelegate` set up in `TapesApp`. Handles notification tap → opens Photos app. |

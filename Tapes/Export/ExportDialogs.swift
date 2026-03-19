@@ -30,85 +30,50 @@ struct ExportProgressDialog: View {
     @ObservedObject var coordinator: ExportCoordinator
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.4)
-                .ignoresSafeArea()
-                .onTapGesture { }
+        GlassAlertCard(
+            title: "Merging Tape…",
+            buttons: [
+                GlassAlertButton(title: "Cancel Merge", style: .destructive) {
+                    coordinator.cancelExport()
+                },
+                GlassAlertButton(title: "OK", style: .secondary) {
+                    coordinator.dismissProgressDialog()
+                }
+            ],
+            icon: {
+                ZStack {
+                    CircularProgressRing(
+                        progress: coordinator.progress,
+                        lineWidth: 3.5,
+                        size: 56,
+                        ringColor: .green
+                    )
 
-            VStack(spacing: 0) {
-                VStack(spacing: 16) {
-                    ZStack {
-                        CircularProgressRing(
-                            progress: coordinator.progress,
-                            lineWidth: 3.5,
-                            size: 56
-                        )
-
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 20, weight: .semibold))
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                }
+            },
+            message: {
+                VStack(spacing: 8) {
+                    if let eta = coordinator.formattedTimeRemaining {
+                        Text(eta)
+                            .font(.system(size: 15))
                             .foregroundStyle(Color.primary)
-                    }
-                    .padding(.top, 4)
-
-                    VStack(spacing: 6) {
-                        Text("Merging Tape…")
-                            .font(.system(size: 17, weight: .semibold))
-
-                        if let eta = coordinator.formattedTimeRemaining {
-                            Text(eta)
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Preparing…")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                        }
+                    } else {
+                        Text("Preparing…")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.primary)
                     }
 
                     Text("You can dismiss this — merging will continue in the background.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.primary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 8)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-
-                Divider()
-
-                HStack(spacing: 0) {
-                    Button {
-                        coordinator.cancelExport()
-                    } label: {
-                        Text("Cancel Merge")
-                            .font(.system(size: 17))
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .contentShape(Rectangle())
-                    }
-
-                    Divider()
-                        .frame(height: 44)
-
-                    Button {
-                        coordinator.dismissProgressDialog()
-                    } label: {
-                        Text("OK")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.blue)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .contentShape(Rectangle())
-                    }
                 }
             }
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .frame(width: 270)
-        }
-        .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+        )
     }
 }
 
@@ -119,7 +84,7 @@ struct ExportCompletionDialog: View {
 
     var body: some View {
         GlassAlertCard(
-            icon: "video.badge.checkmark",
+            systemImage: "video.badge.checkmark",
             title: "Tape merged and saved",
             message: "Your video has been saved to photos",
             buttons: [
