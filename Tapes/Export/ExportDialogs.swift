@@ -36,7 +36,7 @@ struct ExportProgressDialog: View {
                 GlassAlertButton(title: "Cancel Merge", style: .destructive) {
                     coordinator.cancelExport()
                 },
-                GlassAlertButton(title: "OK", style: .secondary) {
+                GlassAlertButton(title: "OK", style: .primaryFill) {
                     coordinator.dismissProgressDialog()
                 }
             ],

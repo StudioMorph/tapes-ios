@@ -434,6 +434,7 @@ struct TapeCardView: View {
             Button("Save") {
                 onMergeAndSave()
             }
+            .keyboardShortcut(.defaultAction)
         } message: {
             Text("This will merge all the clips in this tape and save it as one video to your Photos app.")
         }

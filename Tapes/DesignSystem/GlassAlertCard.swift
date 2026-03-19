@@ -8,6 +8,7 @@ struct GlassAlertButton {
     enum Style {
         case secondary
         case primary
+        case primaryFill
         case destructive
     }
 }
@@ -106,6 +107,18 @@ struct GlassAlertCard<Icon: View, MessageContent: View>: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
             .buttonBorderShape(.capsule)
+
+        case .primaryFill:
+            Button {
+                button.action()
+            } label: {
+                Text(button.title)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
+            .tint(Color(red: 0, green: 0.533, blue: 1))
 
         case .destructive:
             Button(role: .destructive) {
