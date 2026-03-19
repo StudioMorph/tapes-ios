@@ -118,81 +118,19 @@ struct ExportCompletionDialog: View {
     @ObservedObject var coordinator: ExportCoordinator
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.2)
-                .ignoresSafeArea()
-                .onTapGesture { }
-
-            VStack(spacing: 10) {
-                Image(systemName: "video.badge.checkmark")
-                    .font(.system(size: 48, weight: .semibold))
-                    .foregroundStyle(Color.primary)
-                    .frame(height: 87)
-
-                VStack(spacing: 10) {
-                    Text("Tape merged and saved")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.primary)
-                        .multilineTextAlignment(.center)
-
-                    Text("Your video has been saved to photos")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(Color.primary)
-                        .multilineTextAlignment(.center)
+        GlassAlertCard(
+            icon: "video.badge.checkmark",
+            title: "Tape merged and saved",
+            message: "Your video has been saved to photos",
+            buttons: [
+                GlassAlertButton(title: "Done", style: .secondary) {
+                    coordinator.dismissCompletionDialog()
+                },
+                GlassAlertButton(title: "Show in Photos", style: .primary) {
+                    coordinator.showInPhotos()
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 24)
-                .padding(.horizontal, 8)
-
-                HStack(spacing: 16) {
-                    Button {
-                        coordinator.dismissCompletionDialog()
-                    } label: {
-                        Text("Done")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(Color.primary)
-                            .frame(height: 48)
-                            .frame(minWidth: 108)
-                            .background(
-                                Capsule()
-                                    .fill(Color(.systemGray4).opacity(0.5))
-                            )
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        coordinator.showInPhotos()
-                    } label: {
-                        Text("Show in Photos")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .background(
-                                Capsule()
-                                    .fill(Color(red: 0, green: 0.533, blue: 1))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
-            .shadow(color: .black.opacity(0.12), radius: 40, x: 0, y: 8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 34, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [.white.opacity(0.55), .white.opacity(0.2)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1
-                    )
-            )
-            .frame(maxWidth: 340)
-        }
-        .transition(.opacity.animation(.easeInOut(duration: 0.2)))
+            ]
+        )
     }
 }
 
