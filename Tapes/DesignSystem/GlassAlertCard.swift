@@ -89,22 +89,28 @@ struct GlassAlertCard: View {
 
     @ViewBuilder
     private func buttonView(for button: GlassAlertButton) -> some View {
-        Button {
-            button.action()
-        } label: {
-            Text(button.title)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(button.style == .primary ? .white : Color.primary)
-                .frame(maxWidth: button.style == .primary ? .infinity : nil)
-                .frame(height: 48)
-                .frame(minWidth: button.style == .secondary ? 108 : nil)
-                .background(
-                    Capsule()
-                        .fill(button.style == .primary
-                              ? Color(red: 0, green: 0.533, blue: 1)
-                              : Color(.secondarySystemFill))
-                )
+        if button.style == .primary {
+            Button {
+                button.action()
+            } label: {
+                Text(button.title)
+                    .lineLimit(1)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
+            .tint(Color(red: 0, green: 0.533, blue: 1))
+            .layoutPriority(1)
+        } else {
+            Button {
+                button.action()
+            } label: {
+                Text(button.title)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .buttonBorderShape(.capsule)
         }
-        .buttonStyle(.plain)
     }
 }
