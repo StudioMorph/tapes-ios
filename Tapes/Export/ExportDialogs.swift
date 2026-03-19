@@ -72,12 +72,11 @@ struct ExportProgressDialog: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 8)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-                .padding(.bottom, 14)
+                .padding(.horizontal, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
 
                 Divider()
-                    .background(Color(.separator))
 
                 HStack(spacing: 0) {
                     Button {
@@ -120,74 +119,78 @@ struct ExportCompletionDialog: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.4)
+            Color.black.opacity(0.2)
                 .ignoresSafeArea()
                 .onTapGesture { }
 
-            VStack(spacing: 0) {
-                VStack(spacing: 16) {
-                    ZStack {
-                        Circle()
-                            .fill(Color(.systemGreen))
-                            .frame(width: 72, height: 72)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                    .padding(.top, 4)
+            VStack(spacing: 10) {
+                Image(systemName: "video.badge.checkmark")
+                    .font(.system(size: 48, weight: .semibold))
+                    .foregroundStyle(Color.primary)
+                    .frame(height: 87)
 
-                    VStack(spacing: 6) {
-                        Text("Tape Merged & Saved")
-                            .font(.system(size: 28, weight: .heavy))
-                            .foregroundStyle(Color.primary)
-                            .multilineTextAlignment(.center)
+                VStack(spacing: 10) {
+                    Text("Tape merged and saved")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .multilineTextAlignment(.center)
 
-                        Text("Your video has been saved to Photos.")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 12)
-                    }
+                    Text("Your video has been saved to photos")
+                        .font(.system(size: 17, weight: .regular))
+                        .foregroundStyle(Color.primary)
+                        .multilineTextAlignment(.center)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-                .padding(.bottom, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+                .padding(.horizontal, 8)
 
-                Divider()
-                    .background(Color(.separator))
-
-                HStack(spacing: 0) {
+                HStack(spacing: 16) {
                     Button {
                         coordinator.dismissCompletionDialog()
                     } label: {
                         Text("Done")
-                            .font(.system(size: 17, weight: .regular))
-                            .foregroundStyle(.blue)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 54)
-                            .contentShape(Rectangle())
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(Color.primary)
+                            .frame(height: 48)
+                            .frame(minWidth: 108)
+                            .background(
+                                Capsule()
+                                    .fill(Color(.systemGray4).opacity(0.5))
+                            )
                     }
-
-                    Divider()
-                        .frame(height: 54)
+                    .buttonStyle(.plain)
 
                     Button {
                         coordinator.showInPhotos()
                     } label: {
                         Text("Show in Photos")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.blue)
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(minHeight: 54)
-                            .contentShape(Rectangle())
+                            .frame(height: 48)
+                            .background(
+                                Capsule()
+                                    .fill(Color(red: 0, green: 0.533, blue: 1))
+                            )
                     }
+                    .buttonStyle(.plain)
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
+            .padding(14)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
+            .shadow(color: .black.opacity(0.12), radius: 40, x: 0, y: 8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 34, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.55), .white.opacity(0.2)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
             )
-            .frame(maxWidth: 360)
+            .frame(maxWidth: 340)
         }
         .transition(.opacity.animation(.easeInOut(duration: 0.2)))
     }
