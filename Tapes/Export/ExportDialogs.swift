@@ -72,11 +72,12 @@ struct ExportProgressDialog: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 8)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 14)
 
                 Divider()
+                    .background(Color(.separator))
 
                 HStack(spacing: 0) {
                     Button {
@@ -125,41 +126,50 @@ struct ExportCompletionDialog: View {
 
             VStack(spacing: 0) {
                 VStack(spacing: 16) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 44))
-                        .foregroundStyle(.green)
-                        .padding(.top, 4)
+                    ZStack {
+                        Circle()
+                            .fill(Color(.systemGreen))
+                            .frame(width: 72, height: 72)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .padding(.top, 4)
 
                     VStack(spacing: 6) {
                         Text("Tape Merged & Saved")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 28, weight: .heavy))
+                            .foregroundStyle(Color.primary)
+                            .multilineTextAlignment(.center)
 
                         Text("Your video has been saved to Photos.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color.secondary)
                             .multilineTextAlignment(.center)
+                            .padding(.horizontal, 12)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 14)
 
                 Divider()
+                    .background(Color(.separator))
 
                 HStack(spacing: 0) {
                     Button {
                         coordinator.dismissCompletionDialog()
                     } label: {
                         Text("Done")
-                            .font(.system(size: 17))
+                            .font(.system(size: 17, weight: .regular))
                             .foregroundStyle(.blue)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 44)
+                            .frame(minHeight: 54)
                             .contentShape(Rectangle())
                     }
 
                     Divider()
-                        .frame(height: 44)
+                        .frame(height: 54)
 
                     Button {
                         coordinator.showInPhotos()
@@ -168,13 +178,16 @@ struct ExportCompletionDialog: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(.blue)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 44)
+                            .frame(minHeight: 54)
                             .contentShape(Rectangle())
                     }
                 }
             }
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .frame(width: 270)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .frame(maxWidth: 360)
         }
         .transition(.opacity.animation(.easeInOut(duration: 0.2)))
     }
