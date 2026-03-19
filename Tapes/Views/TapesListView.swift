@@ -3,7 +3,6 @@ import SwiftUI
 struct TapesListView: View {
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
-    @State private var showingQAChecklist = false
     @State private var tapeToPreview: Tape?
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
@@ -24,10 +23,7 @@ struct TapesListView: View {
                 } else {
                     VStack(spacing: 0) {
                         HeaderView(
-                            exportCoordinator: exportCoordinator,
-                            onQAChecklistTapped: {
-                                showingQAChecklist = true
-                            }
+                            exportCoordinator: exportCoordinator
                         )
                         
                         TapesList(
@@ -87,9 +83,6 @@ struct TapesListView: View {
             })
         }
         .overlay(exportOverlay)
-        .sheet(isPresented: $showingQAChecklist) {
-            QAChecklistView()
-        }
     }
 
     // MARK: - Floating Clip Overlay

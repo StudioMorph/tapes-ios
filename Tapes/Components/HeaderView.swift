@@ -3,7 +3,6 @@ import SwiftUI
 struct HeaderView: View {
     @EnvironmentObject private var tapeStore: TapesStore
     @ObservedObject var exportCoordinator: ExportCoordinator
-    let onQAChecklistTapped: () -> Void
 
     private var isJiggling: Bool {
         tapeStore.jigglingTapeID != nil
@@ -21,7 +20,24 @@ struct HeaderView: View {
                 .foregroundColor(Tokens.Colors.systemRed)
                 .accessibilityAddTraits(.isHeader)
 
-            if showExportIndicator {
+            Spacer()
+
+            if isJiggling {
+                Button("Done") {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        if tapeStore.isFloatingClip {
+                            tapeStore.returnFloatingClip()
+                        }
+                        tapeStore.jigglingTapeID = nil
+                    }
+                }
+                .font(.body.weight(.semibold))
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .tint(.blue)
+                .accessibilityLabel("Done")
+                .accessibilityHint("Exits jiggle editing mode")
+            } else if showExportIndicator {
                 Button {
                     exportCoordinator.showProgressDialogAgain()
                 } label: {
@@ -44,35 +60,6 @@ struct HeaderView: View {
                 .accessibilityLabel("Export in progress")
                 .accessibilityHint("Tap to view export progress")
             }
-
-            Spacer()
-
-            if isJiggling {
-                Button("Done") {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        if tapeStore.isFloatingClip {
-                            tapeStore.returnFloatingClip()
-                        }
-                        tapeStore.jigglingTapeID = nil
-                    }
-                }
-                .font(.body.weight(.semibold))
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .tint(.blue)
-                .accessibilityLabel("Done")
-                .accessibilityHint("Exits jiggle editing mode")
-            } else {
-                Button(action: onQAChecklistTapped) {
-                    Image(systemName: "checklist")
-                        .font(.title2)
-                        .foregroundColor(Tokens.Colors.systemRed)
-                        .frame(width: Tokens.HitTarget.minimum, height: Tokens.HitTarget.minimum)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("QA Checklist")
-                .accessibilityHint("Opens the QA checklist for testing")
-            }
         }
         .padding(.horizontal, Tokens.Spacing.m)
         .padding(.top, Tokens.Spacing.s)
@@ -84,8 +71,7 @@ struct HeaderView: View {
 
 #Preview {
     HeaderView(
-        exportCoordinator: ExportCoordinator(),
-        onQAChecklistTapped: {}
+        exportCoordinator: ExportCoordinator()
     )
     .background(Tokens.Colors.primaryBackground)
     .environmentObject(TapesStore())
