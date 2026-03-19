@@ -23,9 +23,12 @@ struct TapesListView: View {
                     EmptyStateView()
                 } else {
                     VStack(spacing: 0) {
-                        HeaderView(onQAChecklistTapped: {
-                            showingQAChecklist = true
-                        })
+                        HeaderView(
+                            exportCoordinator: exportCoordinator,
+                            onQAChecklistTapped: {
+                                showingQAChecklist = true
+                            }
+                        )
                         
                         TapesList(
                             tapes: $tapesStore.tapes,
@@ -223,11 +226,11 @@ struct TapesListView: View {
 
     private var exportOverlay: some View {
         ZStack {
-            if exportCoordinator.isExporting {
-                ExportProgressOverlay(coordinator: exportCoordinator)
+            if exportCoordinator.showProgressDialog {
+                ExportProgressDialog(coordinator: exportCoordinator)
             }
-            if exportCoordinator.showCompletionToast {
-                CompletionToast(coordinator: exportCoordinator)
+            if exportCoordinator.showCompletionDialog {
+                ExportCompletionDialog(coordinator: exportCoordinator)
             }
             if exportCoordinator.exportError != nil {
                 ExportErrorAlert(coordinator: exportCoordinator)

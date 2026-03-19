@@ -3,11 +3,23 @@ import AVFoundation
 import Photos
 import OSLog
 
-private let log = Logger(subsystem: "com.tapes.app", category: "TapeExporter")
+private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Export")
 
-public enum TapeExporter {
+public final class TapeExportSession: @unchecked Sendable {
 
-    public static func export(tape: Tape) async throws -> (url: URL, assetIdentifier: String?) {
+    private(set) var avExportSession: AVAssetExportSession?
+    private(set) var isCancelled = false
+
+    var sessionProgress: Float {
+        avExportSession?.progress ?? 0
+    }
+
+    func cancel() {
+        isCancelled = true
+        avExportSession?.cancelExport()
+    }
+
+    func run(tape: Tape) async throws -> (url: URL, assetIdentifier: String?) {
         guard !tape.clips.isEmpty else {
             throw ExportError.noClips
         }
@@ -18,15 +30,16 @@ public enum TapeExporter {
         )
         let components = try await builder.buildExportComposition(for: tape)
 
+        guard !isCancelled else { throw ExportError.exportCancelled }
+
         let composition = components.composition
         var allAudioParams = components.audioMix?.inputParameters ?? []
-
         let totalDuration = components.timeline.totalDuration
 
         if tape.musicMood != .none {
             let musicURL = await MubertAPIClient.shared.cachedTrackURL(for: tape.id)
             if let musicURL {
-                try addBackgroundMusic(
+                try Self.addBackgroundMusic(
                     to: composition,
                     musicURL: musicURL,
                     volume: tape.musicVolume,
@@ -34,7 +47,7 @@ public enum TapeExporter {
                     audioParams: &allAudioParams
                 )
             } else {
-                log.warning("No cached music track for tape \(tape.id.uuidString.prefix(8)), skipping music")
+                log.warning("No cached music track, skipping music")
             }
         }
 
@@ -44,7 +57,9 @@ public enum TapeExporter {
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("Tape_\(UUID().uuidString).mp4")
 
-        log.info("Starting export: \(tape.clips.count) clips, duration=\(CMTimeGetSeconds(totalDuration))s, music=\(tape.musicMood != .none)")
+        log.info("Starting export: \(tape.clips.count) clips, duration=\(CMTimeGetSeconds(totalDuration))s")
+
+        guard !isCancelled else { throw ExportError.exportCancelled }
 
         try await runExportSession(
             asset: composition,
@@ -53,9 +68,9 @@ public enum TapeExporter {
             outputURL: outURL
         )
 
-        log.info("Export complete, saving to Photos")
+        log.info("Export session complete, saving to Photos")
 
-        let assetIdentifier = try await saveToPhotos(url: outURL)
+        let assetIdentifier = try await Self.saveToPhotos(url: outURL)
 
         return (outURL, assetIdentifier)
     }
@@ -113,7 +128,7 @@ public enum TapeExporter {
 
     // MARK: - Export Session
 
-    private static func runExportSession(
+    private func runExportSession(
         asset: AVMutableComposition,
         videoComposition: AVMutableVideoComposition,
         audioMix: AVMutableAudioMix,
@@ -125,6 +140,8 @@ public enum TapeExporter {
         ) else {
             throw ExportError.exportSessionUnavailable
         }
+
+        self.avExportSession = session
 
         session.outputURL = outputURL
         session.outputFileType = .mp4

@@ -154,7 +154,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Clamp ≤ 0.5s
 
 - **Export Implementation**
-  - iOS: Reuses `TapeCompositionBuilder.buildExportComposition(for:)` (same pipeline as playback). Adds background music from cached Mubert track (looped, volume + fade-out). `TapeExporter.export(tape:)` → AVAssetExportSession → save to Photos. Single entry point: tape card arrow.down.
+  - iOS: `TapeExportSession` (class) wraps `TapeCompositionBuilder.buildExportComposition(for:)` with background music, HEVC export, and save to Photos. `ExportCoordinator` manages lifecycle: progress polling, ETA, cancellation, completion sound + haptics, local notifications, and HIG-inspired custom dialogs. Header shows circular progress ring when dialog is dismissed. Single entry point: tape card arrow.down.
   - Android: FFmpegKit filtergraph (xfade + acrossfade)
 - **Preview Composition (iOS)**
   - Preview playback uses per-clip `AVPlayerItem` instances via `TapePlayerViewModel` (MVVM).
@@ -173,8 +173,8 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 ## 6. Build & Dependencies
 
 ### iOS
-- **Frameworks**: AVFoundation, Photos, AVKit
-- **Export preset**: AVAssetExportPreset1920x1080
+- **Frameworks**: AVFoundation, Photos, AVKit, UserNotifications, AudioToolbox
+- **Export preset**: AVAssetExportPresetHEVC1920x1080
 - **Files**:
   - Tapes/Views/Player/TapePlayerView.swift (thin View shell)
   - Tapes/Views/Player/TapePlayerViewModel.swift (playback state + logic)
@@ -185,9 +185,10 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Tapes/Playback/TapeCompositionBuilder+ImageEncoding.swift
   - Tapes/Playback/StillImageVideoCompositor.swift (real-time image rendering)
   - Tapes/Playback/AsyncSemaphore.swift (concurrency primitive)
-  - Tapes/Export/TapeExporter.swift (export: builder + music + AVAssetExportSession)
-  - Tapes/Export/ExportCoordinator.swift (UI state, permissions, album association)
-  - Tapes/Export/iOSExporterBridge.swift (async bridge to TapeExporter)
+  - Tapes/Export/TapeExporter.swift (TapeExportSession: class-based exporter with progress + cancellation)
+  - Tapes/Export/ExportCoordinator.swift (lifecycle, progress polling, ETA, notifications, dialogs)
+  - Tapes/Export/ExportDialogs.swift (CircularProgressRing, ExportProgressDialog, ExportCompletionDialog, ExportErrorAlert)
+  - Tapes/Export/iOSExporterBridge.swift (async bridge to TapeExportSession)
 
 ### Android
 - **Dependencies**:
