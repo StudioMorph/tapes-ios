@@ -113,7 +113,7 @@ struct TapeCardView: View {
             TextField("", text: config.text)
                 .focused($isTitleFocused)
                 .textFieldStyle(.plain)
-                .font(Tokens.Typography.title)
+                .font(Tokens.Typography.headline)
                 .foregroundColor(Tokens.Colors.primaryText)
                 .disableAutocorrection(true)
                 .submitLabel(.done)
@@ -127,7 +127,7 @@ struct TapeCardView: View {
                 }
         } else {
             Text(displayedTitle)
-                .font(Tokens.Typography.title)
+                .font(Tokens.Typography.headline)
                 .foregroundColor(Tokens.Colors.primaryText)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -179,7 +179,7 @@ struct TapeCardView: View {
                             beginEditingTitle()
                         }
                     Image(systemName: "pencil")
-                        .font(Tokens.Typography.title)
+                        .font(Tokens.Typography.headline)
                         .foregroundColor(Tokens.Colors.primaryText)
                         .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                         .onTapGesture {
