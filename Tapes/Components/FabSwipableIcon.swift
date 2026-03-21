@@ -1,25 +1,23 @@
 import SwiftUI
 
 public struct FabSwipableIcon: View {
-    // Bind to your VM so taps/swipes still switch the real mode
     @Binding var mode: FABMode
+    var disabledModes: Set<FABMode> = []
     var action: () -> Void
 
-    // Tokens
-    let size: CGFloat = Tokens.FAB.size       // circle diameter
-    let bgColor = Tokens.Colors.red          // red
+    let size: CGFloat = Tokens.FAB.size
+    let bgColor = Tokens.Colors.red
     let iconColor = Color.white
 
-    // Gesture state (icon only)
     @State private var iconOffsetX: CGFloat = 0
     @State private var isInteracting = false
 
-    // Tuning
-    private let swipeThreshold: CGFloat = 36    // when crossed → change mode
-    private let maxDrag: CGFloat = 44           // clamp visual range
+    private let swipeThreshold: CGFloat = 36
+    private let maxDrag: CGFloat = 44
 
-    public init(mode: Binding<FABMode>, action: @escaping () -> Void) {
+    public init(mode: Binding<FABMode>, disabledModes: Set<FABMode> = [], action: @escaping () -> Void) {
         self._mode = mode
+        self.disabledModes = disabledModes
         self.action = action
     }
 
@@ -86,8 +84,15 @@ public struct FabSwipableIcon: View {
 
     private func updateMode(forwards: Bool) {
         let all = FABMode.allCases
-        if let idx = all.firstIndex(of: mode) {
-            let next = forwards ? (idx + 1) % all.count : (idx - 1 + all.count) % all.count
+        guard let idx = all.firstIndex(of: mode) else { return }
+        let direction = forwards ? 1 : -1
+        var next = (idx + direction + all.count) % all.count
+        var attempts = 0
+        while disabledModes.contains(all[next]) && attempts < all.count {
+            next = (next + direction + all.count) % all.count
+            attempts += 1
+        }
+        if !disabledModes.contains(all[next]) {
             mode = all[next]
         }
     }

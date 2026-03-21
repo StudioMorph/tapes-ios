@@ -88,6 +88,8 @@ struct TapeCardView: View {
         return (tape.clips[pos - 1].id, tape.clips[pos].id)
     }
 
+    private var isAtSeamEnd: Bool { seamClipIDs == nil && !tape.clips.isEmpty }
+
     private var displayedTitle: String {
         let trimmed = tape.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? " " : trimmed
@@ -249,7 +251,10 @@ struct TapeCardView: View {
                         .allowsHitTesting(fabOpacity > 0.5)
                         .zIndex(2)
                 } else {
-                    FabSwipableIcon(mode: $fabMode) {
+                    FabSwipableIcon(
+                        mode: $fabMode,
+                        disabledModes: isAtSeamEnd ? [.transition] : []
+                    ) {
                         if isEmptyTape && isAtFreeLimit {
                             showingPaywall = true
                             return
@@ -272,6 +277,13 @@ struct TapeCardView: View {
                     }
                     .frame(width: Tokens.FAB.size, height: Tokens.FAB.size)
                     .zIndex(2)
+                    .onChange(of: isAtSeamEnd) { _, atEnd in
+                        if atEnd && fabMode == .transition {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                fabMode = .camera
+                            }
+                        }
+                    }
                 }
             }
             .overlay(alignment: .topLeading) {
