@@ -222,6 +222,9 @@ struct TapesListView: View {
                 },
                 onTapeDeleted: {
                     showingDeleteSuccessToast = true
+                },
+                onMergeAndSave: { tape in
+                    handleMergeAndSave(tape)
                 }
             )
         }

@@ -110,8 +110,7 @@ struct SeamTransitionView: View {
             SectionHeader(title: "Duration")
 
             TransitionDurationSlider(
-                duration: $duration,
-                hasChanges: $hasChanges
+                duration: $duration
             )
         }
     }

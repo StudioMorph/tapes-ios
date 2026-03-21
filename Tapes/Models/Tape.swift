@@ -75,6 +75,40 @@ public enum TransitionType: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - Export Orientation
+
+public enum ExportOrientation: String, CaseIterable, Codable, Identifiable {
+    case auto = "auto"
+    case portrait = "portrait"
+    case landscape = "landscape"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .auto: return "Auto"
+        case .portrait: return "Portrait"
+        case .landscape: return "Landscape"
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .auto: return "Based on majority of clips"
+        case .portrait: return "Always export in 9:16"
+        case .landscape: return "Always export in 16:9"
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .auto: return "arrow.triangle.2.circlepath"
+        case .portrait: return "rectangle.portrait"
+        case .landscape: return "rectangle"
+        }
+    }
+}
+
 // MARK: - Seam Transition Override
 
 public struct SeamTransition: Codable, Equatable {
@@ -109,6 +143,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var albumLocalIdentifier: String?
     public var backgroundMusicMood: String?
     public var backgroundMusicVolume: Double?
+    public var exportOrientation: ExportOrientation
 
     public init(
         id: UUID = UUID(),
@@ -124,7 +159,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         hasReceivedFirstContent: Bool = false,
         albumLocalIdentifier: String? = nil,
         backgroundMusicMood: String? = nil,
-        backgroundMusicVolume: Double? = nil
+        backgroundMusicVolume: Double? = nil,
+        exportOrientation: ExportOrientation = .auto
     ) {
         self.id = id
         self.title = title
@@ -140,6 +176,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.albumLocalIdentifier = albumLocalIdentifier
         self.backgroundMusicMood = backgroundMusicMood
         self.backgroundMusicVolume = backgroundMusicVolume
+        self.exportOrientation = exportOrientation
     }
     
     // MARK: - Coding Keys
@@ -149,6 +186,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case seamTransitions
         case clips, createdAt, updatedAt, hasReceivedFirstContent, albumLocalIdentifier
         case backgroundMusicMood, backgroundMusicVolume
+        case exportOrientation
     }
     
     // MARK: - Custom Decoder for Backward Compatibility
@@ -171,6 +209,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         albumLocalIdentifier = try container.decodeIfPresent(String.self, forKey: .albumLocalIdentifier)
         backgroundMusicMood = try container.decodeIfPresent(String.self, forKey: .backgroundMusicMood)
         backgroundMusicVolume = try container.decodeIfPresent(Double.self, forKey: .backgroundMusicVolume)
+        exportOrientation = try container.decodeIfPresent(ExportOrientation.self, forKey: .exportOrientation) ?? .auto
     }
     
     // MARK: - Computed Properties

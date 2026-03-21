@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TransitionDurationSlider: View {
     @Binding var duration: Double
-    @Binding var hasChanges: Bool
     
     var body: some View {
         VStack(spacing: Tokens.Spacing.s) {
@@ -13,9 +12,6 @@ struct TransitionDurationSlider: View {
                 
                 Slider(value: $duration, in: 0.1...2.0, step: 0.1)
                     .accentColor(.blue)
-                    .onChange(of: duration) { _ in
-                        hasChanges = true
-                    }
                 
                 Text("2.0s")
                     .font(Tokens.Typography.caption)
@@ -48,8 +44,7 @@ struct TransitionDurationSlider: View {
 
 #Preview {
     TransitionDurationSlider(
-        duration: .constant(0.5),
-        hasChanges: .constant(false)
+        duration: .constant(0.5)
     )
     .padding()
     .background(Tokens.Colors.primaryBackground)

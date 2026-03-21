@@ -289,8 +289,29 @@ struct TapeCompositionBuilder {
     @MainActor
     func buildExportComposition(for tape: Tape) async throws -> ExportableComposition {
         let contexts = try await loadAssets(for: tape.clips, startIndex: 0)
-        let timeline = makeTimeline(for: tape, contexts: contexts)
-        return try await buildCompositionComponents(for: tape, timeline: timeline)
+        var exportTape = tape
+        exportTape.orientation = resolveExportOrientation(tape: tape, contexts: contexts)
+        let timeline = makeTimeline(for: exportTape, contexts: contexts)
+        return try await buildCompositionComponents(for: exportTape, timeline: timeline)
+    }
+
+    private func resolveExportOrientation(tape: Tape, contexts: [ClipAssetContext]) -> TapeOrientation {
+        switch tape.exportOrientation {
+        case .portrait: return .portrait
+        case .landscape: return .landscape
+        case .auto:
+            var portraitCount = 0
+            var landscapeCount = 0
+            for ctx in contexts {
+                let size = ctx.naturalSize.applying(ctx.preferredTransform)
+                if abs(size.width) > abs(size.height) {
+                    landscapeCount += 1
+                } else {
+                    portraitCount += 1
+                }
+            }
+            return landscapeCount > portraitCount ? .landscape : .portrait
+        }
     }
 
     @MainActor

@@ -4,28 +4,25 @@ struct TapeSettingsView: View {
     @Binding var tape: Tape
     let onDismiss: () -> Void
     let onTapeDeleted: (() -> Void)?
+    let onMergeAndSave: ((Tape) -> Void)?
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var trackGen = TrackGenerationManager()
 
-    // UI-only state
-    @State private var selectedTransition: TransitionType
-    @State private var transitionDuration: Double
-    @State private var selectedMood: MubertAPIClient.Mood
-    @State private var musicVolume: Double
-    @State private var hasChanges = false
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var deleteError: String?
     @State private var showingDeleteError = false
 
-    init(tape: Binding<Tape>, onDismiss: @escaping () -> Void = {}, onTapeDeleted: (() -> Void)? = nil) {
+    init(
+        tape: Binding<Tape>,
+        onDismiss: @escaping () -> Void = {},
+        onTapeDeleted: (() -> Void)? = nil,
+        onMergeAndSave: ((Tape) -> Void)? = nil
+    ) {
         self._tape = tape
         self.onDismiss = onDismiss
         self.onTapeDeleted = onTapeDeleted
-        self._selectedTransition = State(initialValue: tape.wrappedValue.transition)
-        self._transitionDuration = State(initialValue: tape.wrappedValue.transitionDuration)
-        self._selectedMood = State(initialValue: tape.wrappedValue.musicMood)
-        self._musicVolume = State(initialValue: Double(tape.wrappedValue.musicVolume))
+        self.onMergeAndSave = onMergeAndSave
     }
     
     var body: some View {
@@ -35,16 +32,19 @@ struct TapeSettingsView: View {
                     transitionSection
                         .accessibilitySortPriority(1)
                     
-                    if selectedTransition != .none {
+                    if tape.transition != .none {
                         transitionDurationSection
                             .accessibilitySortPriority(2)
                     }
 
-                    backgroundMusicSection
+                    mergeAndSaveSection
                         .accessibilitySortPriority(3)
 
-                    destructiveActionSection
+                    backgroundMusicSection
                         .accessibilitySortPriority(4)
+
+                    destructiveActionSection
+                        .accessibilitySortPriority(5)
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
@@ -53,35 +53,22 @@ struct TapeSettingsView: View {
             .navigationTitle("Tape Settings")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        resetToBindingValues()
-                        onDismiss()
-                    }
-                    .foregroundColor(Tokens.Colors.primaryText)
-                    .accessibilityLabel("Cancel changes and close settings")
-                }
-                
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        saveChanges()
+                    Button("Done") {
+                        trackGen.stopPreview()
                         onDismiss()
                     }
-                    .foregroundColor(hasChanges ? .blue : Tokens.Colors.secondaryText)
-                    .disabled(!hasChanges)
-                    .accessibilityLabel(hasChanges ? "Save changes" : "No changes to save")
-                    .accessibilityHint(hasChanges ? "Saves the current transition settings" : "No changes have been made")
+                    .foregroundColor(.blue)
+                    .accessibilityLabel("Close settings")
                 }
             }
         }
         .onAppear {
-            if selectedMood != .none {
+            if tape.musicMood != .none {
                 trackGen.loadCachedState(for: tape.id)
             }
         }
         .onDisappear { trackGen.stopPreview() }
-        .onChange(of: transitionDuration) { _ in hasChanges = true }
-        .onChange(of: tape) { _ in resetToBindingValues() }
         .alert("Delete this Tape?", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -112,10 +99,11 @@ struct TapeSettingsView: View {
                 ForEach(TransitionType.allCases, id: \.self) { transition in
                     TransitionOption(
                         transition: transition,
-                        isSelected: selectedTransition == transition,
+                        isSelected: tape.transition == transition,
                         onSelect: {
-                            selectedTransition = transition
-                            hasChanges = true
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                tape.transition = transition
+                            }
                             provideHapticFeedback()
                         }
                     )
@@ -129,12 +117,90 @@ struct TapeSettingsView: View {
             SectionHeader(title: "Transition Duration")
             
             TransitionDurationSlider(
-                duration: $transitionDuration,
-                hasChanges: $hasChanges
+                duration: $tape.transitionDuration
             )
         }
     }
     
+    private var mergeAndSaveSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+            SectionHeader(title: "Merge and Save")
+
+            VStack(spacing: Tokens.Spacing.s) {
+                ForEach(ExportOrientation.allCases) { orientation in
+                    exportOrientationCell(orientation)
+                }
+            }
+        }
+    }
+
+    private func exportOrientationCell(_ orientation: ExportOrientation) -> some View {
+        let isSelected = tape.exportOrientation == orientation
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                tape.exportOrientation = orientation
+            }
+            provideHapticFeedback()
+        } label: {
+            VStack(spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+                        HStack(spacing: Tokens.Spacing.s) {
+                            Image(systemName: orientation.icon)
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(Tokens.Colors.primaryText)
+                                .frame(width: 24)
+
+                            Text(orientation.displayName)
+                                .font(Tokens.Typography.headline)
+                                .foregroundColor(Tokens.Colors.primaryText)
+                        }
+
+                        Text(orientation.description)
+                            .font(Tokens.Typography.caption)
+                            .foregroundColor(Tokens.Colors.secondaryText)
+                            .padding(.leading, 24 + Tokens.Spacing.s)
+                    }
+
+                    Spacer()
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(Tokens.Typography.title)
+                    }
+                }
+
+                if isSelected {
+                    Button {
+                        let tapeSnapshot = tape
+                        trackGen.stopPreview()
+                        onDismiss()
+                        onMergeAndSave?(tapeSnapshot)
+                    } label: {
+                        Text("Save and Merge")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .buttonBorderShape(.capsule)
+                    .tint(Color(red: 0, green: 0.533, blue: 1))
+                    .padding(.top, Tokens.Spacing.m)
+                }
+            }
+            .padding(.vertical, Tokens.Spacing.m)
+            .padding(.horizontal, Tokens.Spacing.m)
+            .background(Tokens.Colors.secondaryBackground)
+            .cornerRadius(Tokens.Radius.card)
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: Tokens.HitTarget.minimum)
+        .accessibilityLabel(orientation.displayName)
+        .accessibilityHint(orientation.description)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     private var backgroundMusicSection: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             SectionHeader(title: "Background Music")
@@ -143,18 +209,20 @@ struct TapeSettingsView: View {
                 ForEach(MubertAPIClient.Mood.allCases) { mood in
                     MoodRowView(
                         mood: mood,
-                        isSelected: selectedMood == mood,
-                        isGenerating: selectedMood == mood && trackGen.isGenerating,
-                        isReady: selectedMood == mood && trackGen.isReady,
-                        isPreviewing: selectedMood == mood && trackGen.isPreviewing,
-                        progress: selectedMood == mood ? trackGen.progress : 0,
-                        volume: $musicVolume,
+                        isSelected: tape.musicMood == mood,
+                        isGenerating: tape.musicMood == mood && trackGen.isGenerating,
+                        isReady: tape.musicMood == mood && trackGen.isReady,
+                        isPreviewing: tape.musicMood == mood && trackGen.isPreviewing,
+                        progress: tape.musicMood == mood ? trackGen.progress : 0,
+                        volume: Binding(
+                            get: { Double(tape.musicVolume) },
+                            set: { tape.backgroundMusicVolume = $0 }
+                        ),
                         onSelect: { selectMood(mood) },
-                        onPreview: { trackGen.togglePreview(volume: Float(musicVolume)) },
+                        onPreview: { trackGen.togglePreview(volume: tape.musicVolume) },
                         onRegenerate: { trackGen.regenerate(mood: mood, tapeID: tape.id) },
                         onVolumeChanged: {
-                            hasChanges = true
-                            trackGen.updatePreviewVolume(Float(musicVolume))
+                            trackGen.updatePreviewVolume(tape.musicVolume)
                         }
                     )
                 }
@@ -175,65 +243,36 @@ struct TapeSettingsView: View {
     // MARK: - Helper Methods
     
     private func selectMood(_ mood: MubertAPIClient.Mood) {
-        guard mood != selectedMood else { return }
+        guard mood != tape.musicMood else { return }
 
         trackGen.cancel()
-        if selectedMood != .none {
+        if tape.musicMood != .none {
             Task { await MubertAPIClient.shared.clearCache(for: tape.id) }
         }
 
-        selectedMood = mood
-        hasChanges = true
+        withAnimation(.easeInOut(duration: 0.2)) {
+            tape.backgroundMusicMood = mood == .none ? nil : mood.rawValue
+        }
         provideHapticFeedback()
 
         if mood != .none {
             trackGen.generate(mood: mood, tapeID: tape.id)
         }
     }
-
-    private func resetToBindingValues() {
-        selectedTransition = tape.transition
-        transitionDuration = tape.transitionDuration
-        selectedMood = tape.musicMood
-        musicVolume = Double(tape.musicVolume)
-        hasChanges = false
-        trackGen.cancel()
-        if selectedMood != .none {
-            trackGen.loadCachedState(for: tape.id)
-        }
-    }
-
-    private func saveChanges() {
-        trackGen.stopPreview()
-        var updated = tape
-        updated.updateSettings(
-            orientation: tape.orientation,
-            scaleMode: tape.scaleMode,
-            transition: selectedTransition,
-            transitionDuration: transitionDuration
-        )
-        updated.backgroundMusicMood = selectedMood == .none ? nil : selectedMood.rawValue
-        updated.backgroundMusicVolume = musicVolume
-        tape = updated
-        hasChanges = false
-    }
     
     private func deleteTape() {
         isDeleting = true
         
         Task {
-            // Call the existing delete functionality
             await MainActor.run {
                 tapesStore.deleteTape(tape)
             }
             
-            // Success - provide haptic feedback
             #if os(iOS)
             let notificationFeedback = UINotificationFeedbackGenerator()
             notificationFeedback.notificationOccurred(.success)
             #endif
             
-            // Dismiss modal and show success toast
             await MainActor.run {
                 onDismiss()
                 onTapeDeleted?()
@@ -297,7 +336,4 @@ struct TapeSettingsView: View {
         onTapeDeleted: nil
     )
     .environmentObject(TapesStore())
-    .onAppear {
-        // Simulate loading state
-    }
 }
