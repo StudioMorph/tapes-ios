@@ -56,6 +56,8 @@ struct TapeCardView: View {
     @State private var importSource: ImportSource? = nil
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
+    @State private var showingJiggleClipOptions = false
+    @State private var jiggleSelectedClip: Clip? = nil
     @State private var showingMusicSheet = false
     @State private var showingDeleteTapeAlert = false
     @State private var showingPaywall = false
@@ -434,6 +436,24 @@ struct TapeCardView: View {
         } message: {
             Text("This will remove the clip from the tape. The photo or video will remain in your library.")
         }
+        .confirmationDialog("Clip Options", isPresented: $showingJiggleClipOptions, titleVisibility: .hidden) {
+            Button("Duplicate Clip") {
+                if let clip = jiggleSelectedClip {
+                    duplicateClip(clip)
+                }
+                jiggleSelectedClip = nil
+            }
+            Button("Delete Clip", role: .destructive) {
+                if let clip = jiggleSelectedClip {
+                    clipToDelete = clip
+                    showingDeleteConfirmation = true
+                }
+                jiggleSelectedClip = nil
+            }
+            Button("Cancel", role: .cancel) {
+                jiggleSelectedClip = nil
+            }
+        }
         .alert("Delete this Tape?", isPresented: $showingDeleteTapeAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -469,6 +489,32 @@ struct TapeCardView: View {
             }
         }
         tapeStore.jigglingTapeID = nil
+    }
+
+    private func duplicateClip(_ clip: Clip) {
+        guard let sourceIndex = tape.clips.firstIndex(where: { $0.id == clip.id }) else { return }
+        var copy = clip
+        let newID = UUID()
+        copy.id = newID
+        copy.createdAt = Date()
+        copy.updatedAt = Date()
+
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let mediaDir = docs.appendingPathComponent("clip_media", isDirectory: true)
+
+        let thumbSrc = mediaDir.appendingPathComponent("\(clip.id)_thumb.jpg")
+        let thumbDst = mediaDir.appendingPathComponent("\(newID)_thumb.jpg")
+        try? fm.copyItem(at: thumbSrc, to: thumbDst)
+
+        let imageSrc = mediaDir.appendingPathComponent("\(clip.id)_image.dat")
+        let imageDst = mediaDir.appendingPathComponent("\(newID)_image.dat")
+        try? fm.copyItem(at: imageSrc, to: imageDst)
+
+        tapeStore.addClip(to: tape.id, clip: copy, at: sourceIndex + 1)
+        if let updated = tapeStore.getTape(by: tape.id) {
+            tape = updated
+        }
     }
 
     private func deleteClipFromTape() {
@@ -531,7 +577,8 @@ struct TapeCardView: View {
     private func handleClipTap(_ clip: Clip) {
         guard !clip.isPlaceholder else { return }
         if isJiggling {
-            exitJiggleMode()
+            jiggleSelectedClip = clip
+            showingJiggleClipOptions = true
             return
         }
         if clip.clipType == .video {
