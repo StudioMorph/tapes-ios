@@ -53,6 +53,7 @@ struct TapesList: View {
                     .padding(.vertical, Tokens.Spacing.s)
                 }
             }
+            .scrollDisabled(tapeStore.isFloatingClip)
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
         }
