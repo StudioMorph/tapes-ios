@@ -61,6 +61,7 @@ struct TapesListView: View {
             }
             .onChange(of: tapesStore.floatingDragDidEnd) { _, didEnd in
                 guard didEnd, tapesStore.isFloatingClip else { return }
+                tapesStore.isFloatingDragActive = false
                 let location = tapesStore.floatingPosition
                 let target = dropTargets.first {
                     $0.frame.contains(location) && $0.tapeID == tapesStore.jigglingTapeID

@@ -200,6 +200,7 @@ public class TapesStore: ObservableObject {
     @Published public var floatingOriginalFrame: CGRect = .zero
     @Published public var floatingThumbSize: CGSize = .zero
     @Published public var floatingDragDidEnd = false
+    @Published public var isFloatingDragActive = false
 
     public var isFloatingClip: Bool { floatingClip != nil }
     @Published public var dropCompletedTapeID: UUID? = nil
@@ -215,6 +216,7 @@ public class TapesStore: ObservableObject {
         floatingOriginalFrame = originFrame
         floatingThumbSize = thumbSize
         floatingPosition = CGPoint(x: originFrame.midX, y: originFrame.midY)
+        isFloatingDragActive = true
     }
 
     public func returnFloatingClip() {
@@ -260,6 +262,7 @@ public class TapesStore: ObservableObject {
         floatingPosition = .zero
         floatingOriginalFrame = .zero
         floatingThumbSize = .zero
+        isFloatingDragActive = false
     }
     
     private struct AlbumAssociationQueueEntry {
