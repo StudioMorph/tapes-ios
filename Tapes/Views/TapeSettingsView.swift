@@ -147,6 +147,14 @@ struct TapeSettingsView: View {
                 }
 
                 if isSelected {
+                    Toggle(isOn: $tape.blurExportBackground) {
+                        Text("Background Blur")
+                            .font(.subheadline)
+                            .foregroundColor(Tokens.Colors.primaryText)
+                    }
+                    .tint(Color(red: 0, green: 0.533, blue: 1))
+                    .padding(.top, Tokens.Spacing.l)
+
                     Button {
                         let tapeSnapshot = tape
                         onDismiss()
@@ -159,7 +167,7 @@ struct TapeSettingsView: View {
                     .controlSize(.large)
                     .buttonBorderShape(.capsule)
                     .tint(Color(red: 0, green: 0.533, blue: 1))
-                    .padding(.top, Tokens.Spacing.m)
+                    .padding(.top, Tokens.Spacing.l)
                 }
             }
             .padding(.vertical, Tokens.Spacing.m)

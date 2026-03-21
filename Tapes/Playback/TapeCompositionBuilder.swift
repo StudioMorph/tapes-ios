@@ -292,7 +292,7 @@ struct TapeCompositionBuilder {
         var exportTape = tape
         exportTape.orientation = resolveExportOrientation(tape: tape, contexts: contexts)
         let timeline = makeTimeline(for: exportTape, contexts: contexts)
-        return try await buildCompositionComponents(for: exportTape, timeline: timeline, enableBlurBackground: true)
+        return try await buildCompositionComponents(for: exportTape, timeline: timeline, enableBlurBackground: tape.blurExportBackground)
     }
 
     private func resolveExportOrientation(tape: Tape, contexts: [ClipAssetContext]) -> TapeOrientation {
