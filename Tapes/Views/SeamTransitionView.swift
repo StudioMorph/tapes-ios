@@ -112,6 +112,9 @@ struct SeamTransitionView: View {
             TransitionDurationSlider(
                 duration: $duration
             )
+            .padding(Tokens.Spacing.l)
+            .background(Tokens.Colors.secondaryBackground)
+            .cornerRadius(Tokens.Radius.card)
         }
     }
 

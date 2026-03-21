@@ -29,17 +29,12 @@ struct TapeSettingsView: View {
                 VStack(spacing: Tokens.Spacing.xl) {
                     transitionSection
                         .accessibilitySortPriority(1)
-                    
-                    if tape.transition != .none {
-                        transitionDurationSection
-                            .accessibilitySortPriority(2)
-                    }
 
                     mergeAndSaveSection
-                        .accessibilitySortPriority(3)
+                        .accessibilitySortPriority(2)
 
                     destructiveActionSection
-                        .accessibilitySortPriority(4)
+                        .accessibilitySortPriority(3)
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
@@ -88,6 +83,7 @@ struct TapeSettingsView: View {
                     TransitionOption(
                         transition: transition,
                         isSelected: tape.transition == transition,
+                        duration: $tape.transitionDuration,
                         onSelect: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 tape.transition = transition
@@ -97,16 +93,6 @@ struct TapeSettingsView: View {
                     )
                 }
             }
-        }
-    }
-    
-    private var transitionDurationSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
-            SectionHeader(title: "Transition Duration")
-            
-            TransitionDurationSlider(
-                duration: $tape.transitionDuration
-            )
         }
     }
     

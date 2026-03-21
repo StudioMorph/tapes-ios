@@ -22,9 +22,6 @@ struct TransitionDurationSlider: View {
                 .font(Tokens.Typography.headline)
                 .foregroundColor(Tokens.Colors.primaryText)
         }
-        .padding(Tokens.Spacing.l)
-        .background(Tokens.Colors.secondaryBackground)
-        .cornerRadius(Tokens.Radius.card)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Transition duration")
         .accessibilityValue("\(String(format: "%.1f", duration)) seconds")

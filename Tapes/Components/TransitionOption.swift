@@ -3,27 +3,39 @@ import SwiftUI
 struct TransitionOption: View {
     let transition: TransitionType
     let isSelected: Bool
+    var duration: Binding<Double>?
     let onSelect: () -> Void
+    
+    private var showSlider: Bool {
+        isSelected && transition != .none && duration != nil
+    }
     
     var body: some View {
         Button(action: onSelect) {
-            HStack {
-                VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
-                    Text(transition.displayName)
-                        .font(Tokens.Typography.headline)
-                        .foregroundColor(Tokens.Colors.primaryText)
+            VStack(spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+                        Text(transition.displayName)
+                            .font(Tokens.Typography.headline)
+                            .foregroundColor(Tokens.Colors.primaryText)
+                        
+                        Text(transitionDescription)
+                            .font(Tokens.Typography.caption)
+                            .foregroundColor(Tokens.Colors.secondaryText)
+                    }
                     
-                    Text(transitionDescription)
-                        .font(Tokens.Typography.caption)
-                        .foregroundColor(Tokens.Colors.secondaryText)
+                    Spacer()
+                    
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(Tokens.Typography.title)
+                    }
                 }
-                
-                Spacer()
-                
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.blue)
-                        .font(Tokens.Typography.title)
+
+                if showSlider, let duration {
+                    TransitionDurationSlider(duration: duration)
+                        .padding(.top, Tokens.Spacing.m)
                 }
             }
             .padding(.vertical, Tokens.Spacing.m)
