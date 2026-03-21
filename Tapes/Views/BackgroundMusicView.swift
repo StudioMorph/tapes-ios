@@ -9,8 +9,6 @@ struct BackgroundMusicView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
-                    SectionHeader(title: "Background Music")
-
                     VStack(spacing: Tokens.Spacing.s) {
                         ForEach(MubertAPIClient.Mood.allCases) { mood in
                             MoodRowView(
