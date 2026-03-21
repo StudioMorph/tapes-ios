@@ -31,6 +31,7 @@ struct ClipCarousel: View {
     let onPlaceholderTap: (CarouselItem) -> Void
     var onClipTap: ((Clip) -> Void)? = nil
     var onClipDelete: ((Clip) -> Void)? = nil
+    var onClipDuplicate: ((Clip) -> Void)? = nil
     var onSeamChanged: ((UUID?, UUID?) -> Void)? = nil
     var onScrollFractionChanged: ((CGFloat) -> Void)? = nil
     
@@ -133,7 +134,8 @@ struct ClipCarousel: View {
                         thumbSize: thumbSize,
                         onPlaceholderTap: onPlaceholderTap,
                         onClipTap: onClipTap,
-                        onClipDelete: onClipDelete
+                        onClipDelete: onClipDelete,
+                        onClipDuplicate: onClipDuplicate
                     )
                     .id(item.id)
                 }
@@ -157,6 +159,9 @@ private struct JiggleableClipView: View {
     let onPlaceholderTap: (CarouselItem) -> Void
     var onClipTap: ((Clip) -> Void)? = nil
     var onClipDelete: ((Clip) -> Void)? = nil
+    var onClipDuplicate: ((Clip) -> Void)? = nil
+
+    @State private var showingClipOptions = false
 
     private var isJiggling: Bool {
         tapeStore.jigglingTapeID == tapeID
@@ -176,28 +181,24 @@ private struct JiggleableClipView: View {
                 ThumbnailView(
                     item: item,
                     onPlaceholderTap: onPlaceholderTap,
-                    onClipTap: onClipTap,
+                    onClipTap: { _ in showingClipOptions = true },
                     tapeID: tapeID,
                     clipCount: tapeStore.getTape(by: tapeID)?.clips.count ?? 0
                 )
                 .frame(width: thumbSize.width, height: thumbSize.height)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(alignment: .top) {
-                    Button {
-                        onClipDelete?(clip)
-                    } label: {
-                        Image(systemName: "minus")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Tokens.Colors.primaryText)
-                            .frame(width: 24, height: 24)
-                            .background(.ultraThinMaterial, in: Circle())
-                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                    }
-                    .offset(y: -12)
-                }
                 .scaleEffect(0.92)
                 .offset(x: offsetX, y: offsetY)
                 .rotationEffect(.degrees(rotAngle))
+                .confirmationDialog("Clip Options", isPresented: $showingClipOptions, titleVisibility: .hidden) {
+                    Button("Duplicate Clip") {
+                        onClipDuplicate?(clip)
+                    }
+                    Button("Delete Clip", role: .destructive) {
+                        onClipDelete?(clip)
+                    }
+                    Button("Cancel", role: .cancel) {}
+                }
             }
         } else {
             ThumbnailView(

@@ -56,8 +56,6 @@ struct TapeCardView: View {
     @State private var importSource: ImportSource? = nil
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
-    @State private var showingJiggleClipOptions = false
-    @State private var jiggleSelectedClip: Clip? = nil
     @State private var showingMusicSheet = false
     @State private var showingDeleteTapeAlert = false
     @State private var showingPaywall = false
@@ -436,24 +434,6 @@ struct TapeCardView: View {
         } message: {
             Text("This will remove the clip from the tape. The photo or video will remain in your library.")
         }
-        .confirmationDialog("Clip Options", isPresented: $showingJiggleClipOptions, titleVisibility: .hidden) {
-            Button("Duplicate Clip") {
-                if let clip = jiggleSelectedClip {
-                    duplicateClip(clip)
-                }
-                jiggleSelectedClip = nil
-            }
-            Button("Delete Clip", role: .destructive) {
-                if let clip = jiggleSelectedClip {
-                    clipToDelete = clip
-                    showingDeleteConfirmation = true
-                }
-                jiggleSelectedClip = nil
-            }
-            Button("Cancel", role: .cancel) {
-                jiggleSelectedClip = nil
-            }
-        }
         .alert("Delete this Tape?", isPresented: $showingDeleteTapeAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -545,6 +525,7 @@ struct TapeCardView: View {
             onPlaceholderTap: handlePlaceholderTap,
             onClipTap: handleClipTap,
             onClipDelete: handleClipDelete,
+            onClipDuplicate: duplicateClip,
             onSeamChanged: handleSeamChanged,
             onScrollFractionChanged: { fraction in
                 scrollFraction = fraction
@@ -576,11 +557,7 @@ struct TapeCardView: View {
 
     private func handleClipTap(_ clip: Clip) {
         guard !clip.isPlaceholder else { return }
-        if isJiggling {
-            jiggleSelectedClip = clip
-            showingJiggleClipOptions = true
-            return
-        }
+        if isJiggling { return }
         if clip.clipType == .video {
             clipToTrim = clip
             showingClipTrim = true
