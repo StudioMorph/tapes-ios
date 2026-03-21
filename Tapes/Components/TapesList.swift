@@ -14,7 +14,6 @@ struct TapesList: View {
     @Binding var draftTitle: String
     let onSettings: (Tape) -> Void
     let onPlay: (Tape) -> Void
-    let onMergeAndSave: (Tape) -> Void
     let onThumbnailDelete: (Tape, Clip) -> Void
     let onClipInserted: (Tape, Clip, Int) -> Void
     let onClipInsertedAtPlaceholder: (Tape, Clip, CarouselItem) -> Void
@@ -84,7 +83,6 @@ struct TapesList: View {
                 isLandscape: isLandscape,
                 onSettings: { onSettings(currentTape) },
                 onPlay: { onPlay(currentTape) },
-                onMergeAndSave: { onMergeAndSave(currentTape) },
                 onThumbnailDelete: { clip in onThumbnailDelete(currentTape, clip) },
                 onClipInserted: { clip, index in onClipInserted(currentTape, clip, index) },
                 onClipInsertedAtPlaceholder: { clip, placeholder in onClipInsertedAtPlaceholder(currentTape, clip, placeholder) },
@@ -112,7 +110,6 @@ struct TapesList: View {
         draftTitle: .constant(""),
         onSettings: { _ in },
         onPlay: { _ in },
-        onMergeAndSave: { _ in },
         onThumbnailDelete: { _, _ in },
         onClipInserted: { _, _, _ in },
         onClipInsertedAtPlaceholder: { _, _, _ in },

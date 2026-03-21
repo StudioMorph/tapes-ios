@@ -102,7 +102,7 @@ public enum ExportOrientation: String, CaseIterable, Codable, Identifiable {
 
     public var icon: String {
         switch self {
-        case .auto: return "arrow.triangle.2.circlepath"
+        case .auto: return "a.square"
         case .portrait: return "rectangle.portrait"
         case .landscape: return "rectangle"
         }

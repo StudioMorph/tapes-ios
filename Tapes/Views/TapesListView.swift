@@ -33,7 +33,6 @@ struct TapesListView: View {
                             draftTitle: $draftTitle,
                             onSettings: handleSettings,
                             onPlay: handlePlay,
-                            onMergeAndSave: handleMergeAndSave,
                             onThumbnailDelete: handleThumbnailDelete,
                             onClipInserted: handleClipInserted,
                             onClipInsertedAtPlaceholder: handleClipInsertedAtPlaceholder,
