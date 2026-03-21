@@ -1311,12 +1311,10 @@ struct TapeCompositionBuilder {
             scale = max(scaleX, scaleY)
         }
 
-        var transform = preferred.scaledBy(x: scale, y: scale)
-        // Center the video.
+        let transform = preferred.concatenating(CGAffineTransform(scaleX: scale, y: scale))
         let translatedX = (renderWidth - absWidth * scale) / 2
         let translatedY = (renderHeight - absHeight * scale) / 2
-        transform = transform.translatedBy(x: translatedX / scale, y: translatedY / scale)
-        return transform
+        return transform.concatenating(CGAffineTransform(translationX: translatedX, y: translatedY))
     }
 
     private func prependTranslation(to transform: CGAffineTransform, dx: CGFloat, dy: CGFloat) -> CGAffineTransform {
