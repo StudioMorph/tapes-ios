@@ -292,7 +292,7 @@ struct TapeCompositionBuilder {
         var exportTape = tape
         exportTape.orientation = resolveExportOrientation(tape: tape, contexts: contexts)
         let timeline = makeTimeline(for: exportTape, contexts: contexts)
-        return try await buildCompositionComponents(for: exportTape, timeline: timeline)
+        return try await buildCompositionComponents(for: exportTape, timeline: timeline, enableBlurBackground: true)
     }
 
     private func resolveExportOrientation(tape: Tape, contexts: [ClipAssetContext]) -> TapeOrientation {
@@ -448,7 +448,8 @@ struct TapeCompositionBuilder {
     @MainActor
     func buildCompositionComponents(
         for tape: Tape,
-        timeline: Timeline
+        timeline: Timeline,
+        enableBlurBackground: Bool = false
     ) async throws -> ExportableComposition {
         let composition = AVMutableComposition()
         let videoTracks = try createCompositionTracks(for: composition, mediaType: .video)
@@ -538,15 +539,27 @@ struct TapeCompositionBuilder {
             transitionSequence: timeline.transitionSequence
         )
 
-        let instructions = buildVideoInstructions(
-            for: timelineWithContexts,
-            videoTrackMap: videoTrackMap,
-            renderSize: timeline.renderSize,
-            tapeScaleMode: tape.scaleMode
-        )
-
         let videoComposition = AVMutableVideoComposition()
-        videoComposition.instructions = instructions
+
+        if enableBlurBackground {
+            let blurInstructions = buildBlurVideoInstructions(
+                for: timelineWithContexts,
+                videoTrackMap: videoTrackMap,
+                renderSize: timeline.renderSize,
+                tapeScaleMode: tape.scaleMode
+            )
+            videoComposition.instructions = blurInstructions
+            videoComposition.customVideoCompositorClass = BlurredBackgroundCompositor.self
+        } else {
+            let instructions = buildVideoInstructions(
+                for: timelineWithContexts,
+                videoTrackMap: videoTrackMap,
+                renderSize: timeline.renderSize,
+                tapeScaleMode: tape.scaleMode
+            )
+            videoComposition.instructions = instructions
+        }
+
         videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
         videoComposition.renderSize = timeline.renderSize
 
@@ -1282,6 +1295,167 @@ struct TapeCompositionBuilder {
             fromLayer.setTransformRamp(fromStart: fromTransform, toEnd: outgoingEndTransform, timeRange: transitionRange)
             toLayer.setTransformRamp(fromStart: incomingStartTransform, toEnd: toTransform, timeRange: transitionRange)
         }
+    }
+
+    // MARK: - Blur Video Instructions
+
+    private func buildBlurVideoInstructions(
+        for timeline: Timeline,
+        videoTrackMap: [Int: AVMutableCompositionTrack],
+        renderSize: CGSize,
+        tapeScaleMode: ScaleMode
+    ) -> [AVVideoCompositionInstructionProtocol] {
+        var instructions: [BlurredBackgroundInstruction] = []
+
+        for (index, segment) in timeline.segments.enumerated() {
+            guard let track = videoTrackMap[segment.clipIndex] else { continue }
+            let segmentScaleMode = effectiveScaleMode(for: segment, tapeScaleMode: tapeScaleMode)
+
+            let incomingDuration = segment.incomingTransition?.duration ?? .zero
+            let outgoingDuration = segment.outgoingTransition?.duration ?? .zero
+            var passThroughStart = segment.timeRange.start
+            var passThroughDuration = segment.timeRange.duration
+
+            if CMTimeCompare(incomingDuration, .zero) > 0 {
+                passThroughStart = CMTimeAdd(passThroughStart, incomingDuration)
+                passThroughDuration = CMTimeSubtract(passThroughDuration, incomingDuration)
+            }
+            if CMTimeCompare(outgoingDuration, .zero) > 0 {
+                passThroughDuration = CMTimeSubtract(passThroughDuration, outgoingDuration)
+            }
+
+            if CMTimeCompare(passThroughDuration, .zero) > 0 {
+                let timeRange = CMTimeRange(start: passThroughStart, duration: passThroughDuration)
+                let passThroughEnd = CMTimeAdd(passThroughStart, passThroughDuration)
+
+                let fitStart = transform(for: segment, renderSize: renderSize, scaleMode: segmentScaleMode, at: passThroughStart)
+                let fitEnd = transform(for: segment, renderSize: renderSize, scaleMode: segmentScaleMode, at: passThroughEnd)
+                let fillStart = transform(for: segment, renderSize: renderSize, scaleMode: .fill, at: passThroughStart)
+                let fillEnd = transform(for: segment, renderSize: renderSize, scaleMode: .fill, at: passThroughEnd)
+
+                let needsBlur = segmentScaleMode == .fit
+                    && clipNeedsBlurBackground(segment: segment, renderSize: renderSize)
+
+                let layer = BlurredBackgroundInstruction.LayerInfo(
+                    trackID: track.trackID,
+                    fitStartTransform: fitStart,
+                    fitEndTransform: fitEnd,
+                    fillStartTransform: fillStart,
+                    fillEndTransform: fillEnd,
+                    startOpacity: 1.0,
+                    endOpacity: 1.0,
+                    needsBlurBackground: needsBlur
+                )
+
+                instructions.append(BlurredBackgroundInstruction(timeRange: timeRange, layers: [layer]))
+            }
+
+            guard let transition = segment.outgoingTransition,
+                  let nextSegment = timeline.segments[safe: index + 1],
+                  let nextTrack = videoTrackMap[nextSegment.clipIndex] else { continue }
+
+            let transitionStart = CMTimeSubtract(
+                CMTimeAdd(segment.timeRange.start, segment.timeRange.duration),
+                transition.duration
+            )
+            let transitionRange = CMTimeRange(start: transitionStart, duration: transition.duration)
+
+            let nextScaleMode = effectiveScaleMode(for: nextSegment, tapeScaleMode: tapeScaleMode)
+
+            let fromFitStart = transform(for: segment, renderSize: renderSize, scaleMode: segmentScaleMode, at: transitionStart)
+            let fromFitEnd = transform(for: segment, renderSize: renderSize, scaleMode: segmentScaleMode, at: CMTimeAdd(transitionStart, transition.duration))
+            let toFitStart = transform(for: nextSegment, renderSize: renderSize, scaleMode: nextScaleMode, at: transitionStart)
+            let toFitEnd = transform(for: nextSegment, renderSize: renderSize, scaleMode: nextScaleMode, at: CMTimeAdd(transitionStart, transition.duration))
+
+            let fromFillStart = transform(for: segment, renderSize: renderSize, scaleMode: .fill, at: transitionStart)
+            let fromFillEnd = transform(for: segment, renderSize: renderSize, scaleMode: .fill, at: CMTimeAdd(transitionStart, transition.duration))
+            let toFillStart = transform(for: nextSegment, renderSize: renderSize, scaleMode: .fill, at: transitionStart)
+            let toFillEnd = transform(for: nextSegment, renderSize: renderSize, scaleMode: .fill, at: CMTimeAdd(transitionStart, transition.duration))
+
+            let fromNeedsBlur = segmentScaleMode == .fit
+                && clipNeedsBlurBackground(segment: segment, renderSize: renderSize)
+            let toNeedsBlur = nextScaleMode == .fit
+                && clipNeedsBlurBackground(segment: nextSegment, renderSize: renderSize)
+
+            let fromLayer: BlurredBackgroundInstruction.LayerInfo
+            let toLayer: BlurredBackgroundInstruction.LayerInfo
+
+            switch transition.style {
+            case .crossfade:
+                fromLayer = BlurredBackgroundInstruction.LayerInfo(
+                    trackID: track.trackID,
+                    fitStartTransform: fromFitStart,
+                    fitEndTransform: fromFitEnd,
+                    fillStartTransform: fromFillStart,
+                    fillEndTransform: fromFillEnd,
+                    startOpacity: 1.0,
+                    endOpacity: 0.0,
+                    needsBlurBackground: fromNeedsBlur
+                )
+                toLayer = BlurredBackgroundInstruction.LayerInfo(
+                    trackID: nextTrack.trackID,
+                    fitStartTransform: toFitStart,
+                    fitEndTransform: toFitEnd,
+                    fillStartTransform: toFillStart,
+                    fillEndTransform: toFillEnd,
+                    startOpacity: 0.0,
+                    endOpacity: 1.0,
+                    needsBlurBackground: toNeedsBlur
+                )
+
+            case .slideLR, .slideRL:
+                let offset = transition.style == .slideLR ? renderSize.width : -renderSize.width
+
+                let fromFitSlideEnd = prependTranslation(to: fromFitStart, dx: -offset, dy: 0)
+                let toFitSlideStart = prependTranslation(to: toFitStart, dx: offset, dy: 0)
+                let fromFillSlideEnd = prependTranslation(to: fromFillStart, dx: -offset, dy: 0)
+                let toFillSlideStart = prependTranslation(to: toFillStart, dx: offset, dy: 0)
+
+                fromLayer = BlurredBackgroundInstruction.LayerInfo(
+                    trackID: track.trackID,
+                    fitStartTransform: fromFitStart,
+                    fitEndTransform: fromFitSlideEnd,
+                    fillStartTransform: fromFillStart,
+                    fillEndTransform: fromFillSlideEnd,
+                    startOpacity: 1.0,
+                    endOpacity: 1.0,
+                    needsBlurBackground: fromNeedsBlur
+                )
+                toLayer = BlurredBackgroundInstruction.LayerInfo(
+                    trackID: nextTrack.trackID,
+                    fitStartTransform: toFitSlideStart,
+                    fitEndTransform: toFitStart,
+                    fillStartTransform: toFillSlideStart,
+                    fillEndTransform: toFillStart,
+                    startOpacity: 1.0,
+                    endOpacity: 1.0,
+                    needsBlurBackground: toNeedsBlur
+                )
+
+            case .none, .randomise:
+                continue
+            }
+
+            instructions.append(BlurredBackgroundInstruction(
+                timeRange: transitionRange,
+                layers: [toLayer, fromLayer]
+            ))
+        }
+
+        instructions.sort { CMTimeCompare($0.theTimeRange.start, $1.theTimeRange.start) < 0 }
+        return instructions
+    }
+
+    private func clipNeedsBlurBackground(segment: Segment, renderSize: CGSize) -> Bool {
+        guard let context = segment.assetContext else { return false }
+        let naturalSize = context.naturalSize.applying(context.preferredTransform)
+        let absWidth = abs(naturalSize.width)
+        let absHeight = abs(naturalSize.height)
+        guard absWidth > 0, absHeight > 0 else { return false }
+
+        let scaleX = renderSize.width / absWidth
+        let scaleY = renderSize.height / absHeight
+        return abs(scaleX - scaleY) > 0.01
     }
 
     private func baseTransform(
