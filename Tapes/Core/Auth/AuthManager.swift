@@ -40,6 +40,8 @@ final class AuthManager: ObservableObject {
             isSignedIn = false
             return
         }
+
+        isSignedIn = true
         userName = UserDefaults.standard.string(forKey: Self.userNameKey)
         userEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
 
@@ -47,12 +49,10 @@ final class AuthManager: ObservableObject {
         provider.getCredentialState(forUserID: id) { [weak self] state, _ in
             Task { @MainActor in
                 switch state {
-                case .authorized:
-                    self?.isSignedIn = true
                 case .revoked, .notFound:
                     self?.signOut()
                 default:
-                    self?.isSignedIn = true
+                    break
                 }
             }
         }
