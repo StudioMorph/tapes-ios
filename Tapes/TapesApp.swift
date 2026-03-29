@@ -14,12 +14,15 @@ struct TapesApp: App {
         UNUserNotificationCenter.current().delegate = Self.notificationHandler
     }
 
+    @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(tapeStore)
                 .environmentObject(authManager)
                 .environmentObject(entitlementManager)
+                .preferredColorScheme(appearanceMode.colorScheme)
         }
     }
 }

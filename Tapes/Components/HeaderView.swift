@@ -2,7 +2,9 @@ import SwiftUI
 
 struct HeaderView: View {
     @EnvironmentObject private var tapeStore: TapesStore
+    @EnvironmentObject private var authManager: AuthManager
     @ObservedObject var exportCoordinator: ExportCoordinator
+    @State private var showingAccountSettings = false
 
     private var isJiggling: Bool {
         tapeStore.jigglingTapeID != nil
@@ -37,28 +39,41 @@ struct HeaderView: View {
                 .tint(.blue)
                 .accessibilityLabel("Done")
                 .accessibilityHint("Exits jiggle editing mode")
-            } else if showExportIndicator {
-                Button {
-                    exportCoordinator.showProgressDialogAgain()
-                } label: {
-                    ZStack {
-                        CircularProgressRing(
-                            progress: exportCoordinator.progress,
-                            lineWidth: 2.5,
-                            size: 28,
-                            ringColor: .green
-                        )
+            } else {
+                HStack(spacing: Tokens.Spacing.m) {
+                    if showExportIndicator {
+                        Button {
+                            exportCoordinator.showProgressDialogAgain()
+                        } label: {
+                            ZStack {
+                                CircularProgressRing(
+                                    progress: exportCoordinator.progress,
+                                    lineWidth: 2.5,
+                                    size: 28,
+                                    ringColor: .green
+                                )
 
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Tokens.Colors.primaryText)
+                                Image(systemName: "arrow.down")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Tokens.Colors.primaryText)
+                            }
+                            .frame(width: Tokens.HitTarget.minimum, height: Tokens.HitTarget.minimum)
+                            .contentShape(Rectangle())
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityLabel("Export in progress")
+                        .accessibilityHint("Tap to view export progress")
                     }
-                    .frame(width: Tokens.HitTarget.minimum, height: Tokens.HitTarget.minimum)
-                    .contentShape(Rectangle())
+
+                    Button {
+                        showingAccountSettings = true
+                    } label: {
+                        accountIcon
+                            .frame(width: Tokens.HitTarget.minimum, height: Tokens.HitTarget.minimum)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Account and settings")
                 }
-                .transition(.scale.combined(with: .opacity))
-                .accessibilityLabel("Export in progress")
-                .accessibilityHint("Tap to view export progress")
             }
         }
         .padding(.horizontal, Tokens.Spacing.m)
@@ -66,6 +81,24 @@ struct HeaderView: View {
         .padding(.bottom, Tokens.Spacing.xs)
         .animation(.easeInOut(duration: 0.25), value: isJiggling)
         .animation(.easeInOut(duration: 0.25), value: showExportIndicator)
+        .sheet(isPresented: $showingAccountSettings) {
+            AccountSettingsView()
+        }
+    }
+
+    @ViewBuilder
+    private var accountIcon: some View {
+        if let name = authManager.userName, let initial = name.first {
+            Text(String(initial).uppercased())
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(.blue))
+        } else {
+            Image(systemName: "person.circle")
+                .font(.system(size: 24, weight: .regular))
+                .foregroundStyle(Tokens.Colors.primaryText)
+        }
     }
 }
 
@@ -75,4 +108,5 @@ struct HeaderView: View {
     )
     .background(Tokens.Colors.primaryBackground)
     .environmentObject(TapesStore())
+    .environmentObject(AuthManager())
 }

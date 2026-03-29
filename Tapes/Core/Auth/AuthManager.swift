@@ -78,9 +78,16 @@ final class AuthManager: ObservableObject {
                     UserDefaults.standard.set(name, forKey: Self.userNameKey)
                 }
             }
+            if userName == nil {
+                userName = UserDefaults.standard.string(forKey: Self.userNameKey)
+            }
+
             if let email = credential.email {
                 userEmail = email
                 UserDefaults.standard.set(email, forKey: Self.userEmailKey)
+            }
+            if userEmail == nil {
+                userEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
             }
 
             isSignedIn = true
@@ -105,8 +112,6 @@ final class AuthManager: ObservableObject {
 
     func signOut() {
         UserDefaults.standard.removeObject(forKey: Self.userIDKey)
-        UserDefaults.standard.removeObject(forKey: Self.userNameKey)
-        UserDefaults.standard.removeObject(forKey: Self.userEmailKey)
         isSignedIn = false
         userName = nil
         userEmail = nil
