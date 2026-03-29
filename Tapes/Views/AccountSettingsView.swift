@@ -183,7 +183,6 @@ struct AccountSettingsView: View {
         Section {
             Button(role: .destructive) {
                 authManager.signOut()
-                dismiss()
             } label: {
                 HStack {
                     Spacer()

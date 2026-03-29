@@ -112,7 +112,6 @@ final class AuthManager: ObservableObject {
 
     func signOut() {
         UserDefaults.standard.removeObject(forKey: Self.userIDKey)
-        isSignedIn = false
         userName = nil
         userEmail = nil
     }
