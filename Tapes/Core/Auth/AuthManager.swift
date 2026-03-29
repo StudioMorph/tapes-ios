@@ -21,6 +21,7 @@ final class AuthManager: ObservableObject {
     @Published private(set) var userName: String?
     @Published private(set) var userEmail: String?
     @Published var authError: String?
+    private(set) var didSignInThisSession: Bool = false
 
     // MARK: - Lifecycle
 
@@ -83,6 +84,7 @@ final class AuthManager: ObservableObject {
             }
 
             isSignedIn = true
+            didSignInThisSession = true
             authError = nil
 
         case .failure(let error):

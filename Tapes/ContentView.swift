@@ -30,10 +30,7 @@ struct ContentView: View {
         TapesListView()
             .onAppear {
                 entitlementManager.refresh()
-                if entitlementManager.shouldShowPaywall {
-                    showPaywall = true
-                    return
-                }
+                guard authManager.didSignInThisSession else { return }
                 if !entitlementManager.isPremium {
                     let alreadyShown = UserDefaults.standard.bool(forKey: Self.postAuthPaywallShownKey)
                     if !alreadyShown {
@@ -42,11 +39,6 @@ struct ContentView: View {
                             UserDefaults.standard.set(true, forKey: Self.postAuthPaywallShownKey)
                         }
                     }
-                }
-            }
-            .onChange(of: entitlementManager.accessLevel) { _, newLevel in
-                if newLevel == .trialExpired {
-                    showPaywall = true
                 }
             }
             .sheet(isPresented: $showPaywall) {
