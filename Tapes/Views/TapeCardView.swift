@@ -740,7 +740,6 @@ struct TapeCardView: View {
         updated.hasReceivedFirstContent = true
         tapeStore.updateTape(updated)
 
-        guard entitlementManager.canCreateTape(currentCount: tapeStore.contentTapeCount) else { return }
         tapeStore.insertEmptyTapeAtTop()
     }
 
