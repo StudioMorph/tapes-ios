@@ -28,13 +28,10 @@ struct OnboardingView: View {
                     }
                 } label: {
                     Text(currentPage == 0 ? "Next" : "Get Started")
-                        .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 54)
                 }
                 .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .tint(Tokens.Colors.systemRed)
+                .controlSize(.large)
                 .padding(.horizontal, Tokens.Spacing.xl)
                 .padding(.bottom, Tokens.Spacing.xl)
             }
@@ -64,66 +61,74 @@ private struct FabSwipeTutorial: View {
     ]
 
     var body: some View {
-        VStack(spacing: Tokens.Spacing.xl) {
+        VStack(spacing: 0) {
+            VStack(spacing: Tokens.Spacing.s) {
+                Text("The Red Button")
+                    .font(.title.weight(.bold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .multilineTextAlignment(.center)
+
+                Text("Record between 2 clips,\nadd media or change the transition")
+                    .font(.body)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, Tokens.Spacing.xl)
+
             Spacer()
 
-            Text("Swipe to switch modes")
-                .font(.title.weight(.bold))
-                .foregroundStyle(Tokens.Colors.primaryText)
-                .multilineTextAlignment(.center)
+            VStack(spacing: Tokens.Spacing.m) {
+                Text("Swipe over it to change its functionality")
+                    .font(.subheadline)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
 
-            Text("Your FAB does it all. Just swipe.")
-                .font(.body)
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .multilineTextAlignment(.center)
+                ZStack {
+                    RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                        .fill(Tokens.Colors.secondaryBackground)
 
-            Spacer()
+                    HStack(spacing: 0) {
+                        clipPlaceholder
+                            .frame(maxWidth: .infinity)
+                        clipPlaceholder
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(Tokens.Spacing.s)
 
-            ZStack {
-                RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
-                    .fill(Tokens.Colors.secondaryBackground)
+                    Rectangle()
+                        .fill(Tokens.Colors.systemRed.opacity(0.9))
+                        .frame(width: 2, height: thumbHeight)
 
-                HStack(spacing: 0) {
-                    clipPlaceholder
-                        .frame(maxWidth: .infinity)
-                    clipPlaceholder
-                        .frame(maxWidth: .infinity)
+                    Circle()
+                        .fill(Tokens.Colors.systemRed)
+                        .frame(width: fabSize, height: fabSize)
+                        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
+
+                    Image(systemName: currentMode.icon)
+                        .font(.system(size: fabSize * 0.36, weight: .semibold))
+                        .foregroundColor(.white)
+                        .id(currentMode)
+                        .transition(.opacity)
+
+                    Circle()
+                        .fill(.white.opacity(0.3))
+                        .frame(width: 44, height: 44)
+                        .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                        .offset(x: fingerX)
+                        .opacity(animationPhase > 0 ? 1 : 0)
                 }
-                .padding(Tokens.Spacing.s)
+                .frame(height: thumbHeight + Tokens.Spacing.s * 2)
+                .padding(.horizontal, Tokens.Spacing.l)
 
-                Rectangle()
-                    .fill(Tokens.Colors.systemRed.opacity(0.9))
-                    .frame(width: 2, height: thumbHeight)
-
-                Circle()
-                    .fill(Tokens.Colors.systemRed)
-                    .frame(width: fabSize, height: fabSize)
-                    .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
-
-                Image(systemName: currentMode.icon)
-                    .font(.system(size: fabSize * 0.36, weight: .semibold))
-                    .foregroundColor(.white)
+                Text(modes.first { $0.0 == currentMode }?.1 ?? "")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
                     .id(currentMode)
                     .transition(.opacity)
-
-                Circle()
-                    .fill(.white.opacity(0.3))
-                    .frame(width: 44, height: 44)
-                    .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                    .offset(x: fingerX)
-                    .opacity(animationPhase > 0 ? 1 : 0)
+                    .frame(height: 28)
             }
-            .frame(height: thumbHeight + Tokens.Spacing.s * 2)
-            .padding(.horizontal, Tokens.Spacing.l)
+            .offset(y: -20)
 
-            Text(modes.first { $0.0 == currentMode }?.1 ?? "")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Tokens.Colors.primaryText)
-                .id(currentMode)
-                .transition(.opacity)
-                .frame(height: 20)
-
-            Spacer()
             Spacer()
         }
         .padding(.horizontal, Tokens.Spacing.s)
@@ -231,17 +236,18 @@ private struct JiggleReorderTutorial: View {
 
     var body: some View {
         VStack(spacing: Tokens.Spacing.xl) {
-            Spacer()
+            VStack(spacing: Tokens.Spacing.s) {
+                Text("Rearrange your timeline")
+                    .font(.title.weight(.bold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .multilineTextAlignment(.center)
 
-            Text("Rearrange your timeline")
-                .font(.title.weight(.bold))
-                .foregroundStyle(Tokens.Colors.primaryText)
-                .multilineTextAlignment(.center)
-
-            Text("Hold, drag, and drop to tell your story your way.")
-                .font(.body)
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .multilineTextAlignment(.center)
+                Text("Hold, drag, and drop to tell your story your way.")
+                    .font(.body)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, Tokens.Spacing.xl)
 
             Spacer()
 
