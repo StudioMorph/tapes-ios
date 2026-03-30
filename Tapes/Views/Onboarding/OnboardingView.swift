@@ -50,6 +50,7 @@ private struct FabSwipeTutorial: View {
     @State private var currentMode: FABMode = .camera
 
     private let fabSize: CGFloat = Tokens.FAB.size
+    private let thumbHeight: CGFloat = 80
     private let modes: [(FABMode, String)] = [
         (.camera, "Capture new clips"),
         (.gallery, "Add from your library"),
@@ -73,6 +74,21 @@ private struct FabSwipeTutorial: View {
             Spacer()
 
             ZStack {
+                RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                    .fill(Tokens.Colors.secondaryBackground)
+
+                HStack(spacing: 0) {
+                    clipPlaceholder
+                        .frame(maxWidth: .infinity)
+                    clipPlaceholder
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(Tokens.Spacing.s)
+
+                Rectangle()
+                    .fill(Tokens.Colors.systemRed.opacity(0.9))
+                    .frame(width: 2, height: thumbHeight)
+
                 Circle()
                     .fill(Tokens.Colors.systemRed)
                     .frame(width: fabSize, height: fabSize)
@@ -91,6 +107,8 @@ private struct FabSwipeTutorial: View {
                     .offset(x: fingerX, y: fabSize * 0.6)
                     .opacity(animationPhase > 0 ? 1 : 0)
             }
+            .frame(height: thumbHeight + Tokens.Spacing.s * 2)
+            .padding(.horizontal, Tokens.Spacing.l)
 
             Text(modes.first { $0.0 == currentMode }?.1 ?? "")
                 .font(.subheadline.weight(.medium))
@@ -102,8 +120,20 @@ private struct FabSwipeTutorial: View {
             Spacer()
             Spacer()
         }
-        .padding(.horizontal, Tokens.Spacing.l)
+        .padding(.horizontal, Tokens.Spacing.s)
         .onAppear { startAnimation() }
+    }
+
+    private var clipPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
+                .fill(Tokens.Colors.tertiaryBackground)
+
+            Image(systemName: "photo")
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+        }
+        .frame(height: thumbHeight)
     }
 
     private func startAnimation() {
