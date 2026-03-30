@@ -220,29 +220,47 @@ private struct FabSwipeTutorial: View {
 // MARK: - Jiggle & Reorder Tutorial
 
 private struct JiggleReorderTutorial: View {
-    @State private var isJiggling = false
-    @State private var liftedIndex: Int? = nil
-    @State private var liftedOffset: CGSize = .zero
-    @State private var statusText = "Hold any clip to rearrange"
-    @State private var clipOrder = [0, 1, 2, 3]
     @State private var token = AnimationToken()
 
-    private let clipSize = CGSize(width: 72, height: 96)
-    private let clipSpacing: CGFloat = 8
-    private let clipColors: [Color] = [
-        .blue.opacity(0.6), .green.opacity(0.6),
-        .orange.opacity(0.6), .purple.opacity(0.6)
-    ]
+    @State private var isJiggling = false
+    @State private var fabIsDropTarget = false
+
+    // Per-clip X positions (relative to card centre), set dynamically from GeometryReader
+    @State private var clipAX: CGFloat = 0
+    @State private var clipBX: CGFloat = 0
+    @State private var clipCX: CGFloat = 0
+    @State private var clipDX: CGFloat = 0
+    @State private var clipCVisible = true
+
+    // Floating clip
+    @State private var floaterPos: CGSize = .zero
+    @State private var floaterScale: CGFloat = 1.0
+    @State private var floaterVisible = false
+
+    // Finger
+    @State private var fingerPos: CGSize = .zero
+    @State private var fingerVisible = false
+    @State private var fingerScale: CGFloat = 1.0
+
+    @State private var statusText = "Hold any clip to rearrange"
+
+    // Stored from geometry so animation can use them
+    @State private var clipW: CGFloat = 0
+    @State private var cardW: CGFloat = 0
+
+    private let fabSize: CGFloat = Tokens.FAB.size
+    private let thumbHeight: CGFloat = 80
+    private let pad: CGFloat = Tokens.Spacing.s
 
     var body: some View {
-        VStack(spacing: Tokens.Spacing.xl) {
+        VStack(spacing: 0) {
             VStack(spacing: Tokens.Spacing.s) {
-                Text("Rearrange your timeline")
+                Text("Rearrange Your Clips")
                     .font(.title.weight(.bold))
                     .foregroundStyle(Tokens.Colors.primaryText)
                     .multilineTextAlignment(.center)
 
-                Text("Hold, drag, and drop to tell your story your way.")
+                Text("Hold, drag, and drop to\ntell your story your way")
                     .font(.body)
                     .foregroundStyle(Tokens.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -251,160 +269,311 @@ private struct JiggleReorderTutorial: View {
 
             Spacer()
 
-            ZStack {
-                HStack(spacing: clipSpacing) {
-                    ForEach(Array(clipOrder.enumerated()), id: \.element) { index, colorIdx in
-                        JiggleClip(
-                            colorIdx: colorIdx,
-                            color: clipColors[colorIdx],
-                            size: clipSize,
-                            isJiggling: isJiggling,
-                            isLifted: liftedIndex == index,
-                            liftedOffset: liftedIndex == index ? liftedOffset : .zero
-                        )
+            VStack(spacing: Tokens.Spacing.m) {
+                Text("Tap and hold a clip to rearrange")
+                    .font(.subheadline)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+
+                GeometryReader { geo in
+                    let w = geo.size.width
+                    let cw = (w - pad * 2) / 2
+                    let cy = geo.size.height / 2
+
+                    // Slot positions (centre X of each slot relative to card)
+                    let slotL = pad + cw / 2             // left of FAB
+                    let slotR = w - pad - cw / 2         // right of FAB
+                    let slotLL = slotL - cw              // off-screen left
+                    let slotRR = slotR + cw              // off-screen right
+
+                    ZStack {
+                        RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                            .fill(Tokens.Colors.secondaryBackground)
+
+                        // Clips at explicit positions (z-index 0, under FAB)
+                        clipView(0).position(x: clipAX, y: cy)
+                        clipView(1).position(x: clipBX, y: cy)
+                        clipView(2).position(x: clipCX, y: cy).opacity(clipCVisible ? 1 : 0)
+                        clipView(3).position(x: clipDX, y: cy)
+
+                        // Seam line (z-index 1)
+                        Rectangle()
+                            .fill(fabIsDropTarget ? Tokens.Colors.tertiaryBackground : Tokens.Colors.systemRed.opacity(0.9))
+                            .frame(width: 2, height: thumbHeight)
+                            .position(x: w / 2, y: cy)
+                            .animation(.easeInOut(duration: 0.25), value: fabIsDropTarget)
+                            .zIndex(1)
+
+                        // FAB (z-index 2)
+                        fabView
+                            .position(x: w / 2, y: cy)
+                            .zIndex(2)
+
+                        // Floating clip (z-index 3)
+                        if floaterVisible {
+                            floaterView(cw: cw)
+                                .position(x: w / 2, y: cy)
+                                .zIndex(3)
+                        }
+
+                        // Finger (z-index 4)
+                        Circle()
+                            .fill(.white.opacity(0.3))
+                            .frame(width: 44, height: 44)
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                            .scaleEffect(fingerScale)
+                            .position(x: w / 2, y: cy)
+                            .offset(fingerPos)
+                            .opacity(fingerVisible ? 1 : 0)
+                            .zIndex(4)
+                    }
+                    .onAppear {
+                        cardW = w
+                        clipW = cw
+                        clipAX = slotLL
+                        clipBX = slotL
+                        clipCX = slotR
+                        clipDX = slotRR
                     }
                 }
+                .frame(height: thumbHeight + pad * 2)
+                .padding(.horizontal, Tokens.Spacing.l)
 
-                if liftedIndex != nil {
-                    Circle()
-                        .fill(.white.opacity(0.3))
-                        .frame(width: 44, height: 44)
-                        .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                        .offset(x: liftedOffset.width, y: liftedOffset.height + clipSize.height * 0.3)
-                }
+                Text(statusText)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .animation(.easeInOut(duration: 0.2), value: statusText)
+                    .frame(height: 28)
             }
+            .offset(y: -20)
 
-            Text(statusText)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Tokens.Colors.primaryText)
-                .animation(.easeInOut(duration: 0.2), value: statusText)
-                .frame(height: 20)
-
-            Spacer()
             Spacer()
         }
-        .padding(.horizontal, Tokens.Spacing.l)
+        .padding(.horizontal, Tokens.Spacing.s)
         .onAppear {
             token.cancel()
             token = AnimationToken()
-            resetState()
-            startAnimation(token: token)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                startAnimation(token: token)
+            }
         }
         .onDisappear {
             token.cancel()
-            resetState()
         }
     }
 
-    private func resetState() {
-        isJiggling = false
-        liftedIndex = nil
-        liftedOffset = .zero
-        statusText = "Hold any clip to rearrange"
-        clipOrder = [0, 1, 2, 3]
+    // MARK: - Clip view
+
+    private func clipView(_ index: Int) -> some View {
+        let seed = Double(index) * 0.3
+        let phase = Double(index) * 1.5
+        return ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
+                .fill(Tokens.Colors.tertiaryBackground)
+            Image(systemName: "photo")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+        }
+        .frame(width: clipW > 0 ? clipW : 100, height: thumbHeight)
+        .modifier(JiggleModifier(isJiggling: isJiggling, seed: seed, phase: phase))
     }
+
+    // MARK: - FAB
+
+    private var fabView: some View {
+        ZStack {
+            Circle()
+                .fill(fabIsDropTarget ? Tokens.Colors.tertiaryBackground : Tokens.Colors.systemRed)
+                .frame(width: fabSize, height: fabSize)
+                .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
+                .animation(.easeInOut(duration: 0.25), value: fabIsDropTarget)
+
+            if fabIsDropTarget {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(Tokens.Colors.primaryText.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "photo.stack")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Tokens.Colors.primaryText)
+                }
+                .transition(.opacity)
+            } else {
+                Image(systemName: "video.fill")
+                    .font(.system(size: fabSize * 0.36, weight: .semibold))
+                    .foregroundColor(.white)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - Floater
+
+    private func floaterView(cw: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
+                .fill(Tokens.Colors.tertiaryBackground)
+            Image(systemName: "photo")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+        }
+        .frame(width: cw, height: thumbHeight)
+        .scaleEffect(floaterScale)
+        .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 6)
+        .offset(floaterPos)
+    }
+
+    // MARK: - Animation
 
     private func startAnimation(token: AnimationToken) {
-        let totalCycle: TimeInterval = 5.5
+        guard clipW > 0 else { return }
 
-        func runCycle() {
-            guard !token.isCancelled else { return }
-            resetState()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        func after(_ delay: TimeInterval, _ block: @escaping () -> Void) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 guard !token.isCancelled else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    isJiggling = true
-                }
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                guard !token.isCancelled else { return }
-                statusText = "Drag to a new position"
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    liftedIndex = 1
-                    liftedOffset = CGSize(width: 0, height: -20)
-                }
-            }
-
-            let dragStep = (clipSize.width + clipSpacing) * 2
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-                guard !token.isCancelled else { return }
-                withAnimation(.easeInOut(duration: 0.8)) {
-                    liftedOffset = CGSize(width: dragStep, height: -20)
-                }
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-                guard !token.isCancelled else { return }
-                statusText = "Drop to reorder your story"
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    liftedOffset = .zero
-                    liftedIndex = nil
-                    clipOrder = [0, 2, 3, 1]
-                }
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + totalCycle) {
-                guard !token.isCancelled else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    isJiggling = false
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    guard !token.isCancelled else { return }
-                    runCycle()
-                }
+                block()
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            guard !token.isCancelled else { return }
-            runCycle()
-        }
-    }
-}
+        let slotL = pad + clipW / 2
+        let slotR = cardW - pad - clipW / 2
+        let slotLL = slotL - clipW
+        let slotRR = slotR + clipW
+        let slotRRR = slotRR + clipW
 
-// MARK: - Jiggle Clip
+        let clipCentreX = slotR - cardW / 2  // offset from card centre to clip C
+        let liftY: CGFloat = -(thumbHeight * 0.8)
+        var t: TimeInterval = 0.4
 
-private struct JiggleClip: View {
-    let colorIdx: Int
-    let color: Color
-    let size: CGSize
-    let isJiggling: Bool
-    let isLifted: Bool
-    let liftedOffset: CGSize
+        // Reset positions
+        clipAX = slotLL; clipBX = slotL; clipCX = slotR; clipDX = slotRR
+        clipCVisible = true; floaterVisible = false; floaterScale = 1.0; floaterPos = .zero
+        fabIsDropTarget = false; isJiggling = false
+        fingerVisible = false; fingerScale = 1.0; fingerPos = .zero
+        statusText = "Hold any clip to rearrange"
 
-    var body: some View {
-        let seed = Double(colorIdx) * 0.3
-        let phase = Double(colorIdx) * 1.5
-
-        ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(color)
-
-            Image(systemName: "photo")
-                .font(.system(size: 20))
-                .foregroundStyle(.white.opacity(0.5))
-
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Text("\(colorIdx + 1)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(4)
-                }
+        // 1) Finger appears on clip C (right of FAB)
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                fingerPos = CGSize(width: clipCentreX, height: 0)
+                fingerVisible = true
             }
         }
-        .frame(width: size.width, height: size.height)
-        .scaleEffect(isLifted ? 1.1 : (isJiggling ? 0.92 : 1.0))
-        .shadow(color: .black.opacity(isLifted ? 0.3 : 0), radius: 12, x: 0, y: 6)
-        .offset(liftedOffset)
-        .opacity(isLifted ? 0.9 : 1.0)
-        .modifier(JiggleModifier(isJiggling: isJiggling && !isLifted, seed: seed, phase: phase))
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isLifted)
-        .animation(.easeInOut(duration: 0.3), value: isJiggling)
+        t += 0.5
+
+        // 2) First hold → jiggle mode
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
+        }
+        t += 0.6
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.3)) { isJiggling = true }
+        }
+        t += 0.4
+
+        // 3) Release
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 1.0 }
+        }
+        t += 0.5
+
+        // 4) Second hold → lift clip C
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
+            statusText = "Drag to a new position"
+        }
+        t += 0.4
+        after(t) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                clipCVisible = false
+                floaterVisible = true
+                floaterPos = CGSize(width: clipCentreX, height: liftY)
+                fingerPos = CGSize(width: clipCentreX, height: liftY)
+                fabIsDropTarget = true
+            }
+        }
+        t += 0.4
+
+        // 5) D slides left to close gap (D → slotR)
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.4)) { clipDX = slotR }
+        }
+        t += 0.6
+
+        // 6) Release floater, finger lifts
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 1.0 }
+        }
+        t += 0.4
+
+        // 7) Finger swipes → all 3 clips shift RIGHT one position
+        // A: slotLL→slotL, B: slotL→slotR, D: slotR→slotRR
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                fingerPos = CGSize(width: -60, height: 0)
+            }
+        }
+        t += 0.3
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                fingerPos = CGSize(width: 60, height: 0)
+                clipAX = slotL
+                clipBX = slotR
+                clipDX = slotRR
+            }
+            statusText = "Swipe to find the right spot"
+        }
+        t += 0.7
+
+        // 8) Finger grabs floater, drags to FAB
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                fingerPos = CGSize(width: clipCentreX, height: liftY)
+            }
+        }
+        t += 0.4
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
+            statusText = "Drop to reorder your story"
+        }
+        t += 0.3
+
+        // 9) Drag to FAB → scale 50%
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.6)) {
+                floaterPos = .zero
+                fingerPos = .zero
+                floaterScale = 0.5
+            }
+        }
+        t += 0.7
+
+        // 10) Drop → B and D shift right, floater placed at slotR
+        // A stays slotL, B: slotR→slotRR, D: slotRR→slotRRR, floater→slotR
+        after(t) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                clipBX = slotRR
+                clipDX = slotRRR
+                floaterVisible = false
+                floaterScale = 1.0
+                clipCVisible = true
+                clipCX = slotR
+                fabIsDropTarget = false
+                fingerScale = 1.0
+                fingerVisible = false
+            }
+        }
+        t += 0.5
+
+        // 11) Jiggle stops, pause, loop
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.3)) { isJiggling = false }
+        }
+        t += 1.5
+
+        after(t) {
+            startAnimation(token: token)
+        }
     }
 }
 
