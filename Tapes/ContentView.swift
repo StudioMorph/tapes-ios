@@ -9,12 +9,17 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
+    @AppStorage("tapes_onboarding_completed") private var onboardingCompleted = false
 
     var body: some View {
-        TapesListView()
-            .onAppear {
-                entitlementManager.refresh()
-            }
+        if onboardingCompleted {
+            TapesListView()
+                .onAppear {
+                    entitlementManager.refresh()
+                }
+        } else {
+            OnboardingView()
+        }
     }
 }
 
