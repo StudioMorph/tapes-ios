@@ -17,11 +17,9 @@ final class AuthManager: ObservableObject {
 
     // MARK: - Published State
 
-    @Published var isSignedIn: Bool = false
     @Published private(set) var userName: String?
     @Published private(set) var userEmail: String?
     @Published var authError: String?
-    private(set) var didSignInThisSession: Bool = false
 
     // MARK: - Lifecycle
 
@@ -36,12 +34,8 @@ final class AuthManager: ObservableObject {
     }
 
     private func restoreSession() {
-        guard let id = userID else {
-            isSignedIn = false
-            return
-        }
+        guard let id = userID else { return }
 
-        isSignedIn = true
         userName = UserDefaults.standard.string(forKey: Self.userNameKey)
         userEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
 
@@ -90,8 +84,6 @@ final class AuthManager: ObservableObject {
                 userEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
             }
 
-            isSignedIn = true
-            didSignInThisSession = true
             authError = nil
 
         case .failure(let error):
