@@ -11,23 +11,26 @@ struct OnboardingView: View {
 
             VStack(spacing: 0) {
                 TabView(selection: $currentPage) {
-                    FabSwipeTutorial()
+                    CameraCaptureTutorial()
                         .tag(0)
 
-                    JiggleReorderTutorial()
+                    FabSwipeTutorial()
                         .tag(1)
+
+                    JiggleReorderTutorial()
+                        .tag(2)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .indexViewStyle(.page(backgroundDisplayMode: .always))
 
                 Button {
-                    if currentPage == 0 {
-                        withAnimation { currentPage = 1 }
+                    if currentPage < 2 {
+                        withAnimation { currentPage += 1 }
                     } else {
                         onboardingCompleted = true
                     }
                 } label: {
-                    Text(currentPage == 0 ? "Next" : "Get Started")
+                    Text(currentPage < 2 ? "Next" : "Get Started")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -42,6 +45,404 @@ struct OnboardingView: View {
 private class AnimationToken {
     var isCancelled = false
     func cancel() { isCancelled = true }
+}
+
+// MARK: - Camera Capture Tutorial
+
+private struct CameraCaptureTutorial: View {
+    @State private var token = AnimationToken()
+
+    // Clip positions (explicit X)
+    @State private var clipAX: CGFloat = 0
+    @State private var clipBX: CGFloat = 0
+    @State private var newClipX: CGFloat = 0
+    @State private var newClipVisible = false
+    @State private var newClipScale: CGFloat = 0.1
+
+    // Viewfinder
+    @State private var viewfinderVisible = false
+    @State private var viewfinderScale: CGFloat = 0.1
+    @State private var viewfinderOpacity: Double = 0
+    @State private var recording = false
+
+    // Finger
+    @State private var fingerPos: CGSize = .zero
+    @State private var fingerVisible = false
+    @State private var fingerScale: CGFloat = 1.0
+
+    @State private var statusText = "Tap the red button to record"
+
+    @State private var clipW: CGFloat = 0
+    @State private var cardW: CGFloat = 0
+
+    private let fabSize: CGFloat = Tokens.FAB.size
+    private let thumbHeight: CGFloat = 80
+    private let pad: CGFloat = Tokens.Spacing.s
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: Tokens.Spacing.s) {
+                Text("Capture a Moment")
+                    .font(.title.weight(.bold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .multilineTextAlignment(.center)
+
+                Text("Tap the red button to record\na clip straight to your tape")
+                    .font(.body)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, Tokens.Spacing.xl)
+
+            Spacer()
+
+            VStack(spacing: Tokens.Spacing.m) {
+                Text("Your clips build your story")
+                    .font(.subheadline)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+
+                GeometryReader { geo in
+                    let w = geo.size.width
+                    let cw = (w - pad * 2) / 2
+                    let cy = geo.size.height / 2
+
+                    let slotL = pad + cw / 2
+                    let slotR = w - pad - cw / 2
+                    let slotLL = slotL - cw
+
+                    ZStack {
+                        RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                            .fill(Tokens.Colors.secondaryBackground)
+
+                        // Clip A (leftmost, partially off-screen)
+                        clipView(0)
+                            .position(x: clipAX, y: cy)
+
+                        // Clip B (left of FAB)
+                        clipView(1)
+                            .position(x: clipBX, y: cy)
+
+                        // New clip (appears after recording)
+                        if newClipVisible {
+                            clipView(2)
+                                .scaleEffect(newClipScale)
+                                .position(x: newClipX, y: cy)
+                        }
+
+                        // Placeholder (+) always on right
+                        placeholderView
+                            .position(x: slotR, y: cy)
+
+                        // Seam line
+                        Rectangle()
+                            .fill(Tokens.Colors.systemRed.opacity(0.9))
+                            .frame(width: 2, height: thumbHeight)
+                            .position(x: w / 2, y: cy)
+                            .zIndex(1)
+
+                        // FAB
+                        fabView
+                            .position(x: w / 2, y: cy)
+                            .zIndex(2)
+
+                        // Viewfinder
+                        if viewfinderVisible {
+                            viewfinderView
+                                .scaleEffect(viewfinderScale)
+                                .opacity(viewfinderOpacity)
+                                .position(x: w / 2, y: cy - thumbHeight - 30)
+                                .zIndex(3)
+                        }
+
+                        // Finger
+                        Circle()
+                            .fill(.white.opacity(0.3))
+                            .frame(width: 44, height: 44)
+                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                            .scaleEffect(fingerScale)
+                            .position(x: w / 2, y: cy)
+                            .offset(fingerPos)
+                            .opacity(fingerVisible ? 1 : 0)
+                            .zIndex(4)
+                    }
+                    .onAppear {
+                        cardW = w
+                        clipW = cw
+                        clipAX = slotLL
+                        clipBX = slotL
+                        newClipX = slotL
+                    }
+                }
+                .frame(height: thumbHeight * 2.8)
+                .padding(.horizontal, Tokens.Spacing.l)
+
+                Text(statusText)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .animation(.easeInOut(duration: 0.2), value: statusText)
+                    .frame(height: 28)
+            }
+            .offset(y: -20)
+
+            Spacer()
+        }
+        .padding(.horizontal, Tokens.Spacing.s)
+        .onAppear {
+            token.cancel()
+            token = AnimationToken()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                startAnimation(token: token)
+            }
+        }
+        .onDisappear {
+            token.cancel()
+        }
+    }
+
+    // MARK: - Clip view
+
+    private func clipView(_ index: Int) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
+                .fill(Tokens.Colors.tertiaryBackground)
+            Image(systemName: "photo")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+        }
+        .frame(width: clipW > 0 ? clipW - 2 : 100, height: thumbHeight)
+    }
+
+    // MARK: - Placeholder (+)
+
+    private var placeholderView: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
+                .strokeBorder(Tokens.Colors.primaryText.opacity(0.2), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+        }
+        .frame(width: clipW > 0 ? clipW - 2 : 100, height: thumbHeight)
+    }
+
+    // MARK: - FAB
+
+    private var fabView: some View {
+        ZStack {
+            Circle()
+                .fill(Tokens.Colors.systemRed)
+                .frame(width: fabSize, height: fabSize)
+                .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
+
+            Image(systemName: "video.fill")
+                .font(.system(size: fabSize * 0.36, weight: .semibold))
+                .foregroundColor(.white)
+        }
+    }
+
+    // MARK: - Viewfinder
+
+    private var viewfinderView: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Tokens.Colors.primaryBackground)
+                .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
+
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Tokens.Colors.primaryText.opacity(0.15), lineWidth: 1)
+
+            VStack(spacing: 12) {
+                // Viewfinder corners
+                ZStack {
+                    // Corner brackets
+                    ViewfinderCorners()
+                        .stroke(Tokens.Colors.primaryText.opacity(0.6), lineWidth: 2)
+                        .frame(width: 60, height: 44)
+                }
+                .frame(height: 44)
+
+                // Record button
+                Circle()
+                    .fill(recording ? Color.red.opacity(0.8) : Tokens.Colors.systemRed)
+                    .frame(width: 28, height: 28)
+                    .scaleEffect(recording ? 0.7 : 1.0)
+                    .animation(.easeInOut(duration: 0.2), value: recording)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(.white.opacity(0.6), lineWidth: 2)
+                    )
+            }
+            .padding(.vertical, 12)
+
+            // Tooltip arrow pointing down
+            VStack {
+                Spacer()
+                Triangle()
+                    .fill(Tokens.Colors.primaryBackground)
+                    .frame(width: 16, height: 10)
+                    .offset(y: 9)
+            }
+        }
+        .frame(width: 110, height: 110)
+    }
+
+    // MARK: - Animation
+
+    private func startAnimation(token: AnimationToken) {
+        guard clipW > 0 else { return }
+
+        func after(_ delay: TimeInterval, _ block: @escaping () -> Void) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard !token.isCancelled else { return }
+                block()
+            }
+        }
+
+        let slotL = pad + clipW / 2
+        let slotLL = slotL - clipW
+        let slotLLL = slotLL - clipW
+        let liftY: CGFloat = -(thumbHeight + 20)
+        var t: TimeInterval = 0.4
+
+        // Reset
+        clipAX = slotLL; clipBX = slotL
+        newClipVisible = false; newClipScale = 0.1; newClipX = slotL
+        viewfinderVisible = false; viewfinderScale = 0.1; viewfinderOpacity = 0
+        recording = false
+        fingerVisible = false; fingerScale = 1.0; fingerPos = .zero
+        statusText = "Tap the red button to record"
+
+        // 1) Finger appears, moves to FAB
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                fingerVisible = true
+            }
+        }
+        t += 0.8
+
+        // 2) Finger taps FAB
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
+        }
+        t += 0.2
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 1.0 }
+        }
+        t += 0.3
+
+        // 3) Viewfinder pops up
+        after(t) {
+            viewfinderVisible = true
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                viewfinderScale = 1.0
+                viewfinderOpacity = 1.0
+            }
+            statusText = "Camera opens above"
+        }
+        t += 1.3
+
+        // 4) Finger moves up to record button
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                fingerPos = CGSize(width: 0, height: liftY + 10)
+            }
+        }
+        t += 0.5
+
+        // 5) Finger taps record
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
+            withAnimation(.easeInOut(duration: 0.2)) { recording = true }
+            statusText = "Tap to record your clip"
+        }
+        t += 0.3
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 1.0 }
+        }
+        t += 1.3
+
+        // 6) Recording done — finger disappears, viewfinder shrinks into new clip position
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                fingerVisible = false
+                recording = false
+            }
+            statusText = "Clip added to your tape"
+        }
+        t += 0.3
+
+        // 7) Existing clips shift left to make room
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.4)) {
+                clipAX = slotLLL
+                clipBX = slotLL
+            }
+        }
+        t += 0.5
+
+        // 8) Viewfinder animates down into new clip slot
+        after(t) {
+            newClipX = slotL
+            newClipVisible = true
+            newClipScale = 0.1
+
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                viewfinderScale = 0.1
+                viewfinderOpacity = 0
+                newClipScale = 1.0
+            }
+        }
+        t += 0.5
+        after(t) {
+            viewfinderVisible = false
+        }
+        t += 1.5
+
+        // 9) Pause, then loop
+        after(t) {
+            startAnimation(token: token)
+        }
+    }
+}
+
+// MARK: - Viewfinder Corners Shape
+
+private struct ViewfinderCorners: Shape {
+    func path(in rect: CGRect) -> Path {
+        let len: CGFloat = 10
+        var p = Path()
+        // Top-left
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY + len))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.minX + len, y: rect.minY))
+        // Top-right
+        p.move(to: CGPoint(x: rect.maxX - len, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + len))
+        // Bottom-right
+        p.move(to: CGPoint(x: rect.maxX, y: rect.maxY - len))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.maxX - len, y: rect.maxY))
+        // Bottom-left
+        p.move(to: CGPoint(x: rect.minX + len, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - len))
+        return p
+    }
+}
+
+// MARK: - Triangle Shape
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.closeSubpath()
+        return p
+    }
 }
 
 // MARK: - FAB Swipe Tutorial
