@@ -270,7 +270,7 @@ private struct JiggleReorderTutorial: View {
             Spacer()
 
             VStack(spacing: Tokens.Spacing.m) {
-                Text("Tap and hold a clip to rearrange")
+                Text("Tap and hold to get jiggling")
                     .font(.subheadline)
                     .foregroundStyle(Tokens.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -469,7 +469,7 @@ private struct JiggleReorderTutorial: View {
         after(t) {
             withAnimation(.easeInOut(duration: 0.3)) { isJiggling = true }
         }
-        t += 0.4
+        t += 1.3
 
         // 3) Release
         after(t) {
@@ -480,7 +480,7 @@ private struct JiggleReorderTutorial: View {
         // 4) Second hold → lift clip C
         after(t) {
             withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
-            statusText = "Drag to a new position"
+            statusText = "Hold and drag the clip out"
         }
         t += 0.4
         after(t) {
@@ -498,7 +498,7 @@ private struct JiggleReorderTutorial: View {
         after(t) {
             withAnimation(.easeInOut(duration: 0.4)) { clipDX = slotR }
         }
-        t += 0.6
+        t += 1.3
 
         // 6) Release floater, finger lifts
         after(t) {
@@ -507,8 +507,8 @@ private struct JiggleReorderTutorial: View {
         t += 0.4
 
         // 7) Finger swipes → all 3 clips shift RIGHT one position
-        // A: slotLL→slotL, B: slotL→slotR, D: slotR→slotRR
         after(t) {
+            statusText = "Swipe to find the right spot"
             withAnimation(.easeInOut(duration: 0.2)) {
                 fingerPos = CGSize(width: -60, height: 0)
             }
@@ -521,12 +521,12 @@ private struct JiggleReorderTutorial: View {
                 clipBX = slotR
                 clipDX = slotRR
             }
-            statusText = "Swipe to find the right spot"
         }
-        t += 0.7
+        t += 1.3
 
         // 8) Finger grabs floater, drags to FAB
         after(t) {
+            statusText = "Drop the clip in new position"
             withAnimation(.easeInOut(duration: 0.3)) {
                 fingerPos = CGSize(width: clipCentreX, height: liftY)
             }
@@ -534,7 +534,6 @@ private struct JiggleReorderTutorial: View {
         t += 0.4
         after(t) {
             withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
-            statusText = "Drop to reorder your story"
         }
         t += 0.3
 
