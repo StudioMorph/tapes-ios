@@ -104,7 +104,7 @@ private struct FabSwipeTutorial: View {
                     .fill(.white.opacity(0.3))
                     .frame(width: 44, height: 44)
                     .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                    .offset(x: fingerX, y: fabSize * 0.6)
+                    .offset(x: fingerX)
                     .opacity(animationPhase > 0 ? 1 : 0)
             }
             .frame(height: thumbHeight + Tokens.Spacing.s * 2)
@@ -136,58 +136,55 @@ private struct FabSwipeTutorial: View {
         .frame(height: thumbHeight)
     }
 
+    private let swipeDuration: TimeInterval = 0.4
+    private let pauseDuration: TimeInterval = 1.2
+
     private func startAnimation() {
-        let cycleDuration: TimeInterval = 3.0
-        let pauseDuration: TimeInterval = 1.2
+        let sequence: [FABMode] = [.gallery, .transition, .camera]
+        var t: TimeInterval = 0.8
 
-        func runCycle() {
-            animationPhase = 1
-            fingerX = -30
+        let restX = fabSize / 2
+        animationPhase = 0
+        fingerX = restX
+        currentMode = .camera
 
-            withAnimation(.easeInOut(duration: 0.3)) {
-                fingerX = -30
+        DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                animationPhase = 1
             }
+        }
+        t += 0.3
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    fingerX = 30
+        func scheduleSwipe(to mode: FABMode, at time: TimeInterval, then next: @escaping () -> Void) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + time) {
+                withAnimation(.easeInOut(duration: swipeDuration)) {
+                    fingerX = -restX
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + swipeDuration / 2) {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        currentMode = mode
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + swipeDuration + 0.1) {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        currentMode = .gallery
+                        fingerX = restX
                     }
-                }
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + cycleDuration * 0.5) {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    fingerX = 30
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        currentMode = .transition
-                    }
-                }
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + cycleDuration) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    animationPhase = 0
-                    fingerX = 0
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + pauseDuration * 0.5) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        currentMode = .camera
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + pauseDuration * 0.5) {
-                        runCycle()
-                    }
+                    next()
                 }
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            runCycle()
+        for mode in sequence {
+            let capturedT = t
+            let isLast = mode == sequence.last
+            scheduleSwipe(to: mode, at: capturedT) {
+                if isLast {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + pauseDuration) {
+                        startAnimation()
+                    }
+                }
+            }
+            t += swipeDuration + 0.1 + 0.2 + pauseDuration
         }
     }
 }
