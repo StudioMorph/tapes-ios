@@ -255,12 +255,12 @@ private struct JiggleReorderTutorial: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: Tokens.Spacing.s) {
-                Text("Rearrange Your Clips")
+                Text("Make it Jiggle")
                     .font(.title.weight(.bold))
                     .foregroundStyle(Tokens.Colors.primaryText)
                     .multilineTextAlignment(.center)
 
-                Text("Hold, drag, and drop to\ntell your story your way")
+                Text("In jiggle mode you can rearrange,\nduplicate and delete clips")
                     .font(.body)
                     .foregroundStyle(Tokens.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -374,7 +374,7 @@ private struct JiggleReorderTutorial: View {
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
         }
-        .frame(width: clipW > 0 ? clipW : 100, height: thumbHeight)
+        .frame(width: clipW > 0 ? clipW - 2 : 100, height: thumbHeight)
         .modifier(JiggleModifier(isJiggling: isJiggling, seed: seed, phase: phase))
     }
 
