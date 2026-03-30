@@ -42,12 +42,18 @@ struct OnboardingView: View {
     }
 }
 
+private class AnimationToken {
+    var isCancelled = false
+    func cancel() { isCancelled = true }
+}
+
 // MARK: - FAB Swipe Tutorial
 
 private struct FabSwipeTutorial: View {
     @State private var animationPhase = 0
     @State private var fingerX: CGFloat = 0
     @State private var currentMode: FABMode = .camera
+    @State private var token = AnimationToken()
 
     private let fabSize: CGFloat = Tokens.FAB.size
     private let thumbHeight: CGFloat = 80
@@ -121,7 +127,22 @@ private struct FabSwipeTutorial: View {
             Spacer()
         }
         .padding(.horizontal, Tokens.Spacing.s)
-        .onAppear { startAnimation() }
+        .onAppear {
+            token.cancel()
+            token = AnimationToken()
+            resetState()
+            startAnimation(token: token)
+        }
+        .onDisappear {
+            token.cancel()
+            resetState()
+        }
+    }
+
+    private func resetState() {
+        animationPhase = 0
+        fingerX = Tokens.FAB.size / 2
+        currentMode = .camera
     }
 
     private var clipPlaceholder: some View {
@@ -139,16 +160,14 @@ private struct FabSwipeTutorial: View {
     private let swipeDuration: TimeInterval = 0.4
     private let pauseDuration: TimeInterval = 1.2
 
-    private func startAnimation() {
+    private func startAnimation(token: AnimationToken) {
         let sequence: [FABMode] = [.gallery, .transition, .camera]
         var t: TimeInterval = 0.8
 
         let restX = fabSize / 2
-        animationPhase = 0
-        fingerX = restX
-        currentMode = .camera
 
         DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+            guard !token.isCancelled else { return }
             withAnimation(.easeInOut(duration: 0.2)) {
                 animationPhase = 1
             }
@@ -157,15 +176,18 @@ private struct FabSwipeTutorial: View {
 
         func scheduleSwipe(to mode: FABMode, at time: TimeInterval, then next: @escaping () -> Void) {
             DispatchQueue.main.asyncAfter(deadline: .now() + time) {
+                guard !token.isCancelled else { return }
                 withAnimation(.easeInOut(duration: swipeDuration)) {
                     fingerX = -restX
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + swipeDuration / 2) {
+                    guard !token.isCancelled else { return }
                     withAnimation(.easeInOut(duration: 0.15)) {
                         currentMode = mode
                     }
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + swipeDuration + 0.1) {
+                    guard !token.isCancelled else { return }
                     withAnimation(.easeInOut(duration: 0.2)) {
                         fingerX = restX
                     }
@@ -180,7 +202,8 @@ private struct FabSwipeTutorial: View {
             scheduleSwipe(to: mode, at: capturedT) {
                 if isLast {
                     DispatchQueue.main.asyncAfter(deadline: .now() + pauseDuration) {
-                        startAnimation()
+                        guard !token.isCancelled else { return }
+                        startAnimation(token: token)
                     }
                 }
             }
@@ -197,6 +220,7 @@ private struct JiggleReorderTutorial: View {
     @State private var liftedOffset: CGSize = .zero
     @State private var statusText = "Hold any clip to rearrange"
     @State private var clipOrder = [0, 1, 2, 3]
+    @State private var token = AnimationToken()
 
     private let clipSize = CGSize(width: 72, height: 96)
     private let clipSpacing: CGFloat = 8
@@ -254,26 +278,42 @@ private struct JiggleReorderTutorial: View {
             Spacer()
         }
         .padding(.horizontal, Tokens.Spacing.l)
-        .onAppear { startAnimation() }
+        .onAppear {
+            token.cancel()
+            token = AnimationToken()
+            resetState()
+            startAnimation(token: token)
+        }
+        .onDisappear {
+            token.cancel()
+            resetState()
+        }
     }
 
-    private func startAnimation() {
+    private func resetState() {
+        isJiggling = false
+        liftedIndex = nil
+        liftedOffset = .zero
+        statusText = "Hold any clip to rearrange"
+        clipOrder = [0, 1, 2, 3]
+    }
+
+    private func startAnimation(token: AnimationToken) {
         let totalCycle: TimeInterval = 5.5
 
         func runCycle() {
-            clipOrder = [0, 1, 2, 3]
-            isJiggling = false
-            liftedIndex = nil
-            liftedOffset = .zero
-            statusText = "Hold any clip to rearrange"
+            guard !token.isCancelled else { return }
+            resetState()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                guard !token.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.3)) {
                     isJiggling = true
                 }
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                guard !token.isCancelled else { return }
                 statusText = "Drag to a new position"
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     liftedIndex = 1
@@ -283,12 +323,14 @@ private struct JiggleReorderTutorial: View {
 
             let dragStep = (clipSize.width + clipSpacing) * 2
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+                guard !token.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.8)) {
                     liftedOffset = CGSize(width: dragStep, height: -20)
                 }
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+                guard !token.isCancelled else { return }
                 statusText = "Drop to reorder your story"
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     liftedOffset = .zero
@@ -298,16 +340,19 @@ private struct JiggleReorderTutorial: View {
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + totalCycle) {
+                guard !token.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.3)) {
                     isJiggling = false
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    guard !token.isCancelled else { return }
                     runCycle()
                 }
             }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard !token.isCancelled else { return }
             runCycle()
         }
     }
