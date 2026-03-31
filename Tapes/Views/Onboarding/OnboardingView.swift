@@ -3,6 +3,27 @@ import SwiftUI
 struct OnboardingView: View {
     @AppStorage("tapes_onboarding_completed") private var onboardingCompleted = false
     @State private var currentPage = 0
+    @State private var dismissScale: CGFloat = 1.0
+    @State private var dismissOpacity: Double = 1.0
+    @State private var dismissOffset: CGSize = .zero
+
+    var onComplete: (() -> Void)? = nil
+
+    private func completeOnboarding() {
+        withAnimation(.easeIn(duration: 0.35)) {
+            dismissScale = 0.15
+            dismissOpacity = 0
+            dismissOffset = CGSize(
+                width: -UIScreen.main.bounds.width / 2 + 50,
+                height: UIScreen.main.bounds.height / 2 - 80
+            )
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            onboardingCompleted = true
+            onComplete?()
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -28,7 +49,7 @@ struct OnboardingView: View {
                     if currentPage < 2 {
                         withAnimation { currentPage += 1 }
                     } else {
-                        onboardingCompleted = true
+                        completeOnboarding()
                     }
                 } label: {
                     Text(currentPage < 2 ? "Next" : "Get Started")
@@ -42,7 +63,7 @@ struct OnboardingView: View {
                     .frame(height: Tokens.Spacing.m)
 
                 Button {
-                    onboardingCompleted = true
+                    completeOnboarding()
                 } label: {
                     Text("Skip")
                         .font(.body)
@@ -56,6 +77,9 @@ struct OnboardingView: View {
                     .frame(height: Tokens.Spacing.l)
             }
         }
+        .scaleEffect(dismissScale)
+        .opacity(dismissOpacity)
+        .offset(dismissOffset)
     }
 }
 

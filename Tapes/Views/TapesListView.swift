@@ -10,6 +10,9 @@ struct TapesListView: View {
     @State private var showingDeleteSuccessToast = false
     @State private var dropTargets: [DropTargetInfo] = []
     @State private var hoveredTarget: DropTargetInfo? = nil
+    @Binding var showOnboarding: Bool
+    @AppStorage("tapes_hot_tips_remaining") private var hotTipsRemaining = 5
+    @State private var showHotTips = false
 
     var body: some View {
         NavigationStack {
@@ -24,7 +27,8 @@ struct TapesListView: View {
                 } else {
                     VStack(spacing: 0) {
                         HeaderView(
-                            exportCoordinator: exportCoordinator
+                            exportCoordinator: exportCoordinator,
+                            onHotTips: { showOnboarding = true }
                         )
                         
                         TapesList(
@@ -89,6 +93,29 @@ struct TapesListView: View {
                 .ignoresSafeArea(.all, edges: .all)
         }
         .overlay(exportOverlay)
+        .overlay(alignment: .bottomLeading) {
+            if hotTipsRemaining > 0 {
+                Button {
+                    showOnboarding = true
+                } label: {
+                    Image(systemName: "lightbulb.max")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                        .background(.blue, in: Circle())
+                        .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+                }
+                .padding(.leading, Tokens.Spacing.l)
+                .padding(.bottom, Tokens.Spacing.l)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .onAppear {
+            if hotTipsRemaining > 0 {
+                showHotTips = true
+                hotTipsRemaining -= 1
+            }
+        }
     }
 
     // MARK: - Floating Clip Overlay
@@ -357,13 +384,13 @@ private struct DeleteSuccessToast: View {
 }
 
 #Preview("Dark Mode") {
-    TapesListView()
-        .environmentObject(TapesStore())  // lightweight preview store
+    TapesListView(showOnboarding: .constant(false))
+        .environmentObject(TapesStore())
         .preferredColorScheme(.dark)
 }
 
 #Preview("Light Mode") {
-    TapesListView()
-        .environmentObject(TapesStore())  // lightweight preview store
+    TapesListView(showOnboarding: .constant(false))
+        .environmentObject(TapesStore())
         .preferredColorScheme(.light)
 }

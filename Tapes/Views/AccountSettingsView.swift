@@ -6,6 +6,7 @@ struct AccountSettingsView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @Environment(\.dismiss) private var dismiss
 
+    var onHotTips: (() -> Void)? = nil
     @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark
 
     private var isAppleSignedIn: Bool {
@@ -17,6 +18,7 @@ struct AccountSettingsView: View {
             Form {
                 accountSection
                 appearanceSection
+                hotTipsSection
                 aboutSection
                 creditsSection
                 legalSection
@@ -108,6 +110,28 @@ struct AccountSettingsView: View {
             Text("Appearance")
         } footer: {
             Text("Choose how Tapes looks. System follows your device settings.")
+        }
+    }
+
+    // MARK: - Hot Tips
+
+    private var hotTipsSection: some View {
+        Section {
+            Button {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    onHotTips?()
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "lightbulb.max")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.blue)
+                        .frame(width: 24)
+                    Text("Hot Tips")
+                        .foregroundStyle(.primary)
+                }
+            }
         }
     }
 

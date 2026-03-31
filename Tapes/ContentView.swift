@@ -10,16 +10,27 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @AppStorage("tapes_onboarding_completed") private var onboardingCompleted = false
+    @AppStorage("tapes_hot_tips_remaining") private var hotTipsRemaining = 5
+    @State private var showOnboarding = false
 
     var body: some View {
-        if onboardingCompleted {
-            TapesListView()
-                .onAppear {
-                    entitlementManager.refresh()
+        TapesListView(showOnboarding: $showOnboarding)
+            .onAppear {
+                entitlementManager.refresh()
+                if !onboardingCompleted {
+                    showOnboarding = true
                 }
-        } else {
-            OnboardingView()
-        }
+            }
+            .fullScreenCover(isPresented: $showOnboarding) {
+                OnboardingView {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        showOnboarding = false
+                    }
+                }
+                .presentationBackground(.clear)
+            }
     }
 }
 

@@ -4,6 +4,7 @@ struct HeaderView: View {
     @EnvironmentObject private var tapeStore: TapesStore
     @EnvironmentObject private var authManager: AuthManager
     @ObservedObject var exportCoordinator: ExportCoordinator
+    var onHotTips: (() -> Void)? = nil
     @State private var showingAccountSettings = false
 
     private var isJiggling: Bool {
@@ -82,7 +83,7 @@ struct HeaderView: View {
         .animation(.easeInOut(duration: 0.25), value: isJiggling)
         .animation(.easeInOut(duration: 0.25), value: showExportIndicator)
         .sheet(isPresented: $showingAccountSettings) {
-            AccountSettingsView()
+            AccountSettingsView(onHotTips: onHotTips)
         }
     }
 
