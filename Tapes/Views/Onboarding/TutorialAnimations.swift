@@ -124,7 +124,7 @@ struct CameraCaptureAnimation: View {
         let slotLL = slotL - clipW
         let slotLLL = slotLL - clipW
         let liftY: CGFloat = -(thumbHeight / 2 + 60)
-        var t: TimeInterval = 0.4
+        var t: TimeInterval = 0.3
 
         clipAX = slotLL; clipBX = slotL
         newClipVisible = false; newClipScale = 0.1; newClipX = slotL
@@ -133,74 +133,74 @@ struct CameraCaptureAnimation: View {
         fingerVisible = false; fingerScale = 1.0; fingerPos = .zero
 
         after(t) {
-            withAnimation(.easeInOut(duration: 0.3)) { fingerVisible = true }
+            withAnimation(.easeInOut(duration: 0.25)) { fingerVisible = true }
         }
-        t += 0.8
+        t += 0.5
 
         after(t) {
-            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
+            withAnimation(.easeInOut(duration: 0.12)) { fingerScale = 0.8 }
+        }
+        t += 0.15
+        after(t) {
+            withAnimation(.easeInOut(duration: 0.12)) { fingerScale = 1.0 }
         }
         t += 0.2
-        after(t) {
-            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 1.0 }
-        }
-        t += 0.3
 
         after(t) {
             viewfinderVisible = true
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                 viewfinderScale = 1.0
                 viewfinderOpacity = 1.0
             }
         }
-        t += 1.3
+        t += 0.8
 
         after(t) {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(.easeInOut(duration: 0.25)) {
                 fingerPos = CGSize(width: 0, height: liftY + 10)
             }
         }
-        t += 0.5
+        t += 0.35
 
         after(t) {
-            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 0.8 }
-            withAnimation(.easeInOut(duration: 0.2)) { recording = true }
+            withAnimation(.easeInOut(duration: 0.12)) { fingerScale = 0.8 }
+            withAnimation(.easeInOut(duration: 0.15)) { recording = true }
         }
-        t += 0.3
+        t += 0.2
         after(t) {
-            withAnimation(.easeInOut(duration: 0.15)) { fingerScale = 1.0 }
+            withAnimation(.easeInOut(duration: 0.12)) { fingerScale = 1.0 }
         }
-        t += 1.3
+        t += 0.8
 
         after(t) {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(.easeInOut(duration: 0.15)) {
                 fingerVisible = false
                 recording = false
             }
         }
-        t += 0.3
+        t += 0.2
 
         after(t) {
-            withAnimation(.easeInOut(duration: 0.4)) {
+            withAnimation(.easeInOut(duration: 0.35)) {
                 clipAX = slotLLL
                 clipBX = slotLL
             }
         }
-        t += 0.5
+        t += 0.4
 
         after(t) {
             newClipX = slotL
             newClipVisible = true
             newClipScale = 0.1
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                 viewfinderScale = 0.1
                 viewfinderOpacity = 0
                 newClipScale = 1.0
             }
         }
-        t += 0.5
+        t += 0.4
         after(t) { viewfinderVisible = false }
-        t += 1.5
+        t += 1.0
 
         after(t) { startAnimation(token: token) }
     }

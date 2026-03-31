@@ -94,8 +94,9 @@ struct TapesListView: View {
                 .ignoresSafeArea(.all, edges: .all)
         }
         .overlay(exportOverlay)
+        // MARK: - Floating Hot Tips button (deactivated — kept for future use)
         .overlay {
-            if hotTipsJiggling {
+            if false, hotTipsJiggling {
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -104,7 +105,7 @@ struct TapesListView: View {
             }
         }
         .overlay(alignment: .bottomLeading) {
-            if hotTipsRemaining > 0 {
+            if false, hotTipsRemaining > 0 {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "lightbulb.max")
                         .font(.system(size: 20, weight: .semibold))
@@ -154,10 +155,7 @@ struct TapesListView: View {
             }
         }
         .onAppear {
-            if hotTipsRemaining > 0 {
-                showHotTips = true
-                hotTipsRemaining -= 1
-            }
+            // Hot tips visit tracking deactivated — kept for future use
         }
     }
 

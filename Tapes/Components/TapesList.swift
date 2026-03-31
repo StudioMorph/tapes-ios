@@ -111,6 +111,11 @@ struct TapesList: View {
 
 struct AmbientTutorialCarousel: View {
     @State private var page = 0
+    @State private var timer: Timer?
+
+    private let loopDurations: [TimeInterval] = [5.3, 6.8, 10.5]
+    private let pageCount = 3
+    private let loopsBeforeAdvance = 2
 
     var body: some View {
         TabView(selection: $page) {
@@ -146,6 +151,21 @@ struct AmbientTutorialCarousel: View {
         .frame(height: 280)
         .compositingGroup()
         .opacity(0.5)
+        .onAppear { scheduleAdvance() }
+        .onDisappear { timer?.invalidate(); timer = nil }
+        .onChange(of: page) { _, _ in scheduleAdvance() }
+    }
+
+    private func scheduleAdvance() {
+        timer?.invalidate()
+        let delay = loopDurations[page] * Double(loopsBeforeAdvance)
+        timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    page = (page + 1) % pageCount
+                }
+            }
+        }
     }
 }
 
