@@ -105,68 +105,56 @@ private struct CameraCaptureTutorial: View {
                 GeometryReader { geo in
                     let w = geo.size.width
                     let cw = (w - pad * 2) / 2
-                    let cardH = thumbHeight + pad * 2
-                    let cardY = geo.size.height - cardH / 2
-                    let clipY = cardY
+                    let cy = geo.size.height / 2
 
                     let slotL = pad + cw / 2
                     let slotR = w - pad - cw / 2
                     let slotLL = slotL - cw
 
                     ZStack {
-                        // Card background (compact, bottom-aligned)
                         RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
                             .fill(Tokens.Colors.secondaryBackground)
-                            .frame(height: cardH)
-                            .position(x: w / 2, y: cardY)
 
-                        // Clip A (leftmost, partially off-screen)
                         clipView(0)
-                            .position(x: clipAX, y: clipY)
+                            .position(x: clipAX, y: cy)
 
-                        // Clip B (left of FAB)
                         clipView(1)
-                            .position(x: clipBX, y: clipY)
+                            .position(x: clipBX, y: cy)
 
-                        // New clip (appears after recording)
                         if newClipVisible {
                             clipView(2)
                                 .scaleEffect(newClipScale)
-                                .position(x: newClipX, y: clipY)
+                                .position(x: newClipX, y: cy)
                         }
 
-                        // Placeholder (+) always on right
                         placeholderView
-                            .position(x: slotR, y: clipY)
+                            .position(x: slotR, y: cy)
 
-                        // Seam line
                         Rectangle()
                             .fill(Tokens.Colors.systemRed.opacity(0.9))
                             .frame(width: 2, height: thumbHeight)
-                            .position(x: w / 2, y: clipY)
+                            .position(x: w / 2, y: cy)
                             .zIndex(1)
 
-                        // FAB
                         fabView
-                            .position(x: w / 2, y: clipY)
+                            .position(x: w / 2, y: cy)
                             .zIndex(2)
 
-                        // Viewfinder (floats above the card)
+                        // Viewfinder floats above, overflowing the card
                         if viewfinderVisible {
                             viewfinderView
                                 .scaleEffect(viewfinderScale)
                                 .opacity(viewfinderOpacity)
-                                .position(x: w / 2, y: cardY - cardH / 2 - 65)
+                                .position(x: w / 2, y: cy - thumbHeight / 2 - 70)
                                 .zIndex(3)
                         }
 
-                        // Finger
                         Circle()
                             .fill(.white.opacity(0.3))
                             .frame(width: 44, height: 44)
                             .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
                             .scaleEffect(fingerScale)
-                            .position(x: w / 2, y: clipY)
+                            .position(x: w / 2, y: cy)
                             .offset(fingerPos)
                             .opacity(fingerVisible ? 1 : 0)
                             .zIndex(4)
@@ -179,7 +167,7 @@ private struct CameraCaptureTutorial: View {
                         newClipX = slotL
                     }
                 }
-                .frame(height: thumbHeight + pad * 2 + 130)
+                .frame(height: thumbHeight + pad * 2)
                 .padding(.horizontal, Tokens.Spacing.l)
 
                 Text(statusText)
@@ -307,8 +295,7 @@ private struct CameraCaptureTutorial: View {
         let slotL = pad + clipW / 2
         let slotLL = slotL - clipW
         let slotLLL = slotLL - clipW
-        let cardH = thumbHeight + pad * 2
-        let liftY: CGFloat = -(cardH / 2 + 55)
+        let liftY: CGFloat = -(thumbHeight / 2 + 60)
         var t: TimeInterval = 0.4
 
         // Reset
