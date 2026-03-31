@@ -22,6 +22,7 @@ struct OnboardingView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .indexViewStyle(.page(backgroundDisplayMode: .always))
+                .contentMargins(.bottom, -4, for: .scrollIndicators)
 
                 Button {
                     if currentPage < 2 {
@@ -36,7 +37,23 @@ struct OnboardingView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .padding(.horizontal, Tokens.Spacing.xl)
-                .padding(.bottom, Tokens.Spacing.xl)
+
+                Spacer()
+                    .frame(height: Tokens.Spacing.m)
+
+                Button {
+                    onboardingCompleted = true
+                } label: {
+                    Text("Skip")
+                        .font(.body)
+                        .foregroundStyle(.tint)
+                }
+                .buttonStyle(.plain)
+                .opacity(currentPage < 2 ? 1 : 0)
+                .disabled(currentPage >= 2)
+
+                Spacer()
+                    .frame(height: Tokens.Spacing.l)
             }
         }
     }
