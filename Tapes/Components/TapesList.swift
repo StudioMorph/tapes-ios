@@ -150,7 +150,7 @@ struct AmbientTutorialCarousel: View {
         .indexViewStyle(.page(backgroundDisplayMode: .always))
         .frame(height: 280)
         .compositingGroup()
-        .opacity(0.5)
+        .opacity(0.4)
         .onAppear { scheduleAdvance() }
         .onDisappear { timer?.invalidate(); timer = nil }
         .onChange(of: page) { _, _ in scheduleAdvance() }
