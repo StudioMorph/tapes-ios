@@ -7,6 +7,7 @@ struct OnboardingView: View {
     @State private var dismissOpacity: Double = 1.0
     @State private var dismissOffset: CGSize = .zero
 
+    var isReopen: Bool = false
     var onComplete: (() -> Void)? = nil
 
     private func completeOnboarding() {
@@ -52,7 +53,7 @@ struct OnboardingView: View {
                         completeOnboarding()
                     }
                 } label: {
-                    Text(currentPage < 2 ? "Next" : "Get Started")
+                    Text(currentPage < 2 ? "Next" : (isReopen ? "Got it" : "Get Started"))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -65,7 +66,7 @@ struct OnboardingView: View {
                 Button {
                     completeOnboarding()
                 } label: {
-                    Text("Skip")
+                    Text(isReopen ? "Dismiss" : "Skip")
                         .font(.body)
                         .foregroundStyle(.tint)
                 }

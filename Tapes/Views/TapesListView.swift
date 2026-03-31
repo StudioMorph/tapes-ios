@@ -100,10 +100,10 @@ struct TapesListView: View {
                 } label: {
                     Image(systemName: "lightbulb.max")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.blue)
                         .frame(width: 48, height: 48)
-                        .background(.blue, in: Circle())
-                        .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+                        .background(Tokens.Colors.secondaryBackground, in: Circle())
+                        .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
                 }
                 .padding(.leading, Tokens.Spacing.l)
                 .padding(.bottom, Tokens.Spacing.l)

@@ -22,7 +22,7 @@ struct ContentView: View {
                 }
             }
             .fullScreenCover(isPresented: $showOnboarding) {
-                OnboardingView {
+                OnboardingView(isReopen: onboardingCompleted) {
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
                     withTransaction(transaction) {
