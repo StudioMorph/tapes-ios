@@ -52,6 +52,9 @@ struct TapesList: View {
                     .padding(.horizontal, Tokens.Spacing.m)
                     .padding(.vertical, Tokens.Spacing.s)
                 }
+
+                AmbientTutorialCarousel()
+                    .padding(.top, 40)
             }
             .scrollDisabled(tapeStore.isFloatingDragActive)
             .scrollContentBackground(.hidden)
@@ -101,6 +104,48 @@ struct TapesList: View {
             .animation(.easeInOut(duration: 0.25), value: tapeStore.jigglingTapeID)
             .id(tapeID)
         }
+    }
+}
+
+// MARK: - Ambient Tutorial Carousel
+
+struct AmbientTutorialCarousel: View {
+    @State private var page = 0
+
+    var body: some View {
+        TabView(selection: $page) {
+            VStack {
+                Spacer()
+                CameraCaptureAnimation()
+                    .padding(.horizontal, Tokens.Spacing.s)
+                Spacer()
+                    .frame(height: 56)
+            }
+            .tag(0)
+
+            VStack {
+                Spacer()
+                FabSwipeAnimation()
+                    .padding(.horizontal, Tokens.Spacing.s)
+                Spacer()
+                    .frame(height: 56)
+            }
+            .tag(1)
+
+            VStack {
+                Spacer()
+                JiggleReorderAnimation()
+                    .padding(.horizontal, Tokens.Spacing.s)
+                Spacer()
+                    .frame(height: 56)
+            }
+            .tag(2)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .indexViewStyle(.page(backgroundDisplayMode: .always))
+        .frame(height: 280)
+        .compositingGroup()
+        .opacity(0.5)
     }
 }
 
