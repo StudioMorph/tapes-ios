@@ -70,7 +70,7 @@ private struct CameraCaptureTutorial: View {
     @State private var fingerVisible = false
     @State private var fingerScale: CGFloat = 1.0
 
-    @State private var statusText = "Tap the red button to record"
+    @State private var statusText = "Tap the red button to capture"
 
     @State private var clipW: CGFloat = 0
     @State private var cardW: CGFloat = 0
@@ -82,12 +82,12 @@ private struct CameraCaptureTutorial: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: Tokens.Spacing.s) {
-                Text("Capture a Moment")
+                Text("Build Tapes Through Time")
                     .font(.title.weight(.bold))
                     .foregroundStyle(Tokens.Colors.primaryText)
                     .multilineTextAlignment(.center)
 
-                Text("Tap the red button to record\na clip straight to your tape")
+                Text("Start now, continue tomorrow\nor next month")
                     .font(.body)
                     .foregroundStyle(Tokens.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -97,7 +97,7 @@ private struct CameraCaptureTutorial: View {
             Spacer()
 
             VStack(spacing: Tokens.Spacing.m) {
-                Text("Your clips build your story")
+                Text("Add clips one after another and play them as one")
                     .font(.subheadline)
                     .foregroundStyle(Tokens.Colors.secondaryText)
                     .multilineTextAlignment(.center)
@@ -199,7 +199,7 @@ private struct CameraCaptureTutorial: View {
         ZStack {
             RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
                 .fill(Tokens.Colors.tertiaryBackground)
-            Image(systemName: "photo")
+            Image(systemName: "play.rectangle")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
         }
@@ -211,9 +211,9 @@ private struct CameraCaptureTutorial: View {
     private var placeholderView: some View {
         ZStack {
             RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
-                .strokeBorder(Tokens.Colors.primaryText.opacity(0.2), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                .fill(Tokens.Colors.tertiaryBackground)
             Image(systemName: "plus")
-                .font(.system(size: 22, weight: .medium))
+                .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
         }
         .frame(width: clipW > 0 ? clipW - 2 : 100, height: thumbHeight)
@@ -304,7 +304,7 @@ private struct CameraCaptureTutorial: View {
         viewfinderVisible = false; viewfinderScale = 0.1; viewfinderOpacity = 0
         recording = false
         fingerVisible = false; fingerScale = 1.0; fingerPos = .zero
-        statusText = "Tap the red button to record"
+        statusText = "Tap the red button to capture"
 
         // 1) Finger appears, moves to FAB
         after(t) {
@@ -549,7 +549,7 @@ private struct FabSwipeTutorial: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
                 .fill(Tokens.Colors.tertiaryBackground)
 
-            Image(systemName: "photo")
+            Image(systemName: "play.rectangle")
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
         }
@@ -764,7 +764,7 @@ private struct JiggleReorderTutorial: View {
         return ZStack {
             RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
                 .fill(Tokens.Colors.tertiaryBackground)
-            Image(systemName: "photo")
+            Image(systemName: "play.rectangle")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
         }
@@ -807,7 +807,7 @@ private struct JiggleReorderTutorial: View {
         ZStack {
             RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
                 .fill(Tokens.Colors.tertiaryBackground)
-            Image(systemName: "photo")
+            Image(systemName: "play.rectangle")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
         }
