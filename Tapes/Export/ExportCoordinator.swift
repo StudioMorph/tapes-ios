@@ -210,20 +210,15 @@ public class ExportCoordinator: ObservableObject {
     // MARK: - Scene Phase
 
     func handleScenePhaseChange(_ phase: ScenePhase) {
-        guard isExporting else { return }
         switch phase {
-        case .background, .inactive:
-            scheduleETANotification()
+        case .background:
+            if isExporting {
+                scheduleETANotification()
+            }
         case .active:
             cancelScheduledNotification()
-            if isExporting {
-                updateProgress()
-            }
-            if completedAssetIdentifier != nil && !showCompletionDialog {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showCompletionDialog = true
-                }
-            }
+        case .inactive:
+            break
         @unknown default:
             break
         }
@@ -310,14 +305,12 @@ public class ExportCoordinator: ObservableObject {
             TapesLog.photos.warning("Export succeeded but no asset identifier returned for tape \(tape.id.uuidString, privacy: .public)")
             return
         }
-        Task.detached(priority: .utility) { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
             do {
                 let association = try await self.albumService.ensureAlbum(for: tape)
                 if tape.albumLocalIdentifier != association.albumLocalIdentifier {
-                    await MainActor.run {
-                        albumUpdateHandler(association.albumLocalIdentifier)
-                    }
+                    albumUpdateHandler(association.albumLocalIdentifier)
                 }
                 try await self.albumService.addAssets(
                     withIdentifiers: [assetIdentifier],
