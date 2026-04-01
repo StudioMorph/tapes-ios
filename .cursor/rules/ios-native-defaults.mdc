@@ -4,11 +4,7 @@ alwaysApply: true
 
 Apple-native defaults for SwiftUI + MVVM projects
 Use Apple's native APIs first. SwiftUI + MVVM. Swift Concurrency (async/await).
-iOS 17+, Xcode 16+, Swift 5.10+. SPM only. AVFoundation for video, Photos for saving.
+iOS 18.2+, Xcode 16+, Swift 5.0. SPM only. AVFoundation for video, Photos for saving.
 JSON via FileManager now; Core Data later. Follow Apple HIG for motion and layout.
 Avoid third-party libs unless Apple APIs are insufficient; if proposed, justify and ensure SPM.
-Apple-native defaults for SwiftUI + MVVM projects
-Use Apple's native APIs first. SwiftUI + MVVM. Swift Concurrency (async/await).
-iOS 17+, Xcode 16+, Swift 5.10+. SPM only. AVFoundation for video, Photos for saving.
-JSON via FileManager now; Core Data later. Follow Apple HIG for motion and layout.
-Avoid third-party libs unless Apple APIs are insufficient; if proposed, justify and ensure SPM.
+Always check the deployment target before assuming API availability. Use web search when unsure about current APIs.
