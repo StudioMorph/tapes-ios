@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 import Photos
-
+import UserNotifications
 import AudioToolbox
 
 @MainActor
@@ -22,8 +22,16 @@ public class ExportCoordinator: ObservableObject {
     private var exportTask: Task<Void, Never>?
     private var progressTimer: Timer?
     private var exportStartTime: Date?
+    private var scheduledNotificationID: String?
 
     private let albumService: TapeAlbumServicing
+
+    private static let notificationPermissionKey = "hasRequestedExportNotificationPermission"
+
+    private var hasRequestedNotificationPermission: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.notificationPermissionKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.notificationPermissionKey) }
+    }
 
     init(albumService: TapeAlbumServicing = TapeAlbumService()) {
         self.albumService = albumService
@@ -125,6 +133,7 @@ public class ExportCoordinator: ObservableObject {
         withAnimation(.easeInOut(duration: 0.2)) {
             showProgressDialog = false
         }
+        requestNotificationPermissionIfNeeded()
     }
 
     func dismissCompletionDialog() {
@@ -192,6 +201,54 @@ public class ExportCoordinator: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             gen.impactOccurred()
         }
+    }
+
+    // MARK: - Scene Phase
+
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        switch phase {
+        case .background:
+            if isExporting {
+                scheduleETANotification()
+            }
+        case .active:
+            cancelScheduledNotification()
+        case .inactive:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    // MARK: - Notifications
+
+    private func requestNotificationPermissionIfNeeded() {
+        guard !hasRequestedNotificationPermission else { return }
+        hasRequestedNotificationPermission = true
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    private func scheduleETANotification() {
+        cancelScheduledNotification()
+
+        let content = UNMutableNotificationContent()
+        content.title = "Tape Ready"
+        content.body = "Your tape has been merged and saved to Photos."
+        content.sound = .default
+
+        let delay = max(5, estimatedTimeRemaining ?? 30)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+        let id = "export-eta-\(UUID().uuidString)"
+        scheduledNotificationID = id
+
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func cancelScheduledNotification() {
+        guard let id = scheduledNotificationID else { return }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+        scheduledNotificationID = nil
     }
 
     // MARK: - Photo Library Permission
