@@ -99,15 +99,12 @@ struct TapesListView: View {
                                         CircularProgressRing(
                                             progress: exportCoordinator.progress,
                                             lineWidth: 2.5,
-                                            size: 28,
+                                            size: 22,
                                             ringColor: .green
                                         )
                                         Image(systemName: "arrow.down")
                                             .font(.system(size: 11, weight: .semibold))
-                                            .foregroundStyle(Tokens.Colors.primaryText)
                                     }
-                                    .frame(width: 36, height: 36)
-                                    .background(Tokens.Colors.secondaryBackground, in: Circle())
                                 }
                             }
 
@@ -116,9 +113,6 @@ struct TapesListView: View {
                             } label: {
                                 Image(systemName: "person")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.blue)
-                                    .frame(width: 36, height: 36)
-                                    .background(Tokens.Colors.secondaryBackground, in: Circle())
                             }
                         }
                     }
