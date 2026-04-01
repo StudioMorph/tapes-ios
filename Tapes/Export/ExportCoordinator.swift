@@ -22,9 +22,11 @@ public class ExportCoordinator: ObservableObject {
     private var exportTask: Task<Void, Never>?
     private var progressTimer: Timer?
     private var exportStartTime: Date?
+    private var scheduledNotificationID: String?
 
     private let albumService: TapeAlbumServicing
 
+    private static let exportNotificationID = "export-eta-notification"
     private static let notificationPermissionKey = "hasRequestedExportNotificationPermission"
 
     private var hasRequestedNotificationPermission: Bool {
@@ -85,6 +87,7 @@ public class ExportCoordinator: ObservableObject {
             do {
                 let result = try await session.run(tape: tape)
 
+                self.cancelScheduledNotification()
                 self.finishExport()
                 self.progress = 1.0
                 self.completedAssetIdentifier = result.assetIdentifier
@@ -96,7 +99,7 @@ public class ExportCoordinator: ObservableObject {
                     }
                 } else {
                     self.showCompletionDialog = true
-                    self.sendCompletionNotification()
+                    self.sendImmediateCompletionNotification()
                 }
 
                 self.associateExportedAsset(
@@ -123,6 +126,7 @@ public class ExportCoordinator: ObservableObject {
     func cancelExport() {
         exportSession?.cancel()
         exportTask?.cancel()
+        cancelScheduledNotification()
         finishExport()
         progress = 0
     }
@@ -203,6 +207,20 @@ public class ExportCoordinator: ObservableObject {
         }
     }
 
+    // MARK: - Scene Phase
+
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        guard isExporting else { return }
+        switch phase {
+        case .background, .inactive:
+            scheduleETANotification()
+        case .active:
+            cancelScheduledNotification()
+        @unknown default:
+            break
+        }
+    }
+
     // MARK: - Notifications
 
     private func requestNotificationPermissionIfNeeded() {
@@ -212,7 +230,33 @@ public class ExportCoordinator: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    private func sendCompletionNotification() {
+    private func scheduleETANotification() {
+        cancelScheduledNotification()
+
+        let content = UNMutableNotificationContent()
+        content.title = "Tape Ready"
+        content.body = "Your tape has been merged and saved to Photos."
+        content.sound = .default
+        content.userInfo = ["action": "openPhotos"]
+
+        let delay = max(5, estimatedTimeRemaining ?? 30)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+        let id = Self.exportNotificationID
+        scheduledNotificationID = id
+
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func cancelScheduledNotification() {
+        guard let id = scheduledNotificationID else { return }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+        scheduledNotificationID = nil
+    }
+
+    private func sendImmediateCompletionNotification() {
+        cancelScheduledNotification()
+
         let content = UNMutableNotificationContent()
         content.title = "Tape Ready"
         content.body = "Your tape has been merged and saved to Photos."
