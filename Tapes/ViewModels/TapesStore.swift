@@ -255,7 +255,7 @@ public class TapesStore: ObservableObject {
         tape.addClip(clip, at: insertionIndex)
         updateTape(tape)
         dropCompletedTapeID = tapeID
-        dropCompletedAtIndex = insertionIndex
+        dropCompletedAtIndex = insertionIndex + 1
 
         clearFloatingState()
     }
