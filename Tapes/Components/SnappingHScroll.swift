@@ -136,7 +136,13 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
             context.coordinator.hostingController = hosting
 
+            let snapIdx = currentSnapIndex
+            context.coordinator.updateCurrentSnapIndex(snapIdx)
             DispatchQueue.main.async {
+                let targetX = self.leadingInset + CGFloat(snapIdx) * self.itemWidth - self.containerWidth / 2.0
+                let maxOffsetX = max(0, uiView.contentSize.width - self.containerWidth)
+                let clampedX = min(max(targetX, 0), maxOffsetX)
+                uiView.setContentOffset(CGPoint(x: clampedX, y: 0), animated: false)
                 context.coordinator.fireOnSnapped()
             }
         } else if let hosting = context.coordinator.hostingController {
