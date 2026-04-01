@@ -97,7 +97,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             target: context.coordinator,
             action: #selector(Coordinator.handleJigglePress(_:))
         )
-        jigglePress.minimumPressDuration = 0.8
+        jigglePress.minimumPressDuration = 0.3
         jigglePress.delegate = context.coordinator
         jigglePress.isEnabled = !isLongPressEnabled
         scrollView.addGestureRecognizer(jigglePress)
