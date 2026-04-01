@@ -334,6 +334,9 @@ struct TapeCardView: View {
             guard newID == tape.id,
                   let dropIndex = tapeStore.dropCompletedAtIndex else { return }
             savedCarouselPosition = dropIndex
+            let token = UUID()
+            pendingToken = token
+            pendingTargetItemIndex = dropIndex + 1
             tapeStore.dropCompletedTapeID = nil
             tapeStore.dropCompletedAtIndex = nil
         }
