@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct TapesListView: View {
-    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
@@ -73,9 +72,6 @@ struct TapesListView: View {
             }
             .navigationTitle("TAPES")
             .navigationBarTitleDisplayMode(.large)
-            .onChange(of: scenePhase) { _, newPhase in
-                exportCoordinator.handleScenePhaseChange(newPhase)
-            }
             .onAppear { Self.applyLargeTitleAppearance() }
             .onDisappear { Self.resetTitleAppearance() }
             .toolbar {

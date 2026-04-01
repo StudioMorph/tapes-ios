@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 import Photos
-import UserNotifications
+
 import AudioToolbox
 
 @MainActor
@@ -22,17 +22,8 @@ public class ExportCoordinator: ObservableObject {
     private var exportTask: Task<Void, Never>?
     private var progressTimer: Timer?
     private var exportStartTime: Date?
-    private var scheduledNotificationID: String?
 
     private let albumService: TapeAlbumServicing
-
-    private static let exportNotificationID = "export-eta-notification"
-    private static let notificationPermissionKey = "hasRequestedExportNotificationPermission"
-
-    private var hasRequestedNotificationPermission: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.notificationPermissionKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.notificationPermissionKey) }
-    }
 
     init(albumService: TapeAlbumServicing = TapeAlbumService()) {
         self.albumService = albumService
@@ -87,7 +78,6 @@ public class ExportCoordinator: ObservableObject {
             do {
                 let result = try await session.run(tape: tape)
 
-                self.cancelScheduledNotification()
                 self.finishExport()
                 self.progress = 1.0
                 self.completedAssetIdentifier = result.assetIdentifier
@@ -99,7 +89,6 @@ public class ExportCoordinator: ObservableObject {
                     }
                 } else {
                     self.showCompletionDialog = true
-                    self.sendImmediateCompletionNotification()
                 }
 
                 self.associateExportedAsset(
@@ -126,7 +115,6 @@ public class ExportCoordinator: ObservableObject {
     func cancelExport() {
         exportSession?.cancel()
         exportTask?.cancel()
-        cancelScheduledNotification()
         finishExport()
         progress = 0
     }
@@ -137,7 +125,6 @@ public class ExportCoordinator: ObservableObject {
         withAnimation(.easeInOut(duration: 0.2)) {
             showProgressDialog = false
         }
-        requestNotificationPermissionIfNeeded()
     }
 
     func dismissCompletionDialog() {
@@ -207,71 +194,6 @@ public class ExportCoordinator: ObservableObject {
         }
     }
 
-    // MARK: - Scene Phase
-
-    func handleScenePhaseChange(_ phase: ScenePhase) {
-        switch phase {
-        case .background:
-            if isExporting {
-                scheduleETANotification()
-            }
-        case .active:
-            cancelScheduledNotification()
-        case .inactive:
-            break
-        @unknown default:
-            break
-        }
-    }
-
-    // MARK: - Notifications
-
-    private func requestNotificationPermissionIfNeeded() {
-        guard !hasRequestedNotificationPermission else { return }
-        hasRequestedNotificationPermission = true
-
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-    }
-
-    private func scheduleETANotification() {
-        cancelScheduledNotification()
-
-        let content = UNMutableNotificationContent()
-        content.title = "Tape Ready"
-        content.body = "Your tape has been merged and saved to Photos."
-        content.sound = .default
-
-        let delay = max(5, estimatedTimeRemaining ?? 30)
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
-        let id = Self.exportNotificationID
-        scheduledNotificationID = id
-
-        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request)
-    }
-
-    private func cancelScheduledNotification() {
-        guard let id = scheduledNotificationID else { return }
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
-        scheduledNotificationID = nil
-    }
-
-    private func sendImmediateCompletionNotification() {
-        cancelScheduledNotification()
-
-        let content = UNMutableNotificationContent()
-        content.title = "Tape Ready"
-        content.body = "Your tape has been merged and saved to Photos."
-        content.sound = .default
-
-        let request = UNNotificationRequest(
-            identifier: "export-complete-\(UUID().uuidString)",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
-    }
-
     // MARK: - Photo Library Permission
 
     private func requestPhotoLibraryPermission() async -> Bool {
@@ -305,12 +227,14 @@ public class ExportCoordinator: ObservableObject {
             TapesLog.photos.warning("Export succeeded but no asset identifier returned for tape \(tape.id.uuidString, privacy: .public)")
             return
         }
-        Task { [weak self] in
+        Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             do {
                 let association = try await self.albumService.ensureAlbum(for: tape)
                 if tape.albumLocalIdentifier != association.albumLocalIdentifier {
-                    albumUpdateHandler(association.albumLocalIdentifier)
+                    await MainActor.run {
+                        albumUpdateHandler(association.albumLocalIdentifier)
+                    }
                 }
                 try await self.albumService.addAssets(
                     withIdentifiers: [assetIdentifier],

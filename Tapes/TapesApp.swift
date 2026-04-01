@@ -1,5 +1,4 @@
 import SwiftUI
-import UserNotifications
 
 @main
 struct TapesApp: App {
@@ -7,11 +6,8 @@ struct TapesApp: App {
     @StateObject private var authManager = AuthManager()
     @StateObject private var entitlementManager = EntitlementManager()
 
-    private static let notificationHandler = ExportNotificationHandler()
-
     init() {
         cleanupTempImports()
-        UNUserNotificationCenter.current().delegate = Self.notificationHandler
     }
 
     @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark
@@ -24,29 +20,5 @@ struct TapesApp: App {
                 .environmentObject(entitlementManager)
                 .preferredColorScheme(appearanceMode.colorScheme)
         }
-    }
-}
-
-final class ExportNotificationHandler: NSObject, UNUserNotificationCenterDelegate {
-
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        let userInfo = response.notification.request.content.userInfo
-        if userInfo["action"] as? String == "openPhotos" {
-            if let url = URL(string: "photos-redirect://") {
-                await MainActor.run {
-                    UIApplication.shared.open(url)
-                }
-            }
-        }
-    }
-
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
     }
 }
