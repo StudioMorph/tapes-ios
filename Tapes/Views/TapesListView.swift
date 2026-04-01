@@ -75,6 +75,8 @@ struct TapesListView: View {
             }
             .navigationTitle("TAPES")
             .navigationBarTitleDisplayMode(.large)
+            .onAppear { Self.applyLargeTitleAppearance() }
+            .onDisappear { Self.resetTitleAppearance() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if tapesStore.jigglingTapeID != nil {
@@ -202,6 +204,21 @@ struct TapesListView: View {
         .onAppear {
             // Hot tips visit tracking deactivated — kept for future use
         }
+    }
+
+    // MARK: - Navigation Bar Appearance
+
+    private static func applyLargeTitleAppearance() {
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.largeTitleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 46, weight: .heavy)
+        ]
+        UINavigationBar.appearance().scrollEdgeAppearance = appearance
+    }
+
+    private static func resetTitleAppearance() {
+        UINavigationBar.appearance().scrollEdgeAppearance = nil
     }
 
     // MARK: - Floating Clip Overlay
