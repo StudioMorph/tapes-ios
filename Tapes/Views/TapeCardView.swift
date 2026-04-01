@@ -54,7 +54,6 @@ struct TapeCardView: View {
     @State private var showingMusicSheet = false
     @State private var showingDeleteTapeAlert = false
     @State private var showingPaywall = false
-    @State private var jiggleTask: Task<Void, Never>? = nil
     @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
@@ -293,19 +292,6 @@ struct TapeCardView: View {
             .onPreferenceChange(CardWidthKey.self) { width in
                 if width > 0 { containerWidth = width }
             }
-            .onLongPressGesture(minimumDuration: .infinity, perform: {}) { pressing in
-                if pressing {
-                    jiggleTask = Task { @MainActor in
-                        try? await Task.sleep(for: .seconds(1))
-                        guard !Task.isCancelled else { return }
-                        guard !tape.clips.isEmpty else { return }
-                        enterJiggleMode()
-                    }
-                } else {
-                    jiggleTask?.cancel()
-                    jiggleTask = nil
-                }
-            }
         }
         .background(
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
@@ -531,6 +517,10 @@ struct TapeCardView: View {
             pendingTargetItemIndex: $pendingTargetItemIndex,
             pendingToken: $pendingToken,
             onPlaceholderTap: handlePlaceholderTap,
+            onJiggleRequested: {
+                guard !tape.clips.isEmpty else { return }
+                enterJiggleMode()
+            },
             onClipTap: handleClipTap,
             onClipDelete: handleClipDelete,
             onClipDuplicate: duplicateClip,

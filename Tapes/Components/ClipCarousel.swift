@@ -27,6 +27,7 @@ struct ClipCarousel: View {
     @Binding var pendingTargetItemIndex: Int?
     @Binding var pendingToken: UUID?
     let onPlaceholderTap: (CarouselItem) -> Void
+    var onJiggleRequested: (() -> Void)? = nil
     var onClipTap: ((Clip) -> Void)? = nil
     var onClipDelete: ((Clip) -> Void)? = nil
     var onClipDuplicate: ((Clip) -> Void)? = nil
@@ -100,6 +101,7 @@ struct ClipCarousel: View {
                                }
                            },
                            isLongPressEnabled: tapeStore.jigglingTapeID == tape.id,
+                           onJiggleRequested: onJiggleRequested,
                            onItemLongPressStarted: { itemIndex, globalPos, globalFrame in
                                let currentItems = items
                                guard itemIndex >= 0 && itemIndex < currentItems.count,

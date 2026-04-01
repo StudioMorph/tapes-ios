@@ -12,6 +12,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     let tapeId: UUID
     let onSnapped: ((Int, Int) -> Void)?
     var isLongPressEnabled: Bool = false
+    var onJiggleRequested: (() -> Void)? = nil
     var onItemLongPressStarted: ((Int, CGPoint, CGRect) -> Bool)? = nil
     var onDragPositionChanged: ((CGPoint) -> Void)? = nil
     var onDragEnded: (() -> Void)? = nil
@@ -29,6 +30,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
          tapeId: UUID,
          onSnapped: ((Int, Int) -> Void)? = nil,
          isLongPressEnabled: Bool = false,
+         onJiggleRequested: (() -> Void)? = nil,
          onItemLongPressStarted: ((Int, CGPoint, CGRect) -> Bool)? = nil,
          onDragPositionChanged: ((CGPoint) -> Void)? = nil,
          onDragEnded: (() -> Void)? = nil,
@@ -45,6 +47,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         self.tapeId = tapeId
         self.onSnapped = onSnapped
         self.isLongPressEnabled = isLongPressEnabled
+        self.onJiggleRequested = onJiggleRequested
         self.onItemLongPressStarted = onItemLongPressStarted
         self.onDragPositionChanged = onDragPositionChanged
         self.onDragEnded = onDragEnded
@@ -90,6 +93,16 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.updateCurrentSnapIndex(currentSnapIndex)
 
+        let jigglePress = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleJigglePress(_:))
+        )
+        jigglePress.minimumPressDuration = 0.8
+        jigglePress.delegate = context.coordinator
+        jigglePress.isEnabled = !isLongPressEnabled
+        scrollView.addGestureRecognizer(jigglePress)
+        context.coordinator.jigglePressGesture = jigglePress
+
         let longPress = UILongPressGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handleLongPress(_:))
@@ -113,6 +126,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
     func updateUIView(_ uiView: UIScrollView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.longPressGesture?.isEnabled = isLongPressEnabled
+        context.coordinator.jigglePressGesture?.isEnabled = !isLongPressEnabled
 
         let needsRebuild = context.coordinator.lastContentHash != contentHash
         context.coordinator.lastContentHash = contentHash
@@ -214,6 +228,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         var hostingController: UIHostingController<HStack<Content>>?
         weak var scrollView: UIScrollView?
         weak var longPressGesture: UILongPressGestureRecognizer?
+        weak var jigglePressGesture: UILongPressGestureRecognizer?
         var lastContentHash: Int = 0
         var lastAppliedTarget: Int?
         private var isDragging = false
@@ -233,6 +248,15 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
 
         init(parent: SnappingHScroll) {
             self.parent = parent
+        }
+
+        // MARK: - Jiggle mode entry
+
+        @objc func handleJigglePress(_ gesture: UILongPressGestureRecognizer) {
+            guard gesture.state == .began else { return }
+            let gen = UIImpactFeedbackGenerator(style: .medium)
+            gen.impactOccurred()
+            parent.onJiggleRequested?()
         }
 
         // MARK: - Long press drag handling
