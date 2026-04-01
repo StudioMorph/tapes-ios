@@ -78,8 +78,8 @@ struct TapesListView: View {
             .onAppear { Self.applyLargeTitleAppearance() }
             .onDisappear { Self.resetTitleAppearance() }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if tapesStore.jigglingTapeID != nil {
+                if tapesStore.jigglingTapeID != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                 if tapesStore.isFloatingClip {
@@ -89,31 +89,33 @@ struct TapesListView: View {
                             }
                         }
                         .font(.body.weight(.semibold))
-                    } else {
-                        HStack(spacing: Tokens.Spacing.m) {
-                            if exportCoordinator.isExporting && !exportCoordinator.showProgressDialog {
-                                Button {
-                                    exportCoordinator.showProgressDialogAgain()
-                                } label: {
-                                    ZStack {
-                                        CircularProgressRing(
-                                            progress: exportCoordinator.progress,
-                                            lineWidth: 2.5,
-                                            size: 22,
-                                            ringColor: .green
-                                        )
-                                        Image(systemName: "arrow.down")
-                                            .font(.system(size: 11, weight: .semibold))
-                                    }
+                    }
+                } else {
+                    if exportCoordinator.isExporting && !exportCoordinator.showProgressDialog {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                exportCoordinator.showProgressDialogAgain()
+                            } label: {
+                                ZStack {
+                                    CircularProgressRing(
+                                        progress: exportCoordinator.progress,
+                                        lineWidth: 2.5,
+                                        size: 22,
+                                        ringColor: .green
+                                    )
+                                    Image(systemName: "arrow.down")
+                                        .font(.system(size: 11, weight: .semibold))
                                 }
                             }
+                        }
+                    }
 
-                            Button {
-                                showingAccountSettings = true
-                            } label: {
-                                Image(systemName: "person")
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showingAccountSettings = true
+                        } label: {
+                            Image(systemName: "person")
+                                .font(.system(size: 16, weight: .semibold))
                         }
                     }
                 }
