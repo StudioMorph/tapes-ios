@@ -216,6 +216,14 @@ public class ExportCoordinator: ObservableObject {
             scheduleETANotification()
         case .active:
             cancelScheduledNotification()
+            if isExporting {
+                updateProgress()
+            }
+            if completedAssetIdentifier != nil && !showCompletionDialog {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showCompletionDialog = true
+                }
+            }
         @unknown default:
             break
         }
@@ -260,7 +268,6 @@ public class ExportCoordinator: ObservableObject {
         content.title = "Tape Ready"
         content.body = "Your tape has been merged and saved to Photos."
         content.sound = .default
-        content.userInfo = ["action": "openPhotos"]
 
         let request = UNNotificationRequest(
             identifier: "export-complete-\(UUID().uuidString)",
