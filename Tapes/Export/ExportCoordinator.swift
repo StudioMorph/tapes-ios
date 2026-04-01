@@ -237,7 +237,6 @@ public class ExportCoordinator: ObservableObject {
         content.title = "Tape Ready"
         content.body = "Your tape has been merged and saved to Photos."
         content.sound = .default
-        content.userInfo = ["action": "openPhotos"]
 
         let delay = max(5, estimatedTimeRemaining ?? 30)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
