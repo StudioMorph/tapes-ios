@@ -14,6 +14,7 @@ struct TapesListView: View {
     @AppStorage("tapes_hot_tips_remaining") private var hotTipsRemaining = 5
     @State private var showHotTips = false
     @State private var hotTipsJiggling = false
+    @State private var showingAccountSettings = false
 
     var body: some View {
         NavigationStack {
@@ -26,27 +27,20 @@ struct TapesListView: View {
                 } else if tapesStore.tapes.isEmpty {
                     EmptyStateView()
                 } else {
-                    VStack(spacing: 0) {
-                        HeaderView(
-                            exportCoordinator: exportCoordinator,
-                            onHotTips: { showOnboarding = true }
-                        )
-                        
-                        TapesList(
-                            tapes: $tapesStore.tapes,
-                            editingTapeID: editingTapeID,
-                            draftTitle: $draftTitle,
-                            onSettings: handleSettings,
-                            onPlay: handlePlay,
-                            onThumbnailDelete: handleThumbnailDelete,
-                            onClipInserted: handleClipInserted,
-                            onClipInsertedAtPlaceholder: handleClipInsertedAtPlaceholder,
-                            onMediaInserted: handleMediaInserted,
-                            onCameraCapture: handleCameraCapture,
-                            onTitleFocusRequest: handleTitleFocusRequest,
-                            onTitleCommit: commitTitleEditing
-                        )
-                    }
+                    TapesList(
+                        tapes: $tapesStore.tapes,
+                        editingTapeID: editingTapeID,
+                        draftTitle: $draftTitle,
+                        onSettings: handleSettings,
+                        onPlay: handlePlay,
+                        onThumbnailDelete: handleThumbnailDelete,
+                        onClipInserted: handleClipInserted,
+                        onClipInsertedAtPlaceholder: handleClipInsertedAtPlaceholder,
+                        onMediaInserted: handleMediaInserted,
+                        onCameraCapture: handleCameraCapture,
+                        onTitleFocusRequest: handleTitleFocusRequest,
+                        onTitleCommit: commitTitleEditing
+                    )
                 }
 
                 if let clip = tapesStore.floatingClip {
@@ -79,7 +73,58 @@ struct TapesListView: View {
                 hoveredTarget = nil
                 tapesStore.floatingDragDidEnd = false
             }
-            .navigationBarHidden(true)
+            .navigationTitle("TAPES")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if tapesStore.jigglingTapeID != nil {
+                        Button("Done") {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                if tapesStore.isFloatingClip {
+                                    tapesStore.returnFloatingClip()
+                                }
+                                tapesStore.jigglingTapeID = nil
+                            }
+                        }
+                        .font(.body.weight(.semibold))
+                    } else {
+                        HStack(spacing: Tokens.Spacing.m) {
+                            if exportCoordinator.isExporting && !exportCoordinator.showProgressDialog {
+                                Button {
+                                    exportCoordinator.showProgressDialogAgain()
+                                } label: {
+                                    ZStack {
+                                        CircularProgressRing(
+                                            progress: exportCoordinator.progress,
+                                            lineWidth: 2.5,
+                                            size: 28,
+                                            ringColor: .green
+                                        )
+                                        Image(systemName: "arrow.down")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundStyle(Tokens.Colors.primaryText)
+                                    }
+                                    .frame(width: 36, height: 36)
+                                    .background(Tokens.Colors.secondaryBackground, in: Circle())
+                                }
+                            }
+
+                            Button {
+                                showingAccountSettings = true
+                            } label: {
+                                Image(systemName: "person")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.blue)
+                                    .frame(width: 36, height: 36)
+                                    .background(Tokens.Colors.secondaryBackground, in: Circle())
+                            }
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAccountSettings) {
+                AccountSettingsView(onHotTips: { showOnboarding = true })
+            }
         }
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet

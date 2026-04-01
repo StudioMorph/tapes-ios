@@ -1,113 +1,42 @@
 import SwiftUI
 
-struct HeaderView: View {
-    @EnvironmentObject private var tapeStore: TapesStore
-    @EnvironmentObject private var authManager: AuthManager
-    @ObservedObject var exportCoordinator: ExportCoordinator
-    var onHotTips: (() -> Void)? = nil
-    @State private var showingAccountSettings = false
+// MARK: - Tapes Logo
 
-    private var isJiggling: Bool {
-        tapeStore.jigglingTapeID != nil
-    }
+struct TapesLogo: View {
+    @Environment(\.colorScheme) private var colorScheme
 
-    private var showExportIndicator: Bool {
-        exportCoordinator.isExporting && !exportCoordinator.showProgressDialog
+    var height: CGFloat = 28
+
+    private var iconSize: CGFloat { height }
+    private var fontSize: CGFloat { height * 1.2 }
+    private var dotSize: CGFloat { height * 0.33 }
+    private var cornerRadius: CGFloat { height * 0.3 }
+    private var foregroundColor: Color {
+        colorScheme == .dark ? .white : Color(red: 0.15, green: 0.17, blue: 0.24)
     }
 
     var body: some View {
-        HStack {
-            Text("TAPES")
-                .font(Tokens.Typography.largeTitle)
-                .fontWeight(.bold)
-                .foregroundColor(Tokens.Colors.systemRed)
-                .accessibilityAddTraits(.isHeader)
+        HStack(spacing: height * 0.3) {
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(foregroundColor, lineWidth: height * 0.1)
+                    .frame(width: iconSize, height: iconSize)
 
-            Spacer()
-
-            if isJiggling {
-                Button("Done") {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        if tapeStore.isFloatingClip {
-                            tapeStore.returnFloatingClip()
-                        }
-                        tapeStore.jigglingTapeID = nil
-                    }
-                }
-                .font(.body.weight(.semibold))
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .tint(.blue)
-                .accessibilityLabel("Done")
-                .accessibilityHint("Exits jiggle editing mode")
-            } else {
-                HStack(spacing: Tokens.Spacing.m) {
-                    if showExportIndicator {
-                        Button {
-                            exportCoordinator.showProgressDialogAgain()
-                        } label: {
-                            ZStack {
-                                CircularProgressRing(
-                                    progress: exportCoordinator.progress,
-                                    lineWidth: 2.5,
-                                    size: 28,
-                                    ringColor: .green
-                                )
-
-                                Image(systemName: "arrow.down")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(Tokens.Colors.primaryText)
-                            }
-                            .frame(width: Tokens.HitTarget.minimum, height: Tokens.HitTarget.minimum)
-                            .contentShape(Rectangle())
-                        }
-                        .transition(.scale.combined(with: .opacity))
-                        .accessibilityLabel("Export in progress")
-                        .accessibilityHint("Tap to view export progress")
-                    }
-
-                    Button {
-                        showingAccountSettings = true
-                    } label: {
-                        accountIcon
-                            .frame(width: Tokens.HitTarget.minimum, height: Tokens.HitTarget.minimum)
-                            .contentShape(Rectangle())
-                    }
-                    .accessibilityLabel("Account and settings")
-                }
+                Circle()
+                    .fill(Tokens.Colors.systemRed)
+                    .frame(width: dotSize, height: dotSize)
             }
-        }
-        .padding(.horizontal, Tokens.Spacing.m)
-        .padding(.top, Tokens.Spacing.s)
-        .padding(.bottom, Tokens.Spacing.xs)
-        .animation(.easeInOut(duration: 0.25), value: isJiggling)
-        .animation(.easeInOut(duration: 0.25), value: showExportIndicator)
-        .sheet(isPresented: $showingAccountSettings) {
-            AccountSettingsView(onHotTips: onHotTips)
-        }
-    }
 
-    @ViewBuilder
-    private var accountIcon: some View {
-        if let name = authManager.userName, let initial = name.first {
-            Text(String(initial).uppercased())
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(.blue))
-        } else {
-            Image(systemName: "person.circle")
-                .font(.system(size: 24, weight: .regular))
-                .foregroundStyle(Tokens.Colors.primaryText)
+            Text("TAPES")
+                .font(.system(size: fontSize, weight: .heavy, design: .default))
+                .foregroundStyle(foregroundColor)
+                .tracking(height * 0.02)
         }
     }
 }
 
 #Preview {
-    HeaderView(
-        exportCoordinator: ExportCoordinator()
-    )
-    .background(Tokens.Colors.primaryBackground)
-    .environmentObject(TapesStore())
-    .environmentObject(AuthManager())
+    TapesLogo()
+        .padding()
+        .background(Tokens.Colors.primaryBackground)
 }
