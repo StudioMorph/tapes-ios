@@ -35,17 +35,12 @@ struct TapeCardView: View {
     let onSettings: () -> Void
     let onPlay: () -> Void
     let onThumbnailDelete: (Clip) -> Void
-    
-    let onClipInserted: (Clip, Int) -> Void
-    let onClipInsertedAtPlaceholder: (Clip, CarouselItem) -> Void
-    let onMediaInserted: ([PickedMedia], InsertionStrategy) -> Void
     let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: () -> Void
     let titleEditingConfig: TitleEditingConfig?
 
     @EnvironmentObject var tapeStore: TapesStore
     @EnvironmentObject var entitlementManager: EntitlementManager
-    @State private var insertionIndex: Int = 0
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var showingSeamTransition = false
@@ -63,8 +58,7 @@ struct TapeCardView: View {
     @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
-    @State private var savedCarouselPosition: Int = 0 // Clip-space position (0 = start, N = end)
-    @State private var pendingAdvancement: Int = 0 // How many positions to advance after insertion (clip-space)
+    @State private var savedCarouselPosition: Int = 0
     
     // Session flag for initial positioning
     @State private var isNewSession = true
@@ -144,9 +138,6 @@ struct TapeCardView: View {
         onSettings: @escaping () -> Void,
         onPlay: @escaping () -> Void,
         onThumbnailDelete: @escaping (Clip) -> Void,
-        onClipInserted: @escaping (Clip, Int) -> Void,
-        onClipInsertedAtPlaceholder: @escaping (Clip, CarouselItem) -> Void,
-        onMediaInserted: @escaping ([PickedMedia], InsertionStrategy) -> Void,
         onCameraCapture: @escaping (@escaping ([PickedMedia]) -> Void) -> Void = { _ in },
         onTitleFocusRequest: @escaping () -> Void = {},
         titleEditingConfig: TitleEditingConfig? = nil
@@ -158,9 +149,6 @@ struct TapeCardView: View {
         self.onSettings = onSettings
         self.onPlay = onPlay
         self.onThumbnailDelete = onThumbnailDelete
-        self.onClipInserted = onClipInserted
-        self.onClipInsertedAtPlaceholder = onClipInsertedAtPlaceholder
-        self.onMediaInserted = onMediaInserted
         self.onCameraCapture = onCameraCapture
         self.onTitleFocusRequest = onTitleFocusRequest
         self.titleEditingConfig = titleEditingConfig
@@ -336,7 +324,7 @@ struct TapeCardView: View {
                 let seamPos = savedCarouselPosition - (floatingBefore ? 1 : 0)
                 dropSeamLeftClipID = (seamPos >= 1 && seamPos - 1 < visibleClips.count) ? visibleClips[seamPos - 1].id : nil
                 dropSeamRightClipID = (seamPos >= 0 && seamPos < visibleClips.count) ? visibleClips[seamPos].id : nil
-                print("[SEAM] lift: savedPos=\(savedCarouselPosition) seamPos=\(seamPos) leftID=\(dropSeamLeftClipID?.uuidString.prefix(4) ?? "nil") rightID=\(dropSeamRightClipID?.uuidString.prefix(4) ?? "nil")")
+                TapesLog.ui.debug("Seam lift: savedPos=\(savedCarouselPosition) seamPos=\(seamPos)")
             } else {
                 dropSeamLeftClipID = nil
                 dropSeamRightClipID = nil
@@ -511,11 +499,18 @@ struct TapeCardView: View {
 
     private func deleteClipFromTape() {
         guard let clip = clipToDelete else { return }
+        let deletedIndex = tape.clips.firstIndex(where: { $0.id == clip.id })
         tapeStore.deleteClip(from: tape.id, clip: clip)
         if let updated = tapeStore.getTape(by: tape.id) {
             tape = updated
         }
         clipToDelete = nil
+
+        if let idx = deletedIndex, idx < savedCarouselPosition {
+            savedCarouselPosition = max(0, savedCarouselPosition - 1)
+        }
+        savedCarouselPosition = min(savedCarouselPosition, tape.clips.count)
+
         if tape.clips.isEmpty {
             exitJiggleMode()
             showingDeleteTapeAlert = true
@@ -527,9 +522,7 @@ struct TapeCardView: View {
         ClipCarousel(
             tape: $tape,
             thumbSize: CGSize(width: thumbW, height: thumbH),
-            insertionIndex: $insertionIndex,
             savedCarouselPosition: $savedCarouselPosition,
-            pendingAdvancement: $pendingAdvancement,
             isNewSession: $isNewSession,
             initialCarouselPosition: initialCarouselPosition,
             pendingTargetItemIndex: $pendingTargetItemIndex,
@@ -588,7 +581,6 @@ struct TapeCardView: View {
         if tapeStore.isFloatingClip {
             dropSeamLeftClipID = leftID
             dropSeamRightClipID = rightID
-            print("[SEAM] scroll: leftID=\(leftID?.uuidString.prefix(4) ?? "nil") rightID=\(rightID?.uuidString.prefix(4) ?? "nil")")
         }
     }
 
@@ -822,9 +814,6 @@ private struct BatchProgressChip: View {
         onSettings: {},
         onPlay: {},
         onThumbnailDelete: { _ in },
-        onClipInserted: { _, _ in },
-        onClipInsertedAtPlaceholder: { _, _ in },
-        onMediaInserted: { _, _ in },
         onCameraCapture: { _ in },
         onTitleFocusRequest: {},
         titleEditingConfig: nil

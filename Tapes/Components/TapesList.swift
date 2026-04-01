@@ -15,9 +15,6 @@ struct TapesList: View {
     let onSettings: (Tape) -> Void
     let onPlay: (Tape) -> Void
     let onThumbnailDelete: (Tape, Clip) -> Void
-    let onClipInserted: (Tape, Clip, Int) -> Void
-    let onClipInsertedAtPlaceholder: (Tape, Clip, CarouselItem) -> Void
-    let onMediaInserted: (Tape, [PickedMedia], InsertionStrategy) -> Void
     let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: (UUID, String) -> Void
     let onTitleCommit: () -> Void
@@ -88,9 +85,6 @@ struct TapesList: View {
                 onSettings: { onSettings(currentTape) },
                 onPlay: { onPlay(currentTape) },
                 onThumbnailDelete: { clip in onThumbnailDelete(currentTape, clip) },
-                onClipInserted: { clip, index in onClipInserted(currentTape, clip, index) },
-                onClipInsertedAtPlaceholder: { clip, placeholder in onClipInsertedAtPlaceholder(currentTape, clip, placeholder) },
-                onMediaInserted: { media, strategy in onMediaInserted(currentTape, media, strategy) },
                 onCameraCapture: onCameraCapture,
                 onTitleFocusRequest: { onTitleFocusRequest(tapeID, currentTape.title) },
                 titleEditingConfig: titleEditingConfig
@@ -177,9 +171,6 @@ struct AmbientTutorialCarousel: View {
         onSettings: { _ in },
         onPlay: { _ in },
         onThumbnailDelete: { _, _ in },
-        onClipInserted: { _, _, _ in },
-        onClipInsertedAtPlaceholder: { _, _, _ in },
-        onMediaInserted: { _, _, _ in },
         onCameraCapture: { _ in },
         onTitleFocusRequest: { _, _ in },
         onTitleCommit: {}

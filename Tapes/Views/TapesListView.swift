@@ -34,9 +34,6 @@ struct TapesListView: View {
                         onSettings: handleSettings,
                         onPlay: handlePlay,
                         onThumbnailDelete: handleThumbnailDelete,
-                        onClipInserted: handleClipInserted,
-                        onClipInsertedAtPlaceholder: handleClipInsertedAtPlaceholder,
-                        onMediaInserted: handleMediaInserted,
                         onCameraCapture: handleCameraCapture,
                         onTitleFocusRequest: handleTitleFocusRequest,
                         onTitleCommit: commitTitleEditing
@@ -316,18 +313,6 @@ struct TapesListView: View {
     
     private func handleThumbnailDelete(_ tape: Tape, _ clip: Clip) {
         tapesStore.deleteClip(from: tape.id, clip: clip)
-    }
-    
-    private func handleClipInserted(_ tape: Tape, _ clip: Clip, _ index: Int) {
-        tapesStore.insertClip(clip, in: tape.id, atCenterOfCarouselIndex: index)
-    }
-    
-    private func handleClipInsertedAtPlaceholder(_ tape: Tape, _ clip: Clip, _ placeholder: CarouselItem) {
-        tapesStore.insertClipAtPlaceholder(clip, in: tape.id, placeholder: placeholder)
-    }
-    
-    private func handleMediaInserted(_ tape: Tape, _ media: [PickedMedia], _ strategy: InsertionStrategy) {
-        tapesStore.insertMedia(media, at: strategy, in: tape.id)
     }
     
     private func handleTitleFocusRequest(_ tapeID: UUID, _ currentTitle: String) {

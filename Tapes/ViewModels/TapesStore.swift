@@ -233,6 +233,8 @@ public class TapesStore: ObservableObject {
             clearFloatingState()
             return
         }
+
+        let removedIndex = tape.clips.firstIndex(where: { $0.id == clip.id })
         tape.removeClip(clip)
 
         let insertionIndex: Int
@@ -243,10 +245,13 @@ public class TapesStore: ObservableObject {
                   let beforeIdx = tape.clips.firstIndex(where: { $0.id == beforeID }) {
             insertionIndex = beforeIdx
         } else {
-            insertionIndex = min(index, tape.clips.count)
+            var adjusted = index
+            if let ri = removedIndex, ri < index {
+                adjusted = max(0, adjusted - 1)
+            }
+            insertionIndex = min(adjusted, tape.clips.count)
         }
 
-        print("[SEAM] drop: afterClipID=\(afterClipID?.uuidString.prefix(4) ?? "nil") beforeClipID=\(beforeClipID?.uuidString.prefix(4) ?? "nil") insertionIndex=\(insertionIndex) clipsAfterRemoval=\(tape.clips.map { String($0.id.uuidString.prefix(4)) })")
         tape.addClip(clip, at: insertionIndex)
         updateTape(tape)
         dropCompletedTapeID = tapeID
@@ -1218,8 +1223,9 @@ extension TapesStore {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.isNetworkAccessAllowed = true
-            options.deliveryMode = .opportunistic
+            options.deliveryMode = .highQualityFormat
             options.resizeMode = .fast
+            options.isSynchronous = false
 
             let targetSize = CGSize(width: 480, height: 480)
             PHImageManager.default().requestImage(
@@ -1227,10 +1233,7 @@ extension TapesStore {
                 targetSize: targetSize,
                 contentMode: .aspectFill,
                 options: options
-            ) { image, info in
-                if let isDegraded = info?[PHImageResultIsDegradedKey] as? NSNumber, isDegraded.boolValue {
-                    return
-                }
+            ) { image, _ in
                 continuation.resume(returning: image)
             }
         }

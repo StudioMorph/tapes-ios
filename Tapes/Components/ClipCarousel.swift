@@ -21,9 +21,7 @@ struct ClipCarousel: View {
     @EnvironmentObject private var tapeStore: TapesStore
     @Binding var tape: Tape
     let thumbSize: CGSize
-    @Binding var insertionIndex: Int
     @Binding var savedCarouselPosition: Int
-    @Binding var pendingAdvancement: Int
     @Binding var isNewSession: Bool
     let initialCarouselPosition: Int
     @Binding var pendingTargetItemIndex: Int?
@@ -236,9 +234,7 @@ public enum CarouselItem: Identifiable {
         ClipCarousel(
             tape: .constant(Tape.sampleTapes[0]),
             thumbSize: CGSize(width: 150, height: 84),
-            insertionIndex: .constant(0),
             savedCarouselPosition: .constant(1),
-            pendingAdvancement: .constant(0),
             isNewSession: .constant(true),
             initialCarouselPosition: 1,
             pendingTargetItemIndex: .constant(nil),

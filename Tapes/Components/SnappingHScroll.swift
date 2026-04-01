@@ -142,35 +142,40 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         } else if let hosting = context.coordinator.hostingController {
             hosting.rootView = HStack(spacing: 0) { content() }
         }
+
+        if let target = targetSnapIndex,
+           target != context.coordinator.lastAppliedTarget {
+            context.coordinator.lastAppliedTarget = target
+            DispatchQueue.main.async {
+                self.performProgrammaticScroll(scrollView: uiView, targetIndex: target, retryCount: 0)
+            }
+        }
     }
     
     private func performProgrammaticScroll(scrollView: UIScrollView, targetIndex: Int, retryCount: Int) {
         let maxRetries = 5
         let retryDelay: TimeInterval = 0.1
-        
-        // Check if layout is ready
+        let token = pendingToken
+
         if scrollView.contentSize.width > 0 && scrollView.bounds.width > 0 {
-            // Check token validity to prevent stale applies
-            if pendingToken != nil {
-                // Calculate target position
-                let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
-                let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
-                let clampedTargetX = min(max(targetX, 0), maxOffsetX)
-                
-                // Set programmatic scroll flag to prevent feedback
-                if let coordinator = scrollView.delegate as? Coordinator {
-                    coordinator.isProgrammaticScroll = true
-                    coordinator.updateCurrentSnapIndex(targetIndex)
-                }
-                
-                // Perform the scroll
-                scrollView.setContentOffset(CGPoint(x: clampedTargetX, y: 0), animated: true)
-            } else {
+            guard token != nil else {
                 TapesLog.ui.warning("SnappingHScroll token mismatch for tape \(tapeId)")
+                return
             }
-            
+
+            let targetX = leadingInset + CGFloat(targetIndex) * itemWidth - containerWidth / 2.0
+            let maxOffsetX = max(0, scrollView.contentSize.width - containerWidth)
+            let clampedTargetX = min(max(targetX, 0), maxOffsetX)
+
+            if let coordinator = scrollView.delegate as? Coordinator {
+                coordinator.isProgrammaticScroll = true
+                coordinator.updateCurrentSnapIndex(targetIndex)
+            }
+
+            scrollView.setContentOffset(CGPoint(x: clampedTargetX, y: 0), animated: true)
         } else if retryCount < maxRetries {
-            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak scrollView] in
+                guard let scrollView, token == self.pendingToken else { return }
                 self.performProgrammaticScroll(scrollView: scrollView, targetIndex: targetIndex, retryCount: retryCount + 1)
             }
         } else {
@@ -204,9 +209,10 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         weak var scrollView: UIScrollView?
         weak var longPressGesture: UILongPressGestureRecognizer?
         var lastContentHash: Int = 0
+        var lastAppliedTarget: Int?
         private var isDragging = false
+        private var lastFractionReportTime: CFTimeInterval = 0
         
-        // State machine for position tracking
         enum CarouselState {
             case idle
             case scrolling
@@ -215,7 +221,7 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         }
         
         private var state: CarouselState = .idle
-        private var currentSnapIndex: Int = 1 // Will be updated with actual position
+        private var currentSnapIndex: Int = 1
         private var isUserScrolling: Bool = false
         var isProgrammaticScroll: Bool = false
 
@@ -285,6 +291,9 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
             }
 
             guard parent.itemWidth > 0 else { return }
+            let now = CACurrentMediaTime()
+            guard now - lastFractionReportTime >= 0.016 else { return }
+            lastFractionReportTime = now
             let centerX = parent.containerWidth / 2.0
             let fraction = (scrollView.contentOffset.x + centerX - parent.leadingInset) / parent.itemWidth
             parent.onScrollFractionChanged?(fraction)
@@ -330,8 +339,12 @@ struct SnappingHScroll<Content: View>: UIViewRepresentable {
         }
         
         private func isValidSnapIndex(_ index: Int) -> Bool {
-            // Basic validation - can be enhanced with content size checks
-            return index >= 0
+            guard index >= 0 else { return false }
+            guard parent.itemWidth > 0, let sv = scrollView, sv.contentSize.width > 0 else {
+                return index >= 0
+            }
+            let maxIndex = Int(ceil((sv.contentSize.width - parent.leadingInset - parent.trailingInset) / parent.itemWidth))
+            return index <= maxIndex
         }
         
         func updateCurrentSnapIndex(_ index: Int) {
