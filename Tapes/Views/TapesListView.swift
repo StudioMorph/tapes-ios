@@ -247,9 +247,9 @@ struct TapesListView: View {
                 }
             } label: {
                 Image(systemName: "arrow.uturn.backward")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(Tokens.Colors.primaryText)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 36, height: 36)
                     .background(.ultraThinMaterial, in: Circle())
                     .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
             }
