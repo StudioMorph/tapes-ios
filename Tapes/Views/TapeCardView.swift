@@ -484,6 +484,12 @@ struct TapeCardView: View {
         if let updated = tapeStore.getTape(by: tape.id) {
             tape = updated
         }
+
+        let newPosition = sourceIndex + 2
+        savedCarouselPosition = newPosition
+        let token = UUID()
+        pendingToken = token
+        pendingTargetItemIndex = newPosition + 1
     }
 
     private func deleteClipFromTape() {
