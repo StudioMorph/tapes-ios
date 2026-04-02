@@ -211,7 +211,6 @@ struct TapeCardView: View {
             ZStack(alignment: .center) {
                 // 1) Thumbnails / scrollable carousel
                 clipCarouselView(thumbW: thumbW, thumbH: thumbH)
-                .id("carousel-\(tape.clips.count)")
                 .zIndex(0)
                 
                 // 2) Red center line (between clips and FAB)
@@ -486,7 +485,6 @@ struct TapeCardView: View {
         }
 
         let newPosition = sourceIndex + 2
-        savedCarouselPosition = newPosition
         let token = UUID()
         pendingToken = token
         pendingTargetItemIndex = newPosition + 1
@@ -508,7 +506,9 @@ struct TapeCardView: View {
 
         if tape.clips.isEmpty {
             exitJiggleMode()
-            showingDeleteTapeAlert = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [self] in
+                showingDeleteTapeAlert = true
+            }
         }
     }
 
@@ -573,7 +573,9 @@ struct TapeCardView: View {
 
     private func handleClipDelete(_ clip: Clip) {
         clipToDelete = clip
-        showingDeleteConfirmation = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            showingDeleteConfirmation = true
+        }
     }
 
     private func handleSeamChanged(_ leftID: UUID?, _ rightID: UUID?) {

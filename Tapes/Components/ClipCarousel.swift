@@ -33,7 +33,10 @@ struct ClipCarousel: View {
     var onClipDuplicate: ((Clip) -> Void)? = nil
     var onSeamChanged: ((UUID?, UUID?) -> Void)? = nil
     var onScrollFractionChanged: ((CGFloat) -> Void)? = nil
-    
+
+    @State private var startPlusFrame: CGRect? = nil
+    @State private var endPlusFrame: CGRect? = nil
+
     var items: [CarouselItem] {
         let visibleClips = tape.clips.filter { $0.id != tapeStore.floatingClip?.id }
         if visibleClips.isEmpty {
@@ -41,16 +44,14 @@ struct ClipCarousel: View {
         }
         return [.startPlus] + visibleClips.map { .clip($0) } + [.endPlus]
     }
-    
-    private var tapeHash: Int {
+
+    private var contentVersion: Int {
         let floatingID = tapeStore.floatingClip?.id.uuidString ?? "none"
         return (tape.clips.map { "\($0.id)-\($0.hasThumbnail)" }.joined() + "-f:\(floatingID)").hashValue
     }
-    
+
     var body: some View {
         GeometryReader { container in
-            // After a drop, use the drop index directly so the carousel
-            // recreates at the correct position (onChange fires too late).
             let effectiveSavedPos: Int = {
                 if !tapeStore.isFloatingClip,
                    tapeStore.dropCompletedTapeID == tape.id,
@@ -65,69 +66,69 @@ struct ClipCarousel: View {
                 return srcIdx < effectiveSavedPos
             }()
             let adjustedSnapIndex = effectiveSavedPos + 1 - (floatingIsBeforeFAB ? 1 : 0)
-            SnappingHScroll(itemWidth: thumbSize.width,
-                           leadingInset: 16,
-                           trailingInset: 16,
-                           containerWidth: container.size.width,
-                           targetSnapIndex: tapeStore.isFloatingClip ? nil : pendingTargetItemIndex,
-                           currentSnapIndex: isNewSession ? (initialCarouselPosition + 1) : adjustedSnapIndex,
-                           pendingToken: pendingToken,
-                           tapeId: tape.id,
-                           onSnapped: { snapIndex, _ in
-                               let clipLeft = max(0, snapIndex - 1)
-                               savedCarouselPosition = clipLeft
-                               
-                               let currentItems = items
-                               let leftItemIdx = snapIndex - 1
-                               let rightItemIdx = snapIndex
-                               var leftID: UUID? = nil
-                               var rightID: UUID? = nil
-                               if leftItemIdx >= 0 && leftItemIdx < currentItems.count,
-                                  case .clip(let clip) = currentItems[leftItemIdx] {
-                                   leftID = clip.id
-                               }
-                               if rightItemIdx >= 0 && rightItemIdx < currentItems.count,
-                                  case .clip(let clip) = currentItems[rightItemIdx] {
-                                   rightID = clip.id
-                               }
-                               onSeamChanged?(leftID, rightID)
-                               
-                               if pendingTargetItemIndex != nil {
-                                   pendingTargetItemIndex = nil
-                                   pendingToken = nil
-                               }
-                               if isNewSession {
-                                   isNewSession = false
-                               }
-                           },
-                           isLongPressEnabled: tapeStore.jigglingTapeID == tape.id,
-                           onJiggleRequested: onJiggleRequested,
-                           onItemLongPressStarted: { itemIndex, globalPos, globalFrame in
-                               let currentItems = items
-                               guard itemIndex >= 0 && itemIndex < currentItems.count,
-                                     case .clip(let clip) = currentItems[itemIndex],
-                                     !clip.isPlaceholder else { return false }
-                               guard !tapeStore.isFloatingClip else { return false }
 
-                               let clipIndex = tape.clips.firstIndex(where: { $0.id == clip.id }) ?? 0
-                               tapeStore.liftClip(clip, fromTape: tape.id, atIndex: clipIndex, originFrame: globalFrame, thumbSize: thumbSize)
-                               let gen = UIImpactFeedbackGenerator(style: .light)
-                               gen.impactOccurred()
-                               tapeStore.floatingPosition = globalPos
-                               return true
-                           },
-                           onDragPositionChanged: { globalPos in
-                               tapeStore.floatingPosition = globalPos
-                           },
-                           onDragEnded: {
-                               tapeStore.floatingDragDidEnd = true
-                           },
-                           contentHash: tapeHash,
-                           onScrollFractionChanged: onScrollFractionChanged) {
-                // Leading 16pt padding INSIDE the card
-                Color.clear.frame(width: 16)
-                
-                ForEach(items) { item in
+            SnappingCarouselView(
+                itemWidth: thumbSize.width,
+                leadingInset: 16,
+                trailingInset: 16,
+                containerWidth: container.size.width,
+                targetSnapIndex: tapeStore.isFloatingClip ? nil : pendingTargetItemIndex,
+                currentSnapIndex: isNewSession ? (initialCarouselPosition + 1) : adjustedSnapIndex,
+                pendingToken: pendingToken,
+                tapeId: tape.id,
+                onSnapped: { snapIndex, _ in
+                    let clipLeft = max(0, snapIndex - 1)
+                    savedCarouselPosition = clipLeft
+
+                    let currentItems = items
+                    let leftItemIdx = snapIndex - 1
+                    let rightItemIdx = snapIndex
+                    var leftID: UUID? = nil
+                    var rightID: UUID? = nil
+                    if leftItemIdx >= 0 && leftItemIdx < currentItems.count,
+                       case .clip(let clip) = currentItems[leftItemIdx] {
+                        leftID = clip.id
+                    }
+                    if rightItemIdx >= 0 && rightItemIdx < currentItems.count,
+                       case .clip(let clip) = currentItems[rightItemIdx] {
+                        rightID = clip.id
+                    }
+                    onSeamChanged?(leftID, rightID)
+
+                    if pendingTargetItemIndex != nil {
+                        pendingTargetItemIndex = nil
+                        pendingToken = nil
+                    }
+                    if isNewSession {
+                        isNewSession = false
+                    }
+                },
+                isLongPressEnabled: tapeStore.jigglingTapeID == tape.id,
+                onJiggleRequested: onJiggleRequested,
+                onItemLongPressStarted: { itemIndex, globalPos, globalFrame in
+                    let currentItems = items
+                    guard itemIndex >= 0 && itemIndex < currentItems.count,
+                          case .clip(let clip) = currentItems[itemIndex],
+                          !clip.isPlaceholder else { return false }
+                    guard !tapeStore.isFloatingClip else { return false }
+
+                    let clipIndex = tape.clips.firstIndex(where: { $0.id == clip.id }) ?? 0
+                    tapeStore.liftClip(clip, fromTape: tape.id, atIndex: clipIndex, originFrame: globalFrame, thumbSize: thumbSize)
+                    let gen = UIImpactFeedbackGenerator(style: .light)
+                    gen.impactOccurred()
+                    tapeStore.floatingPosition = globalPos
+                    return true
+                },
+                onDragPositionChanged: { globalPos in
+                    tapeStore.floatingPosition = globalPos
+                },
+                onDragEnded: {
+                    tapeStore.floatingDragDidEnd = true
+                },
+                onScrollFractionChanged: onScrollFractionChanged,
+                items: items,
+                contentVersion: contentVersion,
+                cellContent: { item in
                     JiggleableClipView(
                         item: item,
                         tapeID: tape.id,
@@ -137,17 +138,39 @@ struct ClipCarousel: View {
                         onClipDelete: onClipDelete,
                         onClipDuplicate: onClipDuplicate
                     )
-                    .id(item.id)
+                    .environmentObject(tapeStore)
+                },
+                onPlusFramesChanged: { startFrame, endFrame in
+                    startPlusFrame = startFrame
+                    endPlusFrame = endFrame
                 }
-                
-                // Trailing 16pt padding INSIDE the card
-                Color.clear.frame(width: 16)
-            }
+            )
             .id("carousel-\(tape.id)")
         }
         .frame(height: thumbSize.height)
+        .preference(key: DropTargetPreferenceKey.self, value: computeDropTargets())
     }
-    
+
+    private func computeDropTargets() -> [DropTargetInfo] {
+        guard tapeStore.isFloatingClip, tapeStore.jigglingTapeID == tape.id else { return [] }
+        let visibleClips = tape.clips.filter { $0.id != tapeStore.floatingClip?.id }
+        var targets: [DropTargetInfo] = []
+        if let frame = startPlusFrame {
+            targets.append(DropTargetInfo(
+                tapeID: tape.id, insertionIndex: 0,
+                seamLeftClipID: nil, seamRightClipID: nil,
+                frame: frame, kind: .startPlus
+            ))
+        }
+        if let frame = endPlusFrame {
+            targets.append(DropTargetInfo(
+                tapeID: tape.id, insertionIndex: visibleClips.count,
+                seamLeftClipID: nil, seamRightClipID: nil,
+                frame: frame, kind: .endPlus
+            ))
+        }
+        return targets
+    }
 }
 
 
