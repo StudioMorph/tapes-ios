@@ -303,9 +303,9 @@ struct TapeCardView: View {
             if isFloating {
                 pendingTargetItemIndex = nil
                 pendingToken = nil
-                // Compute initial seam clip IDs at lift time (savedCarouselPosition is in original space here)
                 let visibleClips = tape.clips.filter { $0.id != tapeStore.floatingClip?.id }
                 let floatingBefore = tapeStore.floatingSourceIndex.map { $0 < savedCarouselPosition } ?? false
+                scrollFraction = CGFloat(savedCarouselPosition + 1 - (floatingBefore ? 1 : 0))
                 let seamPos = savedCarouselPosition - (floatingBefore ? 1 : 0)
                 dropSeamLeftClipID = (seamPos >= 1 && seamPos - 1 < visibleClips.count) ? visibleClips[seamPos - 1].id : nil
                 dropSeamRightClipID = (seamPos >= 0 && seamPos < visibleClips.count) ? visibleClips[seamPos].id : nil

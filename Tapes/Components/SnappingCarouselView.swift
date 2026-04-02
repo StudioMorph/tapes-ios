@@ -122,7 +122,6 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
     func updateUIView(_ uiView: UICollectionView, context: Context) {
         let coordinator = context.coordinator
         coordinator.isUpdatingView = true
-        defer { coordinator.isUpdatingView = false }
 
         coordinator.parent = self
         coordinator.longPressGesture?.isEnabled = isLongPressEnabled
@@ -164,6 +163,18 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
                     collectionView: uiView, targetIndex: target,
                     retryCount: 0, coordinator: coordinator
                 )
+            }
+        }
+
+        coordinator.isUpdatingView = false
+
+        if idsChanged, itemWidth > 0 {
+            let centerX = containerWidth / 2.0
+            let fraction = (uiView.contentOffset.x + centerX - leadingInset) / itemWidth
+            DispatchQueue.main.async { [weak coordinator] in
+                guard let coordinator else { return }
+                coordinator.parent.onScrollFractionChanged?(fraction)
+                coordinator.reportPlusFrames()
             }
         }
     }
@@ -310,6 +321,7 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             if isUserScrolling { isProgrammaticScroll = false }
+            guard !isUpdatingView else { return }
 
             guard parent.itemWidth > 0 else { return }
             let now = CACurrentMediaTime()
@@ -318,17 +330,8 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
 
             let centerX = parent.containerWidth / 2.0
             let fraction = (scrollView.contentOffset.x + centerX - parent.leadingInset) / parent.itemWidth
-
-            if isUpdatingView {
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.parent.onScrollFractionChanged?(fraction)
-                    self.reportPlusFrames()
-                }
-            } else {
-                parent.onScrollFractionChanged?(fraction)
-                reportPlusFrames()
-            }
+            parent.onScrollFractionChanged?(fraction)
+            reportPlusFrames()
         }
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
