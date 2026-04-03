@@ -30,33 +30,43 @@ struct TapesList: View {
                 ? (contentWidth - columnSpacing) / 2
                 : contentWidth
 
-            ScrollView {
-                if isLandscape {
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: columnSpacing),
-                            GridItem(.flexible(), spacing: columnSpacing)
-                        ],
-                        spacing: Tokens.Spacing.m
-                    ) {
-                        tapeCards(tapeWidth: tapeWidth, isLandscape: isLandscape)
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    if isLandscape {
+                        LazyVGrid(
+                            columns: [
+                                GridItem(.flexible(), spacing: columnSpacing),
+                                GridItem(.flexible(), spacing: columnSpacing)
+                            ],
+                            spacing: Tokens.Spacing.m
+                        ) {
+                            tapeCards(tapeWidth: tapeWidth, isLandscape: isLandscape)
+                        }
+                        .padding(.horizontal, Tokens.Spacing.m)
+                        .padding(.vertical, Tokens.Spacing.s)
+                    } else {
+                        LazyVStack(spacing: Tokens.Spacing.m) {
+                            tapeCards(tapeWidth: tapeWidth, isLandscape: isLandscape)
+                        }
+                        .padding(.horizontal, Tokens.Spacing.m)
+                        .padding(.vertical, Tokens.Spacing.s)
                     }
-                    .padding(.horizontal, Tokens.Spacing.m)
-                    .padding(.vertical, Tokens.Spacing.s)
-                } else {
-                    LazyVStack(spacing: Tokens.Spacing.m) {
-                        tapeCards(tapeWidth: tapeWidth, isLandscape: isLandscape)
-                    }
-                    .padding(.horizontal, Tokens.Spacing.m)
-                    .padding(.vertical, Tokens.Spacing.s)
-                }
 
-                AmbientTutorialCarousel()
-                    .padding(.top, 40)
+                    AmbientTutorialCarousel()
+                        .padding(.top, 40)
+                }
+                .scrollDisabled(tapeStore.isFloatingDragActive)
+                .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: editingTapeID) { _, newID in
+                    guard let id = newID else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            scrollProxy.scrollTo(id, anchor: .center)
+                        }
+                    }
+                }
             }
-            .scrollDisabled(tapeStore.isFloatingDragActive)
-            .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.interactively)
         }
     }
 
