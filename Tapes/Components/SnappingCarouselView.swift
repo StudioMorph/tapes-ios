@@ -147,7 +147,9 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
 
             let snap = currentSnapIndex
             coordinator.updateCurrentSnapIndex(snap)
-            setPosition(collectionView: uiView, snapIndex: snap, animated: false)
+            if targetSnapIndex == nil {
+                setPosition(collectionView: uiView, snapIndex: snap, animated: false)
+            }
         } else if versionChanged {
             var snapshot = coordinator.dataSource?.snapshot()
                 ?? NSDiffableDataSourceSnapshot<Int, String>()
