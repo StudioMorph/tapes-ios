@@ -45,9 +45,12 @@ struct ClipCarousel: View {
         return [.startPlus] + visibleClips.map { .clip($0) } + [.endPlus]
     }
 
-    private var contentVersion: Int {
-        let floatingID = tapeStore.floatingClip?.id.uuidString ?? "none"
-        return (tape.clips.map { "\($0.id)-\($0.hasThumbnail)" }.joined() + "-f:\(floatingID)").hashValue
+    private var itemRenderStates: [String: String] {
+        var states: [String: String] = [:]
+        for clip in tape.clips {
+            states[clip.id.uuidString] = "\(clip.hasThumbnail)-\(clip.isPlaceholder)"
+        }
+        return states
     }
 
     var body: some View {
@@ -128,7 +131,7 @@ struct ClipCarousel: View {
                 onScrollFractionChanged: onScrollFractionChanged,
                 isFloatingClip: tapeStore.isFloatingClip,
                 items: items,
-                contentVersion: contentVersion,
+                itemRenderStates: itemRenderStates,
                 cellContent: { item in
                     JiggleableClipView(
                         item: item,

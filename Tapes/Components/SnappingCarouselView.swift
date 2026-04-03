@@ -31,7 +31,7 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
     var onScrollFractionChanged: ((CGFloat) -> Void)? = nil
     var isFloatingClip: Bool = false
     let items: [CarouselItem]
-    let contentVersion: Int
+    let itemRenderStates: [String: String]
     let cellContent: (CarouselItem) -> CellContent
     var onPlusFramesChanged: ((CGRect?, CGRect?) -> Void)? = nil
 
@@ -74,7 +74,7 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
         coordinator.collectionView = cv
         coordinator.currentItems = items
         coordinator.currentItemIds = items.map(\.id)
-        coordinator.lastContentVersion = contentVersion
+        coordinator.lastItemRenderStates = itemRenderStates
         coordinator.updateCurrentSnapIndex(currentSnapIndex)
 
         var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
@@ -134,8 +134,8 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
         coordinator.currentItemIds = newIds
 
         let idsChanged = oldIds != newIds
-        let versionChanged = coordinator.lastContentVersion != contentVersion
-        coordinator.lastContentVersion = contentVersion
+        let oldRenderStates = coordinator.lastItemRenderStates
+        coordinator.lastItemRenderStates = itemRenderStates
 
         if idsChanged {
             var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
@@ -177,11 +177,20 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
                     setPosition(collectionView: uiView, snapIndex: snap, animated: false)
                 }
             }
-        } else if versionChanged {
-            var snapshot = coordinator.dataSource?.snapshot()
-                ?? NSDiffableDataSourceSnapshot<Int, String>()
-            snapshot.reconfigureItems(snapshot.itemIdentifiers)
-            coordinator.dataSource?.apply(snapshot, animatingDifferences: false)
+        } else {
+            let changedIds = itemRenderStates.compactMap { id, state in
+                oldRenderStates[id] != state ? id : nil
+            }
+            if !changedIds.isEmpty {
+                var snapshot = coordinator.dataSource?.snapshot()
+                    ?? NSDiffableDataSourceSnapshot<Int, String>()
+                let existing = Set(snapshot.itemIdentifiers)
+                let toReconfigure = changedIds.filter { existing.contains($0) }
+                if !toReconfigure.isEmpty {
+                    snapshot.reconfigureItems(toReconfigure)
+                    coordinator.dataSource?.apply(snapshot, animatingDifferences: false)
+                }
+            }
         }
 
         if let target = targetSnapIndex,
@@ -265,7 +274,7 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
         weak var jigglePressGesture: UILongPressGestureRecognizer?
         var currentItems: [CarouselItem] = []
         var currentItemIds: [String] = []
-        var lastContentVersion: Int = 0
+        var lastItemRenderStates: [String: String] = [:]
         var lastAppliedTarget: Int?
         var isUpdatingView = false
         private var isDragging = false
