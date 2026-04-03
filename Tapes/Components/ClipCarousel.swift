@@ -126,6 +126,7 @@ struct ClipCarousel: View {
                     tapeStore.floatingDragDidEnd = true
                 },
                 onScrollFractionChanged: onScrollFractionChanged,
+                isFloatingClip: tapeStore.isFloatingClip,
                 items: items,
                 contentVersion: contentVersion,
                 cellContent: { item in

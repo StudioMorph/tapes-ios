@@ -29,6 +29,7 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
     var onDragPositionChanged: ((CGPoint) -> Void)? = nil
     var onDragEnded: (() -> Void)? = nil
     var onScrollFractionChanged: ((CGFloat) -> Void)? = nil
+    var isFloatingClip: Bool = false
     let items: [CarouselItem]
     let contentVersion: Int
     let cellContent: (CarouselItem) -> CellContent
@@ -140,15 +141,41 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
             var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
             snapshot.appendSections([0])
             snapshot.appendItems(newIds)
-            coordinator.dataSource?.apply(snapshot, animatingDifferences: false)
 
-            uiView.collectionViewLayout.invalidateLayout()
-            uiView.layoutIfNeeded()
+            let isDelete = newIds.count < oldIds.count && !isFloatingClip
 
-            let snap = currentSnapIndex
-            coordinator.updateCurrentSnapIndex(snap)
-            if targetSnapIndex == nil {
-                setPosition(collectionView: uiView, snapIndex: snap, animated: false)
+            if isDelete {
+                let removedSet = Set(oldIds).subtracting(Set(newIds))
+                let removedIndex = oldIds.firstIndex(where: { removedSet.contains($0) })
+                let oldSnapIndex = coordinator.currentSnapIndex
+                let isDeleteLeft = removedIndex != nil && removedIndex! < oldSnapIndex
+
+                let snap = currentSnapIndex
+                coordinator.updateCurrentSnapIndex(snap)
+
+                coordinator.dataSource?.apply(snapshot, animatingDifferences: true)
+
+                if isDeleteLeft {
+                    let targetOffset = max(0, uiView.contentOffset.x - itemWidth)
+                    uiView.setContentOffset(CGPoint(x: targetOffset, y: 0), animated: true)
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak coordinator] in
+                        guard let coordinator else { return }
+                        coordinator.isProgrammaticScroll = false
+                        coordinator.parent.onSnapped?(snap, snap + 1)
+                    }
+                }
+            } else {
+                coordinator.dataSource?.apply(snapshot, animatingDifferences: false)
+
+                uiView.collectionViewLayout.invalidateLayout()
+                uiView.layoutIfNeeded()
+
+                let snap = currentSnapIndex
+                coordinator.updateCurrentSnapIndex(snap)
+                if targetSnapIndex == nil {
+                    setPosition(collectionView: uiView, snapIndex: snap, animated: false)
+                }
             }
         } else if versionChanged {
             var snapshot = coordinator.dataSource?.snapshot()
@@ -245,7 +272,7 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
         private var lastFractionReportTime: CFTimeInterval = 0
         private var isUserScrolling: Bool = false
         var isProgrammaticScroll: Bool = false
-        private var currentSnapIndex: Int = 1
+        var currentSnapIndex: Int = 1
         private var lastReportedStartFrame: CGRect?
         private var lastReportedEndFrame: CGRect?
 

@@ -485,6 +485,7 @@ struct TapeCardView: View {
         }
 
         let newPosition = sourceIndex + 2
+        savedCarouselPosition = newPosition
         let token = UUID()
         pendingToken = token
         pendingTargetItemIndex = newPosition + 1
@@ -503,6 +504,9 @@ struct TapeCardView: View {
             savedCarouselPosition = max(0, savedCarouselPosition - 1)
         }
         savedCarouselPosition = min(savedCarouselPosition, tape.clips.count)
+
+        pendingTargetItemIndex = nil
+        pendingToken = nil
 
         if tape.clips.isEmpty {
             exitJiggleMode()

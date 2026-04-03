@@ -47,7 +47,14 @@ The `Coordinator.isUpdatingView` flag solves this:
 
 ## Duplication Animation
 
-When a clip is duplicated, `savedCarouselPosition` is NOT updated synchronously. This allows `currentSnapIndex` (used by `setPosition`) to remain at the old visual position, while `pendingTargetItemIndex` specifies the new position. The `performProgrammaticScroll` then animates smoothly from old to new. After the animation completes, `onSnapped` fires and updates `savedCarouselPosition`.
+When a clip is duplicated, `savedCarouselPosition` is updated immediately but `setPosition` is skipped (because `targetSnapIndex` is set). The `performProgrammaticScroll` animates smoothly from the old visual position to the new FAB position. After the animation completes, `onSnapped` fires.
+
+## Deletion Animation
+
+Deletion uses cell-level animation (`animatingDifferences: true`) instead of viewport scrolling. The `isFloatingClip` flag distinguishes delete (not floating) from lift (floating).
+
+- **Delete right of FAB**: `apply(snapshot, animatingDifferences: true)` — the deleted cell disappears and the right-side cells slide left to close the gap. No offset adjustment needed. `onSnapped` fires via a deferred callback.
+- **Delete left of FAB**: same animated apply, plus a simultaneous `setContentOffset(animated: true)` shifting the viewport left by one item width. This viewport shift cancels the cell-level leftward movement on the right side, so the FAB appears stationary and the left-side clips visually slide right to close the gap. `onSnapped` fires via `scrollViewDidEndScrollingAnimation`.
 
 ## Alert Presentation Safety
 
@@ -66,7 +73,9 @@ The "Delete Clip" action in jiggle mode goes through a two-step flow: a `confirm
 - **Basic scroll & snap**: swipe left/right; FAB line stays centred on a gap.
 - **Clip insertion** (camera, device, FAB): new clips appear, carousel scrolls so FAB ends up after the last inserted clip.
 - **Duplication** (left & right of FAB): no reset/flash; smooth scroll to new FAB position.
-- **Deletion**: position adjusts correctly; delete-all triggers tape-delete prompt.
+- **Deletion (right of FAB)**: clip disappears, right-side clips animate left to close gap; FAB stays.
+- **Deletion (left of FAB)**: clip disappears, left-side clips appear to animate right to close gap; FAB stays.
+- **Delete all**: triggers tape-delete prompt.
 - **Jiggle mode**: long press to enter, tap for options, long press to lift, drag to FAB, drop.
 - **Lift/drop**: remaining clips close gap without jump; drop at start/end placeholders works.
 - **Thumbnail loading**: cells update in-place without scroll disruption; batch imports should show all thumbnails within ~200ms of generation.
