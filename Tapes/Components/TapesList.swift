@@ -9,6 +9,7 @@ import SwiftUI
 
 struct TapesList: View {
     @EnvironmentObject private var tapeStore: TapesStore
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Binding var tapes: [Tape]
     let editingTapeID: UUID?
     @Binding var draftTitle: String
@@ -23,7 +24,7 @@ struct TapesList: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let isLandscape = geometry.size.width > geometry.size.height
+            let isLandscape = verticalSizeClass == .compact
             let contentWidth = geometry.size.width - (Tokens.Spacing.m * 2)
             let tapeWidth: CGFloat = isLandscape
                 ? (contentWidth - columnSpacing) / 2
