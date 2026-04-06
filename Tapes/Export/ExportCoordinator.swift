@@ -74,10 +74,14 @@ public class ExportCoordinator: ObservableObject {
         startProgressPolling()
 
         exportTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                TapesLog.export.error("exportTask: self deallocated")
+                return
+            }
 
             let granted = await self.requestPhotoLibraryPermission()
             guard granted else {
+                TapesLog.export.error("exportTask: photo library permission denied")
                 self.finishExport()
                 self.exportError = "Photo library access is required to save videos."
                 return
@@ -86,6 +90,7 @@ public class ExportCoordinator: ObservableObject {
             do {
                 let result = try await session.run(tape: tape)
 
+                TapesLog.export.info("exportTask: success, showing completion dialog")
                 self.finishExport()
                 self.progress = 1.0
                 self.completedAssetIdentifier = result.assetIdentifier
@@ -107,6 +112,8 @@ public class ExportCoordinator: ObservableObject {
 
                 try? FileManager.default.removeItem(at: result.url)
             } catch {
+                TapesLog.export.error("exportTask: failed — \(error.localizedDescription, privacy: .public), isCancelled=\(session.isCancelled)")
+                TapeExportSession.cleanUpStaleExportFiles()
                 self.finishExport()
 
                 if session.isCancelled {

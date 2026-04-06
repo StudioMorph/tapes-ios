@@ -24,9 +24,11 @@ public final class TapeExportSession: @unchecked Sendable {
             throw ExportError.noClips
         }
 
+        Self.cleanUpStaleExportFiles()
+
         let builder = TapeCompositionBuilder(
             imageConfiguration: .export,
-            videoDeliveryMode: .automatic
+            videoDeliveryMode: .highQualityFormat
         )
         let components = try await builder.buildExportComposition(for: tape)
 
@@ -69,9 +71,11 @@ public final class TapeExportSession: @unchecked Sendable {
             outputURL: outURL
         )
 
-        log.info("Export complete, saving to Photos")
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
+        log.info("Export complete, file size=\(fileSize) bytes, saving to Photos")
 
         let assetIdentifier = try await Self.saveToPhotos(url: outURL)
+        log.info("Saved to Photos, assetIdentifier=\(assetIdentifier ?? "nil")")
 
         return (outURL, assetIdentifier)
     }
@@ -137,7 +141,7 @@ public final class TapeExportSession: @unchecked Sendable {
     ) async throws {
         guard let session = AVAssetExportSession(
             asset: asset,
-            presetName: AVAssetExportPresetHEVC1920x1080
+            presetName: AVAssetExportPresetHighestQuality
         ) else {
             throw ExportError.exportSessionUnavailable
         }
@@ -149,11 +153,15 @@ public final class TapeExportSession: @unchecked Sendable {
         session.videoComposition = videoComposition
         session.audioMix = audioMix
 
+        log.info("AVAssetExportSession starting")
+
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             session.exportAsynchronously {
                 continuation.resume()
             }
         }
+
+        log.info("AVAssetExportSession finished: status=\(session.status.rawValue), error=\(session.error?.localizedDescription ?? "none")")
 
         switch session.status {
         case .completed:
@@ -163,6 +171,7 @@ public final class TapeExportSession: @unchecked Sendable {
             log.error("Export failed: \(message)")
             throw ExportError.exportFailed(message)
         case .cancelled:
+            log.error("Export cancelled by system")
             throw ExportError.exportCancelled
         default:
             throw ExportError.exportFailed("Unexpected status: \(session.status.rawValue)")
@@ -186,6 +195,19 @@ public final class TapeExportSession: @unchecked Sendable {
                     continuation.resume(throwing: ExportError.saveToPhotosFailed(message))
                 }
             }
+        }
+    }
+
+    // MARK: - Temp File Cleanup
+
+    static func cleanUpStaleExportFiles() {
+        let tmpDir = FileManager.default.temporaryDirectory
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: tmpDir, includingPropertiesForKeys: nil
+        ) else { return }
+
+        for file in contents where file.lastPathComponent.hasPrefix("Tape_") && file.pathExtension == "mp4" {
+            try? FileManager.default.removeItem(at: file)
         }
     }
 
