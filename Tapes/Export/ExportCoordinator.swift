@@ -7,6 +7,17 @@ import AudioToolbox
 @MainActor
 public class ExportCoordinator: ObservableObject {
 
+    // MARK: - Dialog State
+
+    enum DialogState: Equatable {
+        /// Phase 1 active — "Preparing your tape…", keep app open
+        case preparing
+        /// App returned from background while Phase 1 was in progress
+        case paused
+        /// Phase 2 active and ETA available — "Exporting…", safe to leave
+        case exporting
+    }
+
     // MARK: - Published State
 
     @Published var isExporting = false
@@ -14,6 +25,7 @@ public class ExportCoordinator: ObservableObject {
     @Published var showProgressDialog = false
     @Published var showCompletionDialog = false
     @Published var exportError: String?
+    @Published var dialogState: DialogState = .preparing
 
     // MARK: - Internal State
 
@@ -22,7 +34,10 @@ public class ExportCoordinator: ObservableObject {
     private var exportTask: Task<Void, Never>?
     private var progressTimer: Timer?
     private var exportStartTime: Date?
+    private var phaseStartTime: Date?
     private var scheduledNotificationID: String?
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private var wasBackgroundedDuringPreparing = false
 
     private let albumService: TapeAlbumServicing
 
@@ -40,7 +55,7 @@ public class ExportCoordinator: ObservableObject {
     // MARK: - ETA
 
     var estimatedTimeRemaining: TimeInterval? {
-        guard let startTime = exportStartTime, progress > 0.05 else { return nil }
+        guard let startTime = phaseStartTime, progress > 0.05 else { return nil }
         let elapsed = Date().timeIntervalSince(startTime)
         let estimatedTotal = elapsed / progress
         let remaining = estimatedTotal - elapsed
@@ -67,6 +82,9 @@ public class ExportCoordinator: ObservableObject {
         completedAssetIdentifier = nil
         showProgressDialog = true
         exportStartTime = Date()
+        phaseStartTime = Date()
+        dialogState = .preparing
+        wasBackgroundedDuringPreparing = false
 
         let session = TapeExportSession()
         self.exportSession = session
@@ -74,14 +92,10 @@ public class ExportCoordinator: ObservableObject {
         startProgressPolling()
 
         exportTask = Task { [weak self] in
-            guard let self else {
-                TapesLog.export.error("exportTask: self deallocated")
-                return
-            }
+            guard let self else { return }
 
             let granted = await self.requestPhotoLibraryPermission()
             guard granted else {
-                TapesLog.export.error("exportTask: photo library permission denied")
                 self.finishExport()
                 self.exportError = "Photo library access is required to save videos."
                 return
@@ -90,7 +104,6 @@ public class ExportCoordinator: ObservableObject {
             do {
                 let result = try await session.run(tape: tape)
 
-                TapesLog.export.info("exportTask: success, showing completion dialog")
                 self.finishExport()
                 self.progress = 1.0
                 self.completedAssetIdentifier = result.assetIdentifier
@@ -122,6 +135,15 @@ public class ExportCoordinator: ObservableObject {
                     self.exportError = error.localizedDescription
                 }
             }
+        }
+    }
+
+    // MARK: - Pause / Resume (Phase 1 only)
+
+    func resumeFromPause() {
+        wasBackgroundedDuringPreparing = false
+        withAnimation(.easeInOut(duration: 0.2)) {
+            dialogState = .preparing
         }
     }
 
@@ -174,6 +196,7 @@ public class ExportCoordinator: ObservableObject {
         isExporting = false
         showProgressDialog = false
         exportSession = nil
+        endBackgroundExportTask()
     }
 
     // MARK: - Progress Polling
@@ -193,8 +216,36 @@ public class ExportCoordinator: ObservableObject {
 
     private func updateProgress() {
         guard let session = exportSession, isExporting else { return }
+
+        let currentPhase = session.phase
         let p = Double(session.sessionProgress)
-        progress = min(p * 0.95, 0.95)
+
+        // Detect phase transition: preparing → exporting
+        if currentPhase == .exporting && dialogState == .preparing {
+            progress = 0.0
+            phaseStartTime = Date()
+        }
+
+        if currentPhase == .exporting {
+            progress = min(p * 0.95, 0.95)
+
+            // ETA-gated dialog transition: only switch to "exporting" dialog
+            // once we have a reliable ETA (progress > 5%)
+            if dialogState != .exporting && p > 0.05 {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    dialogState = .exporting
+                }
+            }
+        } else {
+            progress = min(p * 0.95, 0.95)
+        }
+
+        // Show paused state if we returned from background during preparing
+        if currentPhase == .preparing && wasBackgroundedDuringPreparing && dialogState != .paused {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                dialogState = .paused
+            }
+        }
     }
 
     // MARK: - Completion Feedback
@@ -216,7 +267,13 @@ public class ExportCoordinator: ObservableObject {
         switch phase {
         case .background:
             if isExporting {
-                scheduleETANotification()
+                beginBackgroundExportTask()
+
+                if exportSession?.phase == .preparing {
+                    wasBackgroundedDuringPreparing = true
+                } else {
+                    scheduleETANotification()
+                }
             }
         case .active:
             cancelScheduledNotification()
@@ -225,6 +282,21 @@ public class ExportCoordinator: ObservableObject {
         @unknown default:
             break
         }
+    }
+
+    // MARK: - Background Task
+
+    private func beginBackgroundExportTask() {
+        guard backgroundTaskID == .invalid else { return }
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
+            self?.endBackgroundExportTask()
+        }
+    }
+
+    private func endBackgroundExportTask() {
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
     }
 
     // MARK: - Notifications

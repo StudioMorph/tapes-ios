@@ -7,17 +7,38 @@ private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Export")
 
 public final class TapeExportSession: @unchecked Sendable {
 
+    // MARK: - Export Phase
+
+    enum ExportPhase: Equatable {
+        /// Building composition or pre-rendering blur (in-process, foreground).
+        case preparing
+        /// Standard AVAssetExportSession running in mediaserverd (backgroundable).
+        case exporting
+    }
+
+    // MARK: - State
+
     private(set) var avExportSession: AVAssetExportSession?
+    private(set) var blurPrerenderer: BlurPrerenderer?
     private(set) var isCancelled = false
+    private(set) var phase: ExportPhase = .preparing
 
     var sessionProgress: Float {
-        avExportSession?.progress ?? 0
+        switch phase {
+        case .preparing:
+            return blurPrerenderer?.progress ?? 0
+        case .exporting:
+            return avExportSession?.progress ?? 0
+        }
     }
 
     func cancel() {
         isCancelled = true
+        blurPrerenderer?.cancel()
         avExportSession?.cancelExport()
     }
+
+    // MARK: - Run
 
     func run(tape: Tape) async throws -> (url: URL, assetIdentifier: String?) {
         guard !tape.clips.isEmpty else {
@@ -25,6 +46,9 @@ public final class TapeExportSession: @unchecked Sendable {
         }
 
         Self.cleanUpStaleExportFiles()
+
+        // Phase 1: Build composition and optionally pre-render blur
+        phase = .preparing
 
         let builder = TapeCompositionBuilder(
             imageConfiguration: .export,
@@ -56,21 +80,57 @@ public final class TapeExportSession: @unchecked Sendable {
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = allAudioParams
 
-        let outURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Tape_\(UUID().uuidString).mp4")
-
         let renderSize = components.videoComposition.renderSize
-        log.info("Starting export: \(tape.clips.count) clips, duration=\(CMTimeGetSeconds(totalDuration))s, size=\(Int(renderSize.width))x\(Int(renderSize.height))")
+        log.info("Starting export: \(tape.clips.count) clips, duration=\(CMTimeGetSeconds(totalDuration))s, size=\(Int(renderSize.width))x\(Int(renderSize.height)), blur=\(tape.blurExportBackground)")
 
         guard !isCancelled else { throw ExportError.exportCancelled }
 
-        try await runExportSession(
-            asset: composition,
-            videoComposition: components.videoComposition,
-            audioMix: audioMix,
-            outputURL: outURL
-        )
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Tape_\(UUID().uuidString).mp4")
 
+        // Blur ON: pre-render to intermediate, then final export from intermediate
+        // Blur OFF: build composition with standard instructions, go straight to export
+        var intermediateURL: URL?
+
+        if tape.blurExportBackground {
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Tape_intermediate_\(UUID().uuidString).mp4")
+            intermediateURL = tempURL
+
+            let prerenderer = BlurPrerenderer()
+            self.blurPrerenderer = prerenderer
+
+            try await prerenderer.prerender(
+                composition: composition,
+                videoComposition: components.videoComposition,
+                audioMix: audioMix,
+                outputURL: tempURL
+            )
+            self.blurPrerenderer = nil
+
+            guard !isCancelled else { throw ExportError.exportCancelled }
+
+            // Phase 2: Final export from the intermediate (no custom compositor)
+            phase = .exporting
+            let intermediateAsset = AVURLAsset(url: tempURL)
+            try await runFinalExportSession(asset: intermediateAsset, outputURL: outURL)
+        } else {
+            // Phase 2: Direct export (no custom compositor, standard instructions)
+            phase = .exporting
+            try await runExportSession(
+                asset: composition,
+                videoComposition: components.videoComposition,
+                audioMix: audioMix,
+                outputURL: outURL
+            )
+        }
+
+        // Clean up intermediate
+        if let intermediateURL {
+            try? FileManager.default.removeItem(at: intermediateURL)
+        }
+
+        // Save to Photos
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
         log.info("Export complete, file size=\(fileSize) bytes, saving to Photos")
 
@@ -131,7 +191,49 @@ public final class TapeExportSession: @unchecked Sendable {
         log.info("Added background music: volume=\(volume), looped to \(CMTimeGetSeconds(totalDuration))s")
     }
 
-    // MARK: - Export Session
+    // MARK: - Final Export from Intermediate (blur path)
+
+    private func runFinalExportSession(
+        asset: AVAsset,
+        outputURL: URL
+    ) async throws {
+        guard let session = AVAssetExportSession(
+            asset: asset,
+            presetName: AVAssetExportPresetHighestQuality
+        ) else {
+            throw ExportError.exportSessionUnavailable
+        }
+
+        self.avExportSession = session
+        session.outputURL = outputURL
+        session.outputFileType = .mp4
+
+        log.info("Final AVAssetExportSession starting (from intermediate, daemon-backed)")
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            session.exportAsynchronously {
+                continuation.resume()
+            }
+        }
+
+        log.info("Final AVAssetExportSession finished: status=\(session.status.rawValue), error=\(session.error?.localizedDescription ?? "none")")
+
+        switch session.status {
+        case .completed:
+            return
+        case .failed:
+            let message = session.error?.localizedDescription ?? "Unknown error"
+            log.error("Final export failed: \(message)")
+            throw ExportError.exportFailed(message)
+        case .cancelled:
+            log.error("Final export cancelled")
+            throw ExportError.exportCancelled
+        default:
+            throw ExportError.exportFailed("Unexpected status: \(session.status.rawValue)")
+        }
+    }
+
+    // MARK: - Standard Export Session (no blur path)
 
     private func runExportSession(
         asset: AVMutableComposition,
@@ -153,7 +255,7 @@ public final class TapeExportSession: @unchecked Sendable {
         session.videoComposition = videoComposition
         session.audioMix = audioMix
 
-        log.info("AVAssetExportSession starting")
+        log.info("AVAssetExportSession starting (no blur, daemon-backed)")
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             session.exportAsynchronously {
