@@ -7,38 +7,16 @@ private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Export")
 
 public final class TapeExportSession: @unchecked Sendable {
 
-    // MARK: - Export Phase
-
-    enum ExportPhase: Equatable {
-        /// Building composition or pre-rendering blur (in-process, foreground).
-        case preparing
-        /// Standard AVAssetExportSession running in mediaserverd (backgroundable).
-        case exporting
-    }
-
-    // MARK: - State
-
-    private(set) var avExportSession: AVAssetExportSession?
-    private(set) var blurPrerenderer: BlurPrerenderer?
     private(set) var isCancelled = false
-    private(set) var phase: ExportPhase = .preparing
+    private var _progress: Float = 0
+    private var reader: AVAssetReader?
 
-    var sessionProgress: Float {
-        switch phase {
-        case .preparing:
-            return blurPrerenderer?.progress ?? 0
-        case .exporting:
-            return avExportSession?.progress ?? 0
-        }
-    }
+    var sessionProgress: Float { _progress }
 
     func cancel() {
         isCancelled = true
-        blurPrerenderer?.cancel()
-        avExportSession?.cancelExport()
+        reader?.cancelReading()
     }
-
-    // MARK: - Run
 
     func run(tape: Tape) async throws -> (url: URL, assetIdentifier: String?) {
         guard !tape.clips.isEmpty else {
@@ -46,9 +24,6 @@ public final class TapeExportSession: @unchecked Sendable {
         }
 
         Self.cleanUpStaleExportFiles()
-
-        // Phase 1: Build composition and optionally pre-render blur
-        phase = .preparing
 
         let builder = TapeCompositionBuilder(
             imageConfiguration: .export,
@@ -80,59 +55,22 @@ public final class TapeExportSession: @unchecked Sendable {
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = allAudioParams
 
-        let renderSize = components.videoComposition.renderSize
-        log.info("Starting export: \(tape.clips.count) clips, duration=\(CMTimeGetSeconds(totalDuration))s, size=\(Int(renderSize.width))x\(Int(renderSize.height)), blur=\(tape.blurExportBackground)")
-
-        guard !isCancelled else { throw ExportError.exportCancelled }
-
         let outURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("Tape_\(UUID().uuidString).mp4")
 
-        // Blur ON: pre-render to intermediate, then final export from intermediate
-        // Blur OFF: build composition with standard instructions, go straight to export
-        var intermediateURL: URL?
+        let renderSize = components.videoComposition.renderSize
+        log.info("Starting export: \(tape.clips.count) clips, duration=\(CMTimeGetSeconds(totalDuration))s, size=\(Int(renderSize.width))x\(Int(renderSize.height))")
 
-        if tape.blurExportBackground {
-            let tempURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Tape_intermediate_\(UUID().uuidString).mp4")
-            intermediateURL = tempURL
+        guard !isCancelled else { throw ExportError.exportCancelled }
 
-            let prerenderer = BlurPrerenderer()
-            self.blurPrerenderer = prerenderer
+        try await runReaderWriter(
+            asset: composition,
+            videoComposition: components.videoComposition,
+            audioMix: audioMix,
+            totalDuration: totalDuration,
+            outputURL: outURL
+        )
 
-            components.videoComposition.frameDuration = CMTime(value: 1, timescale: 24)
-
-            try await prerenderer.prerender(
-                composition: composition,
-                videoComposition: components.videoComposition,
-                audioMix: audioMix,
-                outputURL: tempURL
-            )
-            self.blurPrerenderer = nil
-
-            guard !isCancelled else { throw ExportError.exportCancelled }
-
-            // Phase 2: Final export from the intermediate (no custom compositor)
-            phase = .exporting
-            let intermediateAsset = AVURLAsset(url: tempURL)
-            try await runFinalExportSession(asset: intermediateAsset, outputURL: outURL)
-        } else {
-            // Phase 2: Direct export (no custom compositor, standard instructions)
-            phase = .exporting
-            try await runExportSession(
-                asset: composition,
-                videoComposition: components.videoComposition,
-                audioMix: audioMix,
-                outputURL: outURL
-            )
-        }
-
-        // Clean up intermediate
-        if let intermediateURL {
-            try? FileManager.default.removeItem(at: intermediateURL)
-        }
-
-        // Save to Photos
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: outURL.path)[.size] as? Int) ?? 0
         log.info("Export complete, file size=\(fileSize) bytes, saving to Photos")
 
@@ -193,93 +131,154 @@ public final class TapeExportSession: @unchecked Sendable {
         log.info("Added background music: volume=\(volume), looped to \(CMTimeGetSeconds(totalDuration))s")
     }
 
-    // MARK: - Final Export from Intermediate (blur path)
+    // MARK: - Reader/Writer Export
 
-    private func runFinalExportSession(
-        asset: AVAsset,
-        outputURL: URL
-    ) async throws {
-        guard let session = AVAssetExportSession(
-            asset: asset,
-            presetName: AVAssetExportPresetHighestQuality
-        ) else {
-            throw ExportError.exportSessionUnavailable
-        }
-
-        self.avExportSession = session
-        session.outputURL = outputURL
-        session.outputFileType = .mp4
-
-        log.info("Final AVAssetExportSession starting (from intermediate, daemon-backed)")
-
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            session.exportAsynchronously {
-                continuation.resume()
-            }
-        }
-
-        log.info("Final AVAssetExportSession finished: status=\(session.status.rawValue), error=\(session.error?.localizedDescription ?? "none")")
-
-        switch session.status {
-        case .completed:
-            return
-        case .failed:
-            let message = session.error?.localizedDescription ?? "Unknown error"
-            log.error("Final export failed: \(message)")
-            throw ExportError.exportFailed(message)
-        case .cancelled:
-            log.error("Final export cancelled")
-            throw ExportError.exportCancelled
-        default:
-            throw ExportError.exportFailed("Unexpected status: \(session.status.rawValue)")
-        }
-    }
-
-    // MARK: - Standard Export Session (no blur path)
-
-    private func runExportSession(
+    private func runReaderWriter(
         asset: AVMutableComposition,
         videoComposition: AVMutableVideoComposition,
         audioMix: AVMutableAudioMix,
+        totalDuration: CMTime,
         outputURL: URL
     ) async throws {
-        guard let session = AVAssetExportSession(
-            asset: asset,
-            presetName: AVAssetExportPresetHighestQuality
-        ) else {
-            throw ExportError.exportSessionUnavailable
+        let renderSize = videoComposition.renderSize
+
+        let assetReader = try AVAssetReader(asset: asset)
+        self.reader = assetReader
+
+        let videoOutput = AVAssetReaderVideoCompositionOutput(
+            videoTracks: asset.tracks(withMediaType: .video),
+            videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        )
+        videoOutput.videoComposition = videoComposition
+        guard assetReader.canAdd(videoOutput) else {
+            throw ExportError.exportFailed("Cannot add video output to reader")
+        }
+        assetReader.add(videoOutput)
+
+        var audioOutput: AVAssetReaderAudioMixOutput?
+        let audioTracks = asset.tracks(withMediaType: .audio)
+        if !audioTracks.isEmpty {
+            let ao = AVAssetReaderAudioMixOutput(
+                audioTracks: audioTracks,
+                audioSettings: [
+                    AVFormatIDKey: kAudioFormatLinearPCM,
+                    AVLinearPCMBitDepthKey: 16,
+                    AVLinearPCMIsFloatKey: false,
+                    AVLinearPCMIsBigEndianKey: false,
+                    AVLinearPCMIsNonInterleaved: false
+                ]
+            )
+            ao.audioMix = audioMix
+            if assetReader.canAdd(ao) {
+                assetReader.add(ao)
+                audioOutput = ao
+            }
         }
 
-        self.avExportSession = session
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
 
-        session.outputURL = outputURL
-        session.outputFileType = .mp4
-        session.videoComposition = videoComposition
-        session.audioMix = audioMix
+        let videoSettings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.hevc,
+            AVVideoWidthKey: Int(renderSize.width),
+            AVVideoHeightKey: Int(renderSize.height),
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: 10_000_000,
+                AVVideoExpectedSourceFrameRateKey: 30
+            ]
+        ]
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        videoInput.expectsMediaDataInRealTime = false
+        guard writer.canAdd(videoInput) else {
+            throw ExportError.exportFailed("Cannot add video input to writer")
+        }
+        writer.add(videoInput)
 
-        log.info("AVAssetExportSession starting (no blur, daemon-backed)")
+        var audioInput: AVAssetWriterInput?
+        if audioOutput != nil {
+            let audioSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVNumberOfChannelsKey: 2,
+                AVSampleRateKey: 44100,
+                AVEncoderBitRateKey: 128_000
+            ]
+            let ai = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+            ai.expectsMediaDataInRealTime = false
+            if writer.canAdd(ai) {
+                writer.add(ai)
+                audioInput = ai
+            }
+        }
+
+        guard assetReader.startReading() else {
+            let message = assetReader.error?.localizedDescription ?? "Unknown reader error"
+            throw ExportError.exportFailed("Reader failed to start: \(message)")
+        }
+        guard writer.startWriting() else {
+            let message = writer.error?.localizedDescription ?? "Unknown writer error"
+            throw ExportError.exportFailed("Writer failed to start: \(message)")
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        let totalSeconds = CMTimeGetSeconds(totalDuration)
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                while !self.isCancelled {
+                    if !videoInput.isReadyForMoreMediaData {
+                        try await Task.sleep(nanoseconds: 10_000_000)
+                        continue
+                    }
+                    guard let buffer = videoOutput.copyNextSampleBuffer() else { break }
+                    videoInput.append(buffer)
+
+                    if totalSeconds > 0 {
+                        let pts = CMSampleBufferGetPresentationTimeStamp(buffer)
+                        self._progress = Float(CMTimeGetSeconds(pts) / totalSeconds)
+                    }
+                }
+                videoInput.markAsFinished()
+            }
+
+            if let audioOutput, let audioInput {
+                group.addTask {
+                    while !self.isCancelled {
+                        if !audioInput.isReadyForMoreMediaData {
+                            try await Task.sleep(nanoseconds: 10_000_000)
+                            continue
+                        }
+                        guard let buffer = audioOutput.copyNextSampleBuffer() else { break }
+                        audioInput.append(buffer)
+                    }
+                    audioInput.markAsFinished()
+                }
+            }
+
+            try await group.waitForAll()
+        }
+
+        guard !isCancelled else {
+            assetReader.cancelReading()
+            writer.cancelWriting()
+            throw ExportError.exportCancelled
+        }
+
+        if assetReader.status == .failed {
+            let message = assetReader.error?.localizedDescription ?? "Unknown reader error"
+            throw ExportError.exportFailed("Reader failed: \(message)")
+        }
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            session.exportAsynchronously {
+            writer.finishWriting {
                 continuation.resume()
             }
         }
 
-        log.info("AVAssetExportSession finished: status=\(session.status.rawValue), error=\(session.error?.localizedDescription ?? "none")")
-
-        switch session.status {
-        case .completed:
-            return
-        case .failed:
-            let message = session.error?.localizedDescription ?? "Unknown error"
-            log.error("Export failed: \(message)")
-            throw ExportError.exportFailed(message)
-        case .cancelled:
-            log.error("Export cancelled by system")
-            throw ExportError.exportCancelled
-        default:
-            throw ExportError.exportFailed("Unexpected status: \(session.status.rawValue)")
+        guard writer.status == .completed else {
+            let message = writer.error?.localizedDescription ?? "Unknown writer error"
+            throw ExportError.exportFailed("Writer failed: \(message)")
         }
+
+        self._progress = 1.0
     }
 
     // MARK: - Save to Photos
@@ -319,7 +318,6 @@ public final class TapeExportSession: @unchecked Sendable {
 
     enum ExportError: LocalizedError {
         case noClips
-        case exportSessionUnavailable
         case exportFailed(String)
         case exportCancelled
         case saveToPhotosFailed(String)
@@ -328,8 +326,6 @@ public final class TapeExportSession: @unchecked Sendable {
             switch self {
             case .noClips:
                 return "Tape has no clips to export."
-            case .exportSessionUnavailable:
-                return "Could not create export session."
             case .exportFailed(let message):
                 return "Export failed: \(message)"
             case .exportCancelled:

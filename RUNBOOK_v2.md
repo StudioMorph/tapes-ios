@@ -154,7 +154,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Clamp ≤ 0.5s
 
 - **Export Implementation**
-  - iOS: `TapeExportSession` (class) wraps `TapeCompositionBuilder.buildExportComposition(for:)` with background music, HEVC export, and save to Photos. `ExportCoordinator` manages lifecycle: progress polling, ETA, cancellation, completion sound + haptics, local notifications, and HIG-inspired custom dialogs. Header shows circular progress ring when dialog is dismissed. Single entry point: tape card arrow.down.
+  - iOS: `TapeExportSession` (class) wraps `TapeCompositionBuilder.buildExportComposition(for:)` with background music, HEVC encoding via `AVAssetReader`/`AVAssetWriter`, and save to Photos. `ExportCoordinator` manages lifecycle: progress polling, ETA, cancellation, completion sound + haptics, local notifications, and HIG-inspired custom dialogs. On iOS 26+, exports use `BGContinuedProcessingTask` to continue in the background with a system Live Activity showing progress; a real notification fires on actual completion. Header shows circular progress ring when dialog is dismissed. Single entry point: tape card arrow.down.
   - Android: FFmpegKit filtergraph (xfade + acrossfade)
 - **Preview Composition (iOS)**
   - Preview playback uses per-clip `AVPlayerItem` instances via `TapePlayerViewModel` (MVVM).
@@ -173,8 +173,8 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 ## 6. Build & Dependencies
 
 ### iOS
-- **Frameworks**: AVFoundation, Photos, AVKit, UserNotifications, AudioToolbox
-- **Export preset**: AVAssetExportPresetHEVC1920x1080
+- **Frameworks**: AVFoundation, Photos, AVKit, UserNotifications, AudioToolbox, BackgroundTasks
+- **Export**: AVAssetReader/AVAssetWriter with HEVC encoding; BGContinuedProcessingTask (iOS 26+) for background export
 - **Files**:
   - Tapes/Views/Player/TapePlayerView.swift (thin View shell)
   - Tapes/Views/Player/TapePlayerViewModel.swift (playback state + logic)
@@ -186,8 +186,9 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
   - Tapes/Playback/StillImageVideoCompositor.swift (real-time image rendering)
   - Tapes/Playback/AsyncSemaphore.swift (concurrency primitive)
   - Tapes/Export/TapeExporter.swift (TapeExportSession: class-based exporter with progress + cancellation)
-  - Tapes/Export/ExportCoordinator.swift (lifecycle, progress polling, ETA, notifications, dialogs)
+  - Tapes/Export/ExportCoordinator.swift (lifecycle, progress polling, ETA, BGContinuedProcessingTask, notifications, dialogs)
   - Tapes/Export/ExportDialogs.swift (CircularProgressRing, ExportProgressDialog, ExportCompletionDialog, ExportErrorAlert)
+  - BGTaskSchedulerPermittedIdentifiers configured in Info.plist (project root; array-type keys require a physical plist file, not INFOPLIST_KEY_ build settings)
   - Tapes/Export/iOSExporterBridge.swift (async bridge to TapeExportSession)
 
 ### Android

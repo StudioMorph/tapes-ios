@@ -1,4 +1,5 @@
 import SwiftUI
+import BackgroundTasks
 
 @main
 struct TapesApp: App {
@@ -8,6 +9,9 @@ struct TapesApp: App {
 
     init() {
         cleanupTempImports()
+        if #available(iOS 26, *) {
+            ExportCoordinator.registerBackgroundExportHandler()
+        }
     }
 
     @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark

@@ -3,20 +3,10 @@ import SwiftUI
 import Photos
 import UserNotifications
 import AudioToolbox
+import BackgroundTasks
 
 @MainActor
 public class ExportCoordinator: ObservableObject {
-
-    // MARK: - Dialog State
-
-    enum DialogState: Equatable {
-        /// Phase 1 active — "Preparing your tape…", keep app open
-        case preparing
-        /// App returned from background while Phase 1 was in progress
-        case paused
-        /// Phase 2 active and ETA available — "Exporting…", safe to leave
-        case exporting
-    }
 
     // MARK: - Published State
 
@@ -25,7 +15,6 @@ public class ExportCoordinator: ObservableObject {
     @Published var showProgressDialog = false
     @Published var showCompletionDialog = false
     @Published var exportError: String?
-    @Published var dialogState: DialogState = .preparing
 
     // MARK: - Internal State
 
@@ -34,10 +23,7 @@ public class ExportCoordinator: ObservableObject {
     private var exportTask: Task<Void, Never>?
     private var progressTimer: Timer?
     private var exportStartTime: Date?
-    private var phaseStartTime: Date?
-    private var scheduledNotificationID: String?
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
-    private var wasBackgroundedDuringPreparing = false
 
     private let albumService: TapeAlbumServicing
 
@@ -48,14 +34,49 @@ public class ExportCoordinator: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: Self.notificationPermissionKey) }
     }
 
+    // MARK: - BGContinuedProcessingTask (iOS 26+)
+
+    static let bgTaskIdentifier = "StudioMorph.Tapes.export"
+    static weak var current: ExportCoordinator?
+
+    /// Type-erased storage; actual type is BGContinuedProcessingTask on iOS 26+.
+    private var _continuedTask: AnyObject?
+
+    @available(iOS 26, *)
+    private var continuedTask: BGContinuedProcessingTask? {
+        get { _continuedTask as? BGContinuedProcessingTask }
+        set { _continuedTask = newValue }
+    }
+
     init(albumService: TapeAlbumServicing = TapeAlbumService()) {
         self.albumService = albumService
+        Self.current = self
+    }
+
+    // MARK: - Handler Registration (called once at app launch)
+
+    @available(iOS 26, *)
+    static func registerBackgroundExportHandler() {
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: bgTaskIdentifier,
+            using: .main
+        ) { task in
+            guard let task = task as? BGContinuedProcessingTask else { return }
+            task.progress.totalUnitCount = 100
+
+            current?._continuedTask = task
+            task.expirationHandler = {
+                Task { @MainActor in
+                    current?.handleBackgroundTaskExpiration()
+                }
+            }
+        }
     }
 
     // MARK: - ETA
 
     var estimatedTimeRemaining: TimeInterval? {
-        guard let startTime = phaseStartTime, progress > 0.05 else { return nil }
+        guard let startTime = exportStartTime, progress > 0.05 else { return nil }
         let elapsed = Date().timeIntervalSince(startTime)
         let estimatedTotal = elapsed / progress
         let remaining = estimatedTotal - elapsed
@@ -82,21 +103,26 @@ public class ExportCoordinator: ObservableObject {
         completedAssetIdentifier = nil
         showProgressDialog = true
         exportStartTime = Date()
-        phaseStartTime = Date()
-        dialogState = .preparing
-        wasBackgroundedDuringPreparing = false
 
         let session = TapeExportSession()
         self.exportSession = session
 
+        if #available(iOS 26, *) {
+            submitContinuedProcessingTask()
+        }
+
         startProgressPolling()
 
         exportTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                TapesLog.export.error("exportTask: self deallocated")
+                return
+            }
 
             let granted = await self.requestPhotoLibraryPermission()
             guard granted else {
-                self.finishExport()
+                TapesLog.export.error("exportTask: photo library permission denied")
+                self.finishExport(success: false)
                 self.exportError = "Photo library access is required to save videos."
                 return
             }
@@ -104,7 +130,8 @@ public class ExportCoordinator: ObservableObject {
             do {
                 let result = try await session.run(tape: tape)
 
-                self.finishExport()
+                TapesLog.export.info("exportTask: success, showing completion dialog")
+                self.finishExport(success: true)
                 self.progress = 1.0
                 self.completedAssetIdentifier = result.assetIdentifier
 
@@ -114,6 +141,7 @@ public class ExportCoordinator: ObservableObject {
                         self.showCompletionDialog = true
                     }
                 } else {
+                    self.sendCompletionNotification()
                     self.showCompletionDialog = true
                 }
 
@@ -127,7 +155,7 @@ public class ExportCoordinator: ObservableObject {
             } catch {
                 TapesLog.export.error("exportTask: failed — \(error.localizedDescription, privacy: .public), isCancelled=\(session.isCancelled)")
                 TapeExportSession.cleanUpStaleExportFiles()
-                self.finishExport()
+                self.finishExport(success: false)
 
                 if session.isCancelled {
                     self.progress = 0
@@ -138,21 +166,12 @@ public class ExportCoordinator: ObservableObject {
         }
     }
 
-    // MARK: - Pause / Resume (Phase 1 only)
-
-    func resumeFromPause() {
-        wasBackgroundedDuringPreparing = false
-        withAnimation(.easeInOut(duration: 0.2)) {
-            dialogState = .preparing
-        }
-    }
-
     // MARK: - Cancellation
 
     func cancelExport() {
         exportSession?.cancel()
         exportTask?.cancel()
-        finishExport()
+        finishExport(success: false)
         progress = 0
     }
 
@@ -191,12 +210,50 @@ public class ExportCoordinator: ObservableObject {
 
     // MARK: - Private Helpers
 
-    private func finishExport() {
+    private func finishExport(success: Bool) {
         stopProgressPolling()
         isExporting = false
         showProgressDialog = false
         exportSession = nil
         endBackgroundExportTask()
+
+        if #available(iOS 26, *) {
+            completeContinuedTask(success: success)
+        }
+    }
+
+    // MARK: - BGContinuedProcessingTask Lifecycle
+
+    @available(iOS 26, *)
+    private func submitContinuedProcessingTask() {
+        let request = BGContinuedProcessingTaskRequest(
+            identifier: Self.bgTaskIdentifier,
+            title: "Exporting Tape",
+            subtitle: "Starting…"
+        )
+        request.strategy = .fail
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            TapesLog.export.info("BGContinuedProcessingTask submitted successfully")
+        } catch {
+            TapesLog.export.error("BGContinuedProcessingTask submit FAILED: \(error.localizedDescription, privacy: .public)")
+            beginBackgroundExportTask()
+        }
+    }
+
+    @available(iOS 26, *)
+    private func completeContinuedTask(success: Bool) {
+        guard let task = continuedTask else { return }
+        task.progress.completedUnitCount = 100
+        task.setTaskCompleted(success: success)
+        self.continuedTask = nil
+        TapesLog.export.info("BGContinuedProcessingTask completed: success=\(success)")
+    }
+
+    private func handleBackgroundTaskExpiration() {
+        TapesLog.export.warning("BGContinuedProcessingTask expired — cancelling export")
+        cancelExport()
     }
 
     // MARK: - Progress Polling
@@ -216,36 +273,21 @@ public class ExportCoordinator: ObservableObject {
 
     private func updateProgress() {
         guard let session = exportSession, isExporting else { return }
-
-        let currentPhase = session.phase
         let p = Double(session.sessionProgress)
+        progress = min(p * 0.95, 0.95)
 
-        // Detect phase transition: preparing → exporting
-        if currentPhase == .exporting && dialogState == .preparing {
-            progress = 0.0
-            phaseStartTime = Date()
+        if #available(iOS 26, *) {
+            updateContinuedTaskProgress(fraction: p)
         }
+    }
 
-        if currentPhase == .exporting {
-            progress = min(p * 0.95, 0.95)
+    @available(iOS 26, *)
+    private func updateContinuedTaskProgress(fraction: Double) {
+        guard let task = continuedTask else { return }
+        task.progress.completedUnitCount = Int64(fraction * 100)
 
-            // ETA-gated dialog transition: only switch to "exporting" dialog
-            // once we have a reliable ETA (progress > 5%)
-            if dialogState != .exporting && p > 0.05 {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    dialogState = .exporting
-                }
-            }
-        } else {
-            progress = min(p * 0.95, 0.95)
-        }
-
-        // Show paused state if we returned from background during preparing
-        if currentPhase == .preparing && wasBackgroundedDuringPreparing && dialogState != .paused {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                dialogState = .paused
-            }
-        }
+        let subtitle = formattedTimeRemaining ?? "Processing…"
+        task.updateTitle("Exporting Tape", subtitle: subtitle)
     }
 
     // MARK: - Completion Feedback
@@ -268,15 +310,9 @@ public class ExportCoordinator: ObservableObject {
         case .background:
             if isExporting {
                 beginBackgroundExportTask()
-
-                if exportSession?.phase == .preparing {
-                    wasBackgroundedDuringPreparing = true
-                } else {
-                    scheduleETANotification()
-                }
             }
         case .active:
-            cancelScheduledNotification()
+            break
         case .inactive:
             break
         @unknown default:
@@ -284,7 +320,7 @@ public class ExportCoordinator: ObservableObject {
         }
     }
 
-    // MARK: - Background Task
+    // MARK: - Background Task (basic fallback for all iOS versions)
 
     private func beginBackgroundExportTask() {
         guard backgroundTaskID == .invalid else { return }
@@ -307,27 +343,16 @@ public class ExportCoordinator: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    private func scheduleETANotification() {
-        cancelScheduledNotification()
-
+    private func sendCompletionNotification() {
         let content = UNMutableNotificationContent()
         content.title = "Tape Ready"
         content.body = "Your tape has been merged and saved to Photos."
         content.sound = .default
 
-        let delay = max(5, estimatedTimeRemaining ?? 30)
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
-        let id = "export-eta-\(UUID().uuidString)"
-        scheduledNotificationID = id
-
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let id = "export-complete-\(UUID().uuidString)"
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request)
-    }
-
-    private func cancelScheduledNotification() {
-        guard let id = scheduledNotificationID else { return }
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
-        scheduledNotificationID = nil
     }
 
     // MARK: - Photo Library Permission
