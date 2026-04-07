@@ -141,7 +141,9 @@ public class ExportCoordinator: ObservableObject {
                         self.showCompletionDialog = true
                     }
                 } else {
-                    self.sendCompletionNotification()
+                    if #unavailable(iOS 26) {
+                        self.sendCompletionNotification()
+                    }
                     self.showCompletionDialog = true
                 }
 
@@ -181,7 +183,9 @@ public class ExportCoordinator: ObservableObject {
         withAnimation(.easeInOut(duration: 0.2)) {
             showProgressDialog = false
         }
-        requestNotificationPermissionIfNeeded()
+        if #unavailable(iOS 26) {
+            requestNotificationPermissionIfNeeded()
+        }
     }
 
     func dismissCompletionDialog() {
