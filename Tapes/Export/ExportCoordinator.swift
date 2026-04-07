@@ -232,6 +232,9 @@ public class ExportCoordinator: ObservableObject {
             subtitle: "Starting…"
         )
         request.strategy = .fail
+        if BGTaskScheduler.supportedResources.contains(.gpu) {
+            request.requiredResources = .gpu
+        }
 
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -252,8 +255,12 @@ public class ExportCoordinator: ObservableObject {
     }
 
     private func handleBackgroundTaskExpiration() {
-        TapesLog.export.warning("BGContinuedProcessingTask expired — cancelling export")
-        cancelExport()
+        TapesLog.export.warning("BGContinuedProcessingTask expired — export continues without background protection")
+        if #available(iOS 26, *) {
+            continuedTask?.setTaskCompleted(success: false)
+            continuedTask = nil
+        }
+        beginBackgroundExportTask()
     }
 
     // MARK: - Progress Polling
