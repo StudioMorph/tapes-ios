@@ -20,7 +20,7 @@ extension TapeCompositionBuilder {
         let targetHeight = Int(targetSize.height)
 
         let blurredImage: CGImage? = includeBlurredBackground
-            ? createBlurredImage(from: cgImage, radius: 24)
+            ? createBlurredImage(from: cgImage, radius: 100)
             : nil
 
         let url = FileManager.default.temporaryDirectory
@@ -279,10 +279,10 @@ extension TapeCompositionBuilder {
 
     private func createBlurredImage(from cgImage: CGImage, radius: CGFloat) -> CGImage? {
         let ciImage = CIImage(cgImage: cgImage)
-        let filter = CIFilter(name: "CIGaussianBlur")
-        filter?.setValue(ciImage, forKey: kCIInputImageKey)
-        filter?.setValue(radius, forKey: kCIInputRadiusKey)
-        guard let output = filter?.outputImage else { return nil }
-        return sharedCIContext.createCGImage(output, from: ciImage.extent)
+        let downscale: CGFloat = 0.25
+        let small = ciImage.transformed(by: CGAffineTransform(scaleX: downscale, y: downscale))
+        let blurred = small.applyingGaussianBlur(sigma: Double(radius * downscale))
+        let upscaled = blurred.transformed(by: CGAffineTransform(scaleX: 1 / downscale, y: 1 / downscale))
+        return sharedCIContext.createCGImage(upscaled, from: ciImage.extent)
     }
 }

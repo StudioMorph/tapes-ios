@@ -60,7 +60,7 @@ struct TapePlayerView: View {
             PlayerLayerView(player: player, videoGravity: .resizeAspectFill)
                 .disabled(true)
                 .opacity(vm.opacity(for: slot) * 0.7)
-                .blur(radius: 24)
+                .blur(radius: 100)
                 .clipped()
         }
     }

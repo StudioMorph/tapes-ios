@@ -46,7 +46,7 @@ final class BlurredBackgroundCompositor: NSObject, AVVideoCompositing {
     ]
 
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
-    private let blurSigma: Double = 30.0
+    private let blurSigma: Double = 100.0
     private let blurDownscale: CGFloat = 0.25
 
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
