@@ -100,6 +100,8 @@ public final class TapeExportSession: @unchecked Sendable {
             let prerenderer = BlurPrerenderer()
             self.blurPrerenderer = prerenderer
 
+            components.videoComposition.frameDuration = CMTime(value: 1, timescale: 24)
+
             try await prerenderer.prerender(
                 composition: composition,
                 videoComposition: components.videoComposition,
