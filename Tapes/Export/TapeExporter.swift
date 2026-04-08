@@ -296,7 +296,32 @@ public final class TapeExportSession: @unchecked Sendable {
 
     // MARK: - Save to Photos
 
+    private static let maxSaveRetries = 3
+    private static let saveRetryDelay: UInt64 = 2_000_000_000 // 2 seconds
+
     private static func saveToPhotos(url: URL) async throws -> String? {
+        var lastError: Error?
+
+        for attempt in 1...maxSaveRetries {
+            do {
+                let identifier = try await attemptSaveToPhotos(url: url)
+                if attempt > 1 {
+                    log.info("Save to Photos succeeded on attempt \(attempt)")
+                }
+                return identifier
+            } catch {
+                lastError = error
+                log.error("Save to Photos attempt \(attempt)/\(maxSaveRetries) failed: \(error.localizedDescription, privacy: .public)")
+                if attempt < maxSaveRetries {
+                    try? await Task.sleep(nanoseconds: saveRetryDelay)
+                }
+            }
+        }
+
+        throw lastError ?? ExportError.saveToPhotosFailed("All save attempts failed")
+    }
+
+    private static func attemptSaveToPhotos(url: URL) async throws -> String? {
         try await withCheckedThrowingContinuation { continuation in
             var placeholderIdentifier: String?
             PHPhotoLibrary.shared().performChanges({

@@ -587,64 +587,55 @@ struct TapeCompositionBuilder {
     }
 
     private func loadAssets(for clips: [Clip], startIndex: Int) async throws -> [ClipAssetContext] {
-        // MEMORY FIX: Limit concurrent loading to prevent memory exhaustion
-        let maxConcurrentImages = 3
-        let maxConcurrentVideos = 10
-        let imageSemaphore = AsyncSemaphore(count: maxConcurrentImages)
-        let videoSemaphore = AsyncSemaphore(count: maxConcurrentVideos)
-        
-        return try await withThrowingTaskGroup(of: ClipAssetContext.self) { group in
-            for (offset, clip) in clips.enumerated() {
-                let index = startIndex + offset
-                group.addTask {
-                    let isImage = clip.clipType == .image
-                    if isImage {
-                        await imageSemaphore.wait()
-                    } else {
-                        await videoSemaphore.wait()
-                    }
-                    defer {
-                        if isImage {
-                            imageSemaphore.signal()
-                        } else {
-                            videoSemaphore.signal()
+        let chunkSize = 10
+        var allContexts: [ClipAssetContext] = []
+
+        for chunkStart in stride(from: 0, to: clips.count, by: chunkSize) {
+            let chunkEnd = min(chunkStart + chunkSize, clips.count)
+            let chunk = clips[chunkStart..<chunkEnd]
+
+            let chunkContexts = try await withThrowingTaskGroup(of: ClipAssetContext.self) { group in
+                for (offset, clip) in chunk.enumerated() {
+                    let index = startIndex + chunkStart + offset
+                    group.addTask {
+                        let resolved = try await self.resolveAsset(for: clip)
+                        let asset = resolved.asset
+                        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+                            throw BuilderError.missingVideoTrack
                         }
+                        let duration = try await asset.load(.duration)
+                        let naturalSize = try await videoTrack.load(.naturalSize)
+                        let preferredTransform = try await videoTrack.load(.preferredTransform)
+                        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+                        let audioTrack = audioTracks.first
+                        let hasAudio = !audioTracks.isEmpty
+                        return ClipAssetContext(
+                            index: index,
+                            clip: clip,
+                            asset: asset,
+                            duration: duration,
+                            naturalSize: naturalSize,
+                            preferredTransform: preferredTransform,
+                            hasAudio: hasAudio,
+                            videoTrack: videoTrack,
+                            audioTrack: audioTrack,
+                            motionEffect: resolved.motionEffect,
+                            isTemporaryAsset: resolved.isTemporary
+                        )
                     }
-                    
-                    let resolved = try await resolveAsset(for: clip)
-                    let asset = resolved.asset
-                    guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
-                        throw BuilderError.missingVideoTrack
-                    }
-                    let duration = try await asset.load(.duration)
-                    let naturalSize = try await videoTrack.load(.naturalSize)
-                    let preferredTransform = try await videoTrack.load(.preferredTransform)
-                    let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-                    let audioTrack = audioTracks.first
-                    let hasAudio = !audioTracks.isEmpty
-                    return ClipAssetContext(
-                        index: index,
-                        clip: clip,
-                        asset: asset,
-                        duration: duration,
-                        naturalSize: naturalSize,
-                        preferredTransform: preferredTransform,
-                        hasAudio: hasAudio,
-                        videoTrack: videoTrack,
-                        audioTrack: audioTrack,
-                        motionEffect: resolved.motionEffect,
-                        isTemporaryAsset: resolved.isTemporary
-                    )
                 }
+
+                var results: [ClipAssetContext] = []
+                for try await context in group {
+                    results.append(context)
+                }
+                return results
             }
 
-            var contexts: [ClipAssetContext] = []
-            for try await context in group {
-                contexts.append(context)
-            }
-
-            return contexts.sorted { $0.index < $1.index }
+            allContexts.append(contentsOf: chunkContexts)
         }
+
+        return allContexts.sorted { $0.index < $1.index }
     }
 
     // Asset resolution methods moved to TapeCompositionBuilder+AssetResolution.swift
