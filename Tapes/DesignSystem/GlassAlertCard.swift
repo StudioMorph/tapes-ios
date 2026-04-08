@@ -14,8 +14,6 @@ struct GlassAlertButton {
 }
 
 struct GlassAlertCard<Icon: View, MessageContent: View>: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let title: String
     let buttons: [GlassAlertButton]
     let icon: Icon
@@ -61,22 +59,8 @@ struct GlassAlertCard<Icon: View, MessageContent: View>: View {
                 }
             }
             .padding(14)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
-            .shadow(color: .black.opacity(0.12), radius: 40, x: 0, y: 8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 34, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: colorScheme == .dark
-                                ? [.white.opacity(0.45), .white.opacity(0.12)]
-                                : [.white.opacity(0.6), .white.opacity(0.15)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1
-                    )
-            )
             .frame(maxWidth: 340)
+            .modifier(NativeGlassModifier())
         }
         .transition(.opacity.animation(.easeInOut(duration: 0.2)))
     }
@@ -161,5 +145,18 @@ extension GlassAlertCard where Icon == AnyView, MessageContent == AnyView {
                 )
             }
         )
+    }
+}
+
+private struct NativeGlassModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content
+                .glassEffect(.regular, in: .rect(cornerRadius: 34, style: .continuous))
+        } else {
+            content
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 40, x: 0, y: 8)
+        }
     }
 }
