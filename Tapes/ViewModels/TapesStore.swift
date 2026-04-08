@@ -287,7 +287,7 @@ public class TapesStore: ObservableObject {
     private let saveDebounce: TimeInterval = 0.35
     private var metadataQueue: [() async -> Void] = []
     private var activeMetadataTasks = 0
-    private static let maxConcurrentMetadata = 3
+    private static let maxConcurrentMetadata = 8
     private var pendingClipUpdates: [(clipID: UUID, tapeID: UUID, transform: (inout Clip) -> Void)] = []
     private var batchUpdateTask: Task<Void, Never>?
     
@@ -1109,8 +1109,18 @@ extension TapesStore {
         enqueueMetadataWork { [weak self] in
             guard let self else { return }
 
-            if let assetLocalId,
-               let asset = Self.fetchPHAsset(localIdentifier: assetLocalId) {
+            var asset: PHAsset?
+            if let assetLocalId {
+                for attempt in 0..<3 {
+                    asset = Self.fetchPHAsset(localIdentifier: assetLocalId)
+                    if asset != nil { break }
+                    if attempt < 2 {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                    }
+                }
+            }
+
+            if let asset {
                 if needsDuration, asset.duration > 0 {
                     await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.duration = asset.duration }
                 }
@@ -1120,8 +1130,11 @@ extension TapesStore {
                 return
             }
 
-            guard let url = localURL else { return }
-            await self.processAssetMetadata(url: url, clipID: clipID, tapeID: tapeID, needsDuration: needsDuration, needsThumbnail: needsThumbnail)
+            if let url = localURL {
+                await self.processAssetMetadata(url: url, clipID: clipID, tapeID: tapeID, needsDuration: needsDuration, needsThumbnail: needsThumbnail)
+            } else {
+                TapesLog.store.error("Thumbnail generation failed: no PHAsset or localURL for clip \(clipID)")
+            }
         }
     }
 
@@ -1219,23 +1232,36 @@ extension TapesStore {
         return fetch.firstObject
     }
 
-    nonisolated private static func requestThumbnail(for asset: PHAsset) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            let options = PHImageRequestOptions()
-            options.isNetworkAccessAllowed = true
-            options.deliveryMode = .highQualityFormat
-            options.resizeMode = .fast
-            options.isSynchronous = false
+    private static let thumbnailTimeout: UInt64 = 10_000_000_000 // 10 seconds
 
-            let targetSize = CGSize(width: 480, height: 480)
-            PHImageManager.default().requestImage(
-                for: asset,
-                targetSize: targetSize,
-                contentMode: .aspectFill,
-                options: options
-            ) { image, _ in
-                continuation.resume(returning: image)
+    nonisolated private static func requestThumbnail(for asset: PHAsset) async -> UIImage? {
+        await withTaskGroup(of: UIImage?.self) { group in
+            group.addTask {
+                await withCheckedContinuation { continuation in
+                    let options = PHImageRequestOptions()
+                    options.isNetworkAccessAllowed = true
+                    options.deliveryMode = .highQualityFormat
+                    options.resizeMode = .fast
+                    options.isSynchronous = false
+
+                    let targetSize = CGSize(width: 480, height: 480)
+                    PHImageManager.default().requestImage(
+                        for: asset,
+                        targetSize: targetSize,
+                        contentMode: .aspectFill,
+                        options: options
+                    ) { image, _ in
+                        continuation.resume(returning: image)
+                    }
+                }
             }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: thumbnailTimeout)
+                return nil
+            }
+            let result = await group.next() ?? nil
+            group.cancelAll()
+            return result
         }
     }
     

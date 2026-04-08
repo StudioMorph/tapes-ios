@@ -1,4 +1,5 @@
 import Foundation
+import Photos
 import PhotosUI
 import SwiftUI
 
@@ -14,6 +15,8 @@ public class MediaImportCoordinator: ObservableObject {
     private var importTask: Task<Void, Never>?
     private var targetTapeID: UUID?
     private var insertionIndex: Int = 0
+
+    private static let thumbnailTimeout: UInt64 = 8_000_000_000
 
     var processedCount: Int { resolvedCount + failedCount }
 
@@ -51,7 +54,12 @@ public class MediaImportCoordinator: ObservableObject {
 
                 do {
                     let media = try await resolvePickedMedia(from: result)
-                    if let clip = Self.buildClip(from: media) {
+                    if var clip = Self.buildClip(from: media) {
+                        if clip.clipType == .video, !clip.hasThumbnail {
+                            clip.thumbnail = await Self.fetchVideoThumbnail(
+                                assetIdentifier: clip.assetLocalId
+                            )
+                        }
                         clips.append((idx, clip))
                         self.resolvedCount += 1
                     } else {
@@ -99,6 +107,8 @@ public class MediaImportCoordinator: ObservableObject {
         return result
     }
 
+    // MARK: - Clip Building
+
     private static func buildClip(from media: PickedMedia) -> Clip? {
         switch media {
         case let .video(url, duration, assetIdentifier):
@@ -129,6 +139,51 @@ public class MediaImportCoordinator: ObservableObject {
             )
             clip.updatedAt = Date()
             return clip
+        }
+    }
+
+    // MARK: - Video Thumbnail
+
+    nonisolated private static func fetchVideoThumbnail(assetIdentifier: String?) async -> Data? {
+        guard let assetIdentifier else { return nil }
+
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return nil }
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil)
+        guard let asset = fetch.firstObject else { return nil }
+
+        let image = await requestFastThumbnail(for: asset)
+        return image?.jpegData(compressionQuality: 0.8)
+    }
+
+    nonisolated private static func requestFastThumbnail(for asset: PHAsset) async -> UIImage? {
+        await withTaskGroup(of: UIImage?.self) { group in
+            group.addTask {
+                await withCheckedContinuation { continuation in
+                    let options = PHImageRequestOptions()
+                    options.isNetworkAccessAllowed = true
+                    options.deliveryMode = .highQualityFormat
+                    options.resizeMode = .fast
+                    options.isSynchronous = false
+
+                    let targetSize = CGSize(width: 480, height: 480)
+                    PHImageManager.default().requestImage(
+                        for: asset,
+                        targetSize: targetSize,
+                        contentMode: .aspectFill,
+                        options: options
+                    ) { image, _ in
+                        continuation.resume(returning: image)
+                    }
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: thumbnailTimeout)
+                return nil
+            }
+            let result = await group.next() ?? nil
+            group.cancelAll()
+            return result
         }
     }
 }
