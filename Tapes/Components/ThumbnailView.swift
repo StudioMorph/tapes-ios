@@ -130,7 +130,7 @@ struct ClipThumbnailView: View {
                 ResolvedClipThumbnail(clip: clip, isJiggling: isJiggling)
             }
         }
-        .id("clip-\(clip.id)-\(clip.hasThumbnail)-\(clip.isPlaceholder)")
+        .id("clip-\(clip.id)-\(clip.hasThumbnail)-\(clip.isPlaceholder)-\(clip.updatedAt.timeIntervalSinceReferenceDate)")
     }
 }
 
@@ -158,22 +158,8 @@ private struct ResolvedClipThumbnail: View {
                     }
             }
             
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    DurationBadge(duration: clip.isTrimmed ? clip.trimmedDuration : clip.duration)
-                        .opacity(clip.duration > 0 ? 1 : 0)
-                }
-            }
-            .padding(8)
-
             if !isJiggling {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 28, height: 28)
-                    .background(.ultraThinMaterial, in: Circle())
+                ClipInfoBadge(clip: clip)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -255,22 +241,43 @@ struct ClipBadge: View {
     }
 }
 
-struct DurationBadge: View {
-    let duration: TimeInterval
-    
-    var body: some View {
-        Text(formatDuration(duration))
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(Color.black.opacity(0.7))
-            )
+struct ClipInfoBadge: View {
+    let clip: Clip
+
+    private var icon: String {
+        clip.clipType == .image ? "photo" : "play.rectangle"
     }
-    
+
+    private var displayDuration: TimeInterval {
+        if clip.clipType == .image {
+            return clip.imageDuration
+        }
+        return clip.isTrimmed ? clip.trimmedDuration : clip.duration
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white)
+
+            Text(formatDuration(displayDuration))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white)
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.blue)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.55), in: Capsule())
+    }
+
     private func formatDuration(_ duration: TimeInterval) -> String {
+        if duration < 60 {
+            return String(format: "%ds", Int(duration))
+        }
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
         return String(format: "%d:%02d", minutes, seconds)

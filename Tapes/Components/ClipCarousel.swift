@@ -48,7 +48,7 @@ struct ClipCarousel: View {
     private var itemRenderStates: [String: String] {
         var states: [String: String] = [:]
         for clip in tape.clips {
-            states[clip.id.uuidString] = "\(clip.hasThumbnail)-\(clip.isPlaceholder)"
+            states[clip.id.uuidString] = "\(clip.hasThumbnail)-\(clip.isPlaceholder)-\(clip.updatedAt.timeIntervalSinceReferenceDate)"
         }
         return states
     }
