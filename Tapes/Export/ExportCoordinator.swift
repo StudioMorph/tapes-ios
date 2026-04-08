@@ -97,6 +97,13 @@ public class ExportCoordinator: ObservableObject {
     func exportTape(_ tape: Tape, albumUpdateHandler: @escaping (String) -> Void = { _ in }) {
         guard !isExporting else { return }
 
+        if let staleSession = exportSession {
+            staleSession.cancel()
+            TapeExportSession.cleanUpStaleExportFiles()
+        }
+        exportSession = nil
+        exportTask = nil
+
         isExporting = true
         progress = 0.0
         exportError = nil
@@ -129,6 +136,7 @@ public class ExportCoordinator: ObservableObject {
 
             do {
                 let result = try await session.run(tape: tape)
+                session.cancel()
 
                 TapesLog.export.info("exportTask: success, showing completion dialog")
                 self.finishExport(success: true)
@@ -156,6 +164,7 @@ public class ExportCoordinator: ObservableObject {
                 try? FileManager.default.removeItem(at: result.url)
             } catch {
                 TapesLog.export.error("exportTask: failed — \(error.localizedDescription, privacy: .public), isCancelled=\(session.isCancelled)")
+                session.cancel()
                 TapeExportSession.cleanUpStaleExportFiles()
                 self.finishExport(success: false)
 
@@ -173,6 +182,8 @@ public class ExportCoordinator: ObservableObject {
     func cancelExport() {
         exportSession?.cancel()
         exportTask?.cancel()
+        exportTask = nil
+        TapeExportSession.cleanUpStaleExportFiles()
         finishExport(success: false)
         progress = 0
     }

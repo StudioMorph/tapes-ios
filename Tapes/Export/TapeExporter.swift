@@ -16,6 +16,7 @@ public final class TapeExportSession: @unchecked Sendable {
     func cancel() {
         isCancelled = true
         reader?.cancelReading()
+        reader = nil
     }
 
     func run(tape: Tape) async throws -> (url: URL, assetIdentifier: String?) {
@@ -221,49 +222,59 @@ public final class TapeExportSession: @unchecked Sendable {
 
         let totalSeconds = CMTimeGetSeconds(totalDuration)
 
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                while !self.isCancelled {
-                    if !videoInput.isReadyForMoreMediaData {
-                        try await Task.sleep(nanoseconds: 10_000_000)
-                        continue
-                    }
-                    guard let buffer = videoOutput.copyNextSampleBuffer() else { break }
-                    videoInput.append(buffer)
-
-                    if totalSeconds > 0 {
-                        let pts = CMSampleBufferGetPresentationTimeStamp(buffer)
-                        self._progress = Float(CMTimeGetSeconds(pts) / totalSeconds)
-                    }
-                }
-                videoInput.markAsFinished()
-            }
-
-            if let audioOutput, let audioInput {
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
                     while !self.isCancelled {
-                        if !audioInput.isReadyForMoreMediaData {
+                        if !videoInput.isReadyForMoreMediaData {
                             try await Task.sleep(nanoseconds: 10_000_000)
                             continue
                         }
-                        guard let buffer = audioOutput.copyNextSampleBuffer() else { break }
-                        audioInput.append(buffer)
-                    }
-                    audioInput.markAsFinished()
-                }
-            }
+                        guard let buffer = videoOutput.copyNextSampleBuffer() else { break }
+                        videoInput.append(buffer)
 
-            try await group.waitForAll()
+                        if totalSeconds > 0 {
+                            let pts = CMSampleBufferGetPresentationTimeStamp(buffer)
+                            self._progress = Float(CMTimeGetSeconds(pts) / totalSeconds)
+                        }
+                    }
+                    videoInput.markAsFinished()
+                }
+
+                if let audioOutput, let audioInput {
+                    group.addTask {
+                        while !self.isCancelled {
+                            if !audioInput.isReadyForMoreMediaData {
+                                try await Task.sleep(nanoseconds: 10_000_000)
+                                continue
+                            }
+                            guard let buffer = audioOutput.copyNextSampleBuffer() else { break }
+                            audioInput.append(buffer)
+                        }
+                        audioInput.markAsFinished()
+                    }
+                }
+
+                try await group.waitForAll()
+            }
+        } catch {
+            assetReader.cancelReading()
+            writer.cancelWriting()
+            self.reader = nil
+            throw error
         }
 
         guard !isCancelled else {
             assetReader.cancelReading()
             writer.cancelWriting()
+            self.reader = nil
             throw ExportError.exportCancelled
         }
 
         if assetReader.status == .failed {
             let message = assetReader.error?.localizedDescription ?? "Unknown reader error"
+            writer.cancelWriting()
+            self.reader = nil
             throw ExportError.exportFailed("Reader failed: \(message)")
         }
 
@@ -272,6 +283,8 @@ public final class TapeExportSession: @unchecked Sendable {
                 continuation.resume()
             }
         }
+
+        self.reader = nil
 
         guard writer.status == .completed else {
             let message = writer.error?.localizedDescription ?? "Unknown writer error"
