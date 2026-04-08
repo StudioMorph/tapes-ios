@@ -66,6 +66,7 @@ public struct Tokens {
     
     public enum Timing {
         public static let photoDefaultDuration: TimeInterval = 3.0
+        public static let maxTapeDuration: TimeInterval = 45 * 60
     }
 }
 

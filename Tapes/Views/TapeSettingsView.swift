@@ -100,9 +100,26 @@ struct TapeSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             SectionHeader(title: "Merge and Save")
 
-            VStack(spacing: Tokens.Spacing.s) {
-                ForEach(ExportOrientation.allCases) { orientation in
-                    exportOrientationCell(orientation)
+            if tape.duration > Tokens.Timing.maxTapeDuration {
+                HStack(spacing: Tokens.Spacing.m) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Tokens.Colors.secondaryText)
+
+                    Text("Merge and export are only available for tapes under \(Int(Tokens.Timing.maxTapeDuration / 60)) minutes total duration.")
+                        .font(Tokens.Typography.caption)
+                        .foregroundColor(Tokens.Colors.secondaryText)
+                }
+                .padding(.vertical, Tokens.Spacing.m)
+                .padding(.horizontal, Tokens.Spacing.m)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Tokens.Colors.secondaryBackground)
+                .cornerRadius(Tokens.Radius.card)
+            } else {
+                VStack(spacing: Tokens.Spacing.s) {
+                    ForEach(ExportOrientation.allCases) { orientation in
+                        exportOrientationCell(orientation)
+                    }
                 }
             }
         }
