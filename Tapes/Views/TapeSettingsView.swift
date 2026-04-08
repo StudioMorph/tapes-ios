@@ -100,13 +100,13 @@ struct TapeSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             SectionHeader(title: "Merge and Save")
 
-            if tape.duration > Tokens.Timing.maxTapeDuration {
+            if tape.duration > Tokens.Timing.maxTapeDuration || tape.clips.count > Tokens.Timing.maxTapeClipCount {
                 HStack(spacing: Tokens.Spacing.m) {
                     Image(systemName: "info.circle")
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(Tokens.Colors.secondaryText)
 
-                    Text("Merge and export are only available for tapes under \(Int(Tokens.Timing.maxTapeDuration / 60)) minutes total duration.")
+                    Text("Merge and export are only available for tapes under \(Int(Tokens.Timing.maxTapeDuration / 60)) minutes or with fewer than \(Tokens.Timing.maxTapeClipCount) clips.")
                         .font(Tokens.Typography.caption)
                         .foregroundColor(Tokens.Colors.secondaryText)
                 }
