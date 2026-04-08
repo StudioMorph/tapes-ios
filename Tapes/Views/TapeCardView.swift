@@ -41,6 +41,7 @@ struct TapeCardView: View {
 
     @EnvironmentObject var tapeStore: TapesStore
     @EnvironmentObject var entitlementManager: EntitlementManager
+    @EnvironmentObject var importCoordinator: MediaImportCoordinator
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var showingSeamTransition = false
@@ -272,14 +273,7 @@ struct TapeCardView: View {
                     }
                 }
             }
-            .overlay(alignment: .topLeading) {
-                if let progress = tapeStore.batchProgress(for: tape.id),
-                   progress.inProgress > 0 || progress.failed > 0 {
-                    BatchProgressChip(progress: progress)
-                        .padding(.leading, Tokens.Spacing.m)
-                        .padding(.top, Tokens.Spacing.s)
-                }
-            }
+            
             .frame(height: thumbH)
 
             .padding(.vertical, Tokens.Spacing.m)
@@ -339,38 +333,37 @@ struct TapeCardView: View {
                 TapesLog.mediaPicker.info("🧩 onPick count=\(results.count, privacy: .public)")
                 guard !results.isEmpty else { return }
 
-                Task {
-                    let tapeID = tape.id
-                    var placeholderIDs: [UUID] = []
-                    await MainActor.run {
-                        let pSnapshot = savedCarouselPosition
-                        let insertionIndex: Int
-                        switch importSource {
-                        case .leftPlaceholder:
-                            insertionIndex = 0
-                        case .rightPlaceholder:
-                            insertionIndex = tape.clips.count
-                        case .centerFAB, .none:
-                            insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
-                        }
-                        placeholderIDs = tapeStore.insertPlaceholderClips(
-                            count: results.count,
-                            into: tapeID,
-                            at: insertionIndex
-                        )
-                        let k = results.count
-                        let pAfter = pSnapshot + k
-                        let targetItemIndex = pAfter + 1
-                        let token = UUID()
-                        pendingToken = token
-                        pendingTargetItemIndex = targetItemIndex
-                        checkAndCreateEmptyTapeIfNeeded()
-                        importSource = nil
-                    }
-                    if !placeholderIDs.isEmpty {
-                        tapeStore.processPickerResults(results, placeholderIDs: placeholderIDs, tapeID: tapeID)
-                    }
+                let insertionIndex: Int
+                switch importSource {
+                case .leftPlaceholder:
+                    insertionIndex = 0
+                case .rightPlaceholder:
+                    insertionIndex = tape.clips.count
+                case .centerFAB, .none:
+                    insertionIndex = calculateInsertionIndex(from: savedCarouselPosition, tape: tape)
                 }
+                importSource = nil
+
+                importCoordinator.startImport(
+                    results: results,
+                    tapeID: tape.id,
+                    insertionIndex: insertionIndex
+                )
+            }
+        }
+        .onChange(of: importCoordinator.isImporting) { _, isImporting in
+            if !isImporting, let result = importCoordinator.consumeResults(for: tape.id) {
+                let pSnapshot = savedCarouselPosition
+                tapeStore.insert(result.clips, into: result.tapeID, at: result.insertionIndex)
+                tapeStore.associateClipsWithAlbum(tapeID: result.tapeID, clips: result.clips)
+
+                let pAfter = pSnapshot + result.clips.count
+                let targetItemIndex = pAfter + 1
+                let token = UUID()
+                pendingToken = token
+                pendingTargetItemIndex = targetItemIndex
+
+                checkAndCreateEmptyTapeIfNeeded()
             }
         }
         .sheet(isPresented: $showingSeamTransition) {
@@ -759,57 +752,6 @@ struct TapeCardView: View {
 
 }
 
-private struct BatchProgressChip: View {
-    let progress: ClipBatchProgress
-    
-    private var label: String {
-        if progress.failed > 0 && progress.inProgress > 0 {
-            return "\(progress.ready)/\(progress.total) ready • \(progress.failed) failed"
-        } else if progress.failed > 0 {
-            return "\(progress.failed) failed"
-        } else {
-            return "Importing \(progress.ready)/\(progress.total)"
-        }
-    }
-    
-    private var backgroundColor: Color {
-        Tokens.Colors.secondaryBackground.opacity(0.94)
-    }
-    
-    @ViewBuilder
-    private var leadingIcon: some View {
-        if progress.failed > 0 {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.yellow)
-                .font(.system(size: 14, weight: .semibold))
-        } else if progress.inProgress > 0 {
-            ProgressView()
-                .controlSize(.small)
-                .tint(Tokens.Colors.primaryText)
-        } else {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(.green)
-                .font(.system(size: 14, weight: .semibold))
-        }
-    }
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            leadingIcon
-            Text(label)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Tokens.Colors.primaryText)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            Capsule()
-                .fill(backgroundColor)
-                .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 2)
-        )
-    }
-}
-
 #Preview {
     TapeCardView(
         tape: Binding.constant(Tape.sampleTapes[0]),
@@ -825,6 +767,7 @@ private struct BatchProgressChip: View {
     )
     .environmentObject(TapesStore())
     .environmentObject(EntitlementManager())
+    .environmentObject(MediaImportCoordinator())
     .padding()
     .background(Tokens.Colors.primaryBackground)
 }

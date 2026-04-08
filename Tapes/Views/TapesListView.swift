@@ -5,6 +5,7 @@ struct TapesListView: View {
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
+    @StateObject private var importCoordinator = MediaImportCoordinator()
     @State private var tapeToPreview: Tape?
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
@@ -125,6 +126,7 @@ struct TapesListView: View {
                 AccountSettingsView(onHotTips: { showOnboarding = true })
             }
         }
+        .environmentObject(importCoordinator)
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
         }
@@ -360,6 +362,7 @@ struct TapesListView: View {
                 DeleteSuccessToast(isVisible: $showingDeleteSuccessToast)
             }
             AlbumAssociationAlert()
+            ImportProgressOverlay(coordinator: importCoordinator)
         }
     }
 
