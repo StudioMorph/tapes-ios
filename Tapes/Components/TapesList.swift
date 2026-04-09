@@ -41,6 +41,7 @@ struct TapesList: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Tokens.Spacing.m)
                         .padding(.top, Tokens.Spacing.s)
+                        .padding(.bottom, Tokens.Spacing.m)
 
                     if isLandscape {
                         LazyVGrid(
