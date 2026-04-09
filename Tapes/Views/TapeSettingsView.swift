@@ -103,7 +103,8 @@ struct TapeSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             SectionHeader(title: "Live Photos")
 
-            VStack(spacing: 0) {
+            VStack(spacing: Tokens.Spacing.m) {
+                VStack(spacing: 0) {
                 HStack {
                     Image(systemName: "livephoto")
                         .font(.system(size: 20, weight: .medium))
@@ -126,12 +127,67 @@ struct TapeSettingsView: View {
                         .labelsHidden()
                         .tint(Color(red: 0, green: 0.533, blue: 1))
                 }
+
+                Divider()
+                    .padding(.vertical, Tokens.Spacing.s)
+
+                HStack {
+                    Image(systemName: tape.livePhotosMuted ? "speaker.slash" : "speaker.wave.2")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(tape.livePhotosAsVideo ? Tokens.Colors.primaryText : Tokens.Colors.secondaryText)
+                        .frame(width: 24)
+
+                    Text("Sound")
+                        .font(Tokens.Typography.headline)
+                        .foregroundColor(tape.livePhotosAsVideo ? Tokens.Colors.primaryText : Tokens.Colors.secondaryText)
+
+                    Spacer()
+
+                    Toggle("", isOn: Binding(
+                        get: { !tape.livePhotosMuted },
+                        set: { tape.livePhotosMuted = !$0 }
+                    ))
+                        .labelsHidden()
+                        .tint(Color(red: 0, green: 0.533, blue: 1))
+                        .disabled(!tape.livePhotosAsVideo)
+                }
+                .opacity(tape.livePhotosAsVideo ? 1 : 0.5)
             }
-            .padding(.vertical, Tokens.Spacing.m)
-            .padding(.horizontal, Tokens.Spacing.m)
-            .background(Tokens.Colors.secondaryBackground)
-            .cornerRadius(Tokens.Radius.card)
+                .padding(.vertical, Tokens.Spacing.m)
+                .padding(.horizontal, Tokens.Spacing.m)
+                .background(Tokens.Colors.secondaryBackground)
+                .cornerRadius(Tokens.Radius.card)
+
+                if hasLivePhotoOverrides {
+                    Button {
+                        resetLivePhotoDefaults()
+                        provideHapticFeedback()
+                    } label: {
+                        Text("Reset all to defaults")
+                            .font(Tokens.Typography.body)
+                            .foregroundColor(.blue)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
         }
+    }
+
+    private var hasLivePhotoOverrides: Bool {
+        tape.livePhotosAsVideo != true ||
+        tape.livePhotosMuted != true ||
+        tape.clips.contains(where: { $0.isLivePhoto && ($0.livePhotoAsVideo != nil || $0.livePhotoMuted != nil) })
+    }
+
+    private func resetLivePhotoDefaults() {
+        var updated = tape
+        updated.livePhotosAsVideo = true
+        updated.livePhotosMuted = true
+        for i in updated.clips.indices where updated.clips[i].isLivePhoto {
+            updated.clips[i].livePhotoAsVideo = nil
+            updated.clips[i].livePhotoMuted = nil
+        }
+        tape = updated
     }
 
     private var mergeAndSaveSection: some View {

@@ -9,6 +9,7 @@ struct ImageClipSettingsView: View {
     @State private var selectedMotion: MotionStyle
     @State private var duration: Double
     @State private var livePhotoAsVideo: Bool
+    @State private var livePhotoMuted: Bool
     @State private var hasChanges = false
 
     private var clip: Clip? {
@@ -29,10 +30,13 @@ struct ImageClipSettingsView: View {
             self._duration = State(initialValue: clip.imageDuration)
             let tapeDefault = tape.wrappedValue.livePhotosAsVideo
             self._livePhotoAsVideo = State(initialValue: clip.livePhotoAsVideo ?? tapeDefault)
+            let muteDefault = tape.wrappedValue.livePhotosMuted
+            self._livePhotoMuted = State(initialValue: clip.livePhotoMuted ?? muteDefault)
         } else {
             self._selectedMotion = State(initialValue: .kenBurns)
             self._duration = State(initialValue: 4.0)
             self._livePhotoAsVideo = State(initialValue: tape.wrappedValue.livePhotosAsVideo)
+            self._livePhotoMuted = State(initialValue: tape.wrappedValue.livePhotosMuted)
         }
     }
 
@@ -80,28 +84,58 @@ struct ImageClipSettingsView: View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             SectionHeader(title: "Live Photo")
 
-            HStack {
-                Image(systemName: "livephoto")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(Tokens.Colors.primaryText)
-                    .frame(width: 24)
-
-                VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
-                    Text("Play as video")
-                        .font(Tokens.Typography.headline)
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "livephoto")
+                        .font(.system(size: 20, weight: .medium))
                         .foregroundColor(Tokens.Colors.primaryText)
+                        .frame(width: 24)
 
-                    Text("Use the Live Photo motion instead of a still image")
-                        .font(Tokens.Typography.caption)
-                        .foregroundColor(Tokens.Colors.secondaryText)
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+                        Text("Play as video")
+                            .font(Tokens.Typography.headline)
+                            .foregroundColor(Tokens.Colors.primaryText)
+
+                        Text("Use the Live Photo motion instead of a still image")
+                            .font(Tokens.Typography.caption)
+                            .foregroundColor(Tokens.Colors.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $livePhotoAsVideo)
+                        .labelsHidden()
+                        .tint(Color(red: 0, green: 0.533, blue: 1))
+                        .onChange(of: livePhotoAsVideo) { _ in hasChanges = true }
                 }
 
-                Spacer()
+                Divider()
+                    .padding(.vertical, Tokens.Spacing.s)
 
-                Toggle("", isOn: $livePhotoAsVideo)
-                    .labelsHidden()
-                    .tint(Color(red: 0, green: 0.533, blue: 1))
-                    .onChange(of: livePhotoAsVideo) { _ in hasChanges = true }
+                HStack {
+                    Image(systemName: livePhotoMuted ? "speaker.slash" : "speaker.wave.2")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(livePhotoAsVideo ? Tokens.Colors.primaryText : Tokens.Colors.secondaryText)
+                        .frame(width: 24)
+
+                    Text("Sound")
+                        .font(Tokens.Typography.headline)
+                        .foregroundColor(livePhotoAsVideo ? Tokens.Colors.primaryText : Tokens.Colors.secondaryText)
+
+                    Spacer()
+
+                    Toggle("", isOn: Binding(
+                        get: { !livePhotoMuted },
+                        set: {
+                            livePhotoMuted = !$0
+                            hasChanges = true
+                        }
+                    ))
+                        .labelsHidden()
+                        .tint(Color(red: 0, green: 0.533, blue: 1))
+                        .disabled(!livePhotoAsVideo)
+                }
+                .opacity(livePhotoAsVideo ? 1 : 0.5)
             }
             .padding(.vertical, Tokens.Spacing.m)
             .padding(.horizontal, Tokens.Spacing.m)
@@ -151,6 +185,8 @@ struct ImageClipSettingsView: View {
         if clip.isLivePhoto {
             let tapeDefault = tape.livePhotosAsVideo
             clip.livePhotoAsVideo = (livePhotoAsVideo == tapeDefault) ? nil : livePhotoAsVideo
+            let muteDefault = tape.livePhotosMuted
+            clip.livePhotoMuted = (livePhotoMuted == muteDefault) ? nil : livePhotoMuted
         }
         clip.updatedAt = Date()
         tape.updateClip(clip)

@@ -56,6 +56,7 @@ public struct Clip: Identifiable, Codable, Equatable {
     public var imageDuration: TimeInterval
     public var isLivePhoto: Bool
     public var livePhotoAsVideo: Bool?
+    public var livePhotoMuted: Bool?
     public var createdAt: Date
     public var updatedAt: Date
     public var isPlaceholder: Bool
@@ -76,6 +77,7 @@ public struct Clip: Identifiable, Codable, Equatable {
         case imageDuration
         case isLivePhoto
         case livePhotoAsVideo
+        case livePhotoMuted
         case createdAt
         case updatedAt
         case isPlaceholder
@@ -97,6 +99,7 @@ public struct Clip: Identifiable, Codable, Equatable {
         imageDuration: TimeInterval = 4.0,
         isLivePhoto: Bool = false,
         livePhotoAsVideo: Bool? = nil,
+        livePhotoMuted: Bool? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         isPlaceholder: Bool = false
@@ -116,6 +119,7 @@ public struct Clip: Identifiable, Codable, Equatable {
         self.imageDuration = imageDuration
         self.isLivePhoto = isLivePhoto
         self.livePhotoAsVideo = livePhotoAsVideo
+        self.livePhotoMuted = livePhotoMuted
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isPlaceholder = isPlaceholder
@@ -138,6 +142,7 @@ public struct Clip: Identifiable, Codable, Equatable {
         imageDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .imageDuration) ?? 4.0
         isLivePhoto = try container.decodeIfPresent(Bool.self, forKey: .isLivePhoto) ?? false
         livePhotoAsVideo = try container.decodeIfPresent(Bool.self, forKey: .livePhotoAsVideo)
+        livePhotoMuted = try container.decodeIfPresent(Bool.self, forKey: .livePhotoMuted)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .isPlaceholder) ?? false
@@ -160,6 +165,7 @@ public struct Clip: Identifiable, Codable, Equatable {
         if imageDuration != 4.0 { try container.encode(imageDuration, forKey: .imageDuration) }
         if isLivePhoto { try container.encode(true, forKey: .isLivePhoto) }
         if let override = livePhotoAsVideo { try container.encode(override, forKey: .livePhotoAsVideo) }
+        if let muted = livePhotoMuted { try container.encode(muted, forKey: .livePhotoMuted) }
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         if isPlaceholder {
@@ -335,6 +341,12 @@ public struct Clip: Identifiable, Codable, Equatable {
     public func shouldPlayAsLiveVideo(tapeDefault: Bool) -> Bool {
         guard isLivePhoto else { return false }
         return livePhotoAsVideo ?? tapeDefault
+    }
+
+    /// Whether this Live Photo clip's audio should be muted, given the tape-level default.
+    public func shouldMuteLiveAudio(tapeDefault: Bool) -> Bool {
+        guard isLivePhoto else { return false }
+        return livePhotoMuted ?? tapeDefault
     }
 
     public var isLocalVideo: Bool {

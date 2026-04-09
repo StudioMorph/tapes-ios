@@ -90,7 +90,6 @@ struct TapesList: View {
     private func tapeCards(tapeWidth: CGFloat, isLandscape: Bool) -> some View {
         ForEach($tapes) { $tape in
             let tapeID = tape.id
-            let currentTape = tape
 
             let titleEditingConfig: TapeCardView.TitleEditingConfig? = {
                 guard editingTapeID == tapeID else { return nil }
@@ -109,11 +108,11 @@ struct TapesList: View {
                 tapeID: tapeID,
                 tapeWidth: tapeWidth,
                 isLandscape: isLandscape,
-                onSettings: { onSettings(currentTape) },
-                onPlay: { onPlay(currentTape) },
-                onThumbnailDelete: { clip in onThumbnailDelete(currentTape, clip) },
+                onSettings: { onSettings(tape) },
+                onPlay: { onPlay(tape) },
+                onThumbnailDelete: { clip in onThumbnailDelete(tape, clip) },
                 onCameraCapture: onCameraCapture,
-                onTitleFocusRequest: { onTitleFocusRequest(tapeID, currentTape.title) },
+                onTitleFocusRequest: { onTitleFocusRequest(tapeID, tape.title) },
                 titleEditingConfig: titleEditingConfig
             )
             .background(Tokens.Colors.primaryBackground)

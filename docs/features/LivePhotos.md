@@ -11,15 +11,19 @@ The feature is controlled at two levels:
 - **Tape-level default** — a toggle in Tape Settings that applies to every Live Photo in the tape.
 - **Clip-level override** — a toggle in Image Settings (only visible for Live Photo clips) that overrides the tape default for that individual clip.
 
+### Mute Sound
+
+Live Photo videos include ambient audio. A "Mute sound" toggle is available at both the tape and clip level, mirroring the play-as-video toggle hierarchy. When muted, the audio track from the paired video is stripped during composition building, so neither playback nor export includes sound for that clip. The mute toggle is disabled when Live Photo video playback is off (since there is no video audio to mute).
+
 ## Key UI Components
 
 ### Tape Settings (`TapeSettingsView`)
 
-A "Live Photos" section with an inline toggle and explanatory text. When ON (default), all Live Photos in the tape play as short videos.
+A "Live Photos" section with two toggles: "Play as video" (on by default) and "Mute sound" (on by default). The mute toggle is disabled and dimmed when video playback is off.
 
 ### Image Settings (`ImageClipSettingsView`)
 
-For Live Photo clips only, a "Live Photo" section appears at the top with its own toggle. When the toggle is ON, the motion style and duration sections are greyed out and disabled (since the clip plays as a video, not a still image). The per-clip override is stored as `nil` when it matches the tape default (to inherit future changes).
+For Live Photo clips only, a "Live Photo" section appears at the top with "Play as video" and "Mute sound" toggles. When video playback is ON, the motion style and duration sections are greyed out and disabled. Both per-clip overrides are stored as `nil` when they match the tape default (to inherit future changes).
 
 ### Carousel Badge (`ClipInfoBadge`)
 
@@ -31,8 +35,11 @@ Live Photo clips show the `livephoto` SF Symbol and "Live Photo" text instead of
 
 - **`Clip.isLivePhoto: Bool`** — set during import when the `PHAsset` has `.photoLive` media subtype.
 - **`Clip.livePhotoAsVideo: Bool?`** — per-clip override (`nil` = use tape default).
-- **`Clip.shouldPlayAsLiveVideo(tapeDefault:)`** — computed helper that resolves the effective setting.
+- **`Clip.livePhotoMuted: Bool?`** — per-clip mute override (`nil` = use tape default).
+- **`Clip.shouldPlayAsLiveVideo(tapeDefault:)`** — computed helper that resolves the effective video setting.
+- **`Clip.shouldMuteLiveAudio(tapeDefault:)`** — computed helper that resolves the effective mute setting.
 - **`Tape.livePhotosAsVideo: Bool`** — tape-level default (default: `true`).
+- **`Tape.livePhotosMuted: Bool`** — tape-level mute default (default: `true`).
 
 ### Import (`MediaImportCoordinator` → `MediaProviderLoader`)
 
@@ -42,7 +49,7 @@ During `resolvePickedMedia`, the `PHAsset.mediaSubtypes` is checked for `.photoL
 
 `resolveAsset(for:)` checks `clip.shouldPlayAsLiveVideo(tapeDefault:)`. When true, it calls `extractLivePhotoVideo(assetIdentifier:)` which uses `PHAssetResourceManager` to write the `.pairedVideo` resource to a temporary file, returning an `AVURLAsset` that slots into the existing video pipeline.
 
-The builder receives the tape-level `livePhotosAsVideo` flag via its initialiser (set by `TapeExporter` and `TapePlayerViewModel`).
+The builder receives both `livePhotosAsVideo` and `livePhotosMuted` tape-level flags via its initialiser (set by `TapeExporter` and `TapePlayerViewModel`). When a clip is muted, the audio track is excluded from the `ClipAssetContext`, so no audio is inserted into the composition for that clip.
 
 ### Video Extraction (`MediaProviderLoader`)
 
@@ -60,4 +67,8 @@ The builder receives the tape-level `livePhotosAsVideo` flag via its initialiser
 - Export with Live Photos as video and verify the paired video appears in the final output.
 - Verify the carousel badge shows "Live Photo" icon and text for Live Photo clips.
 - Test with iCloud-only Live Photos (network access is enabled on the resource request).
-- Verify backward compatibility — existing tapes without the new fields should decode with `isLivePhoto = false` and `livePhotosAsVideo = true`.
+- Toggle mute ON — verify no audio during playback and in exported video for Live Photo clips.
+- Toggle mute OFF — verify audio is present.
+- Override mute per-clip and verify it acts independently of the tape default.
+- Verify the mute toggle is disabled when video playback is off.
+- Verify backward compatibility — existing tapes without the new fields should decode with `isLivePhoto = false`, `livePhotosAsVideo = true`, and `livePhotosMuted = true`.

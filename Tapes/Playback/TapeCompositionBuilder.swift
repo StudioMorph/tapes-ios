@@ -14,18 +14,21 @@ struct TapeCompositionBuilder {
     let imageConfiguration: ImageClipConfiguration
     let videoDeliveryMode: PHVideoRequestOptionsDeliveryMode
     let livePhotosAsVideo: Bool
+    let livePhotosMuted: Bool
     let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
 
     init(
         assetResolver: @escaping AssetResolver = TapeCompositionBuilder.defaultAssetResolver,
         imageConfiguration: ImageClipConfiguration = .default,
         videoDeliveryMode: PHVideoRequestOptionsDeliveryMode = .highQualityFormat,
-        livePhotosAsVideo: Bool = true
+        livePhotosAsVideo: Bool = true,
+        livePhotosMuted: Bool = true
     ) {
         self.assetResolver = assetResolver
         self.imageConfiguration = imageConfiguration
         self.videoDeliveryMode = videoDeliveryMode
         self.livePhotosAsVideo = livePhotosAsVideo
+        self.livePhotosMuted = livePhotosMuted
     }
 
     // MARK: - Nested Types
@@ -422,6 +425,20 @@ struct TapeCompositionBuilder {
         } else {
             playerItem = AVPlayerItem(asset: context.asset)
         }
+
+        if clip.shouldMuteLiveAudio(tapeDefault: livePhotosMuted) {
+            let audioTracks = try await playerItem.asset.loadTracks(withMediaType: .audio)
+            if !audioTracks.isEmpty {
+                let audioMix = AVMutableAudioMix()
+                audioMix.inputParameters = audioTracks.map { track in
+                    let params = AVMutableAudioMixInputParameters(track: track)
+                    params.setVolume(0, at: .zero)
+                    return params
+                }
+                playerItem.audioMix = audioMix
+            }
+        }
+
         return PlayerComposition(playerItem: playerItem, timeline: singleTimeline)
     }
 
@@ -504,6 +521,8 @@ struct TapeCompositionBuilder {
                 videoTrackMap[segment.clipIndex] = videoTrack
             }
 
+            let isClipMuted = clip.shouldMuteLiveAudio(tapeDefault: livePhotosMuted)
+
             if assetContext.hasAudio,
                let sourceAudioTrack = assetContext.audioTrack,
                trackIndex < audioTracks.count {
@@ -513,16 +532,21 @@ struct TapeCompositionBuilder {
 
                 let key = audioTrack.trackID
                 let params = audioMixParameters[key] ?? AVMutableAudioMixInputParameters(track: audioTrack)
-                params.setVolume(1.0, at: resolvedTimeRange.start)
 
-                if let incoming = segment.incomingTransition, incoming.style == .crossfade {
-                    let rampRange = CMTimeRange(start: resolvedTimeRange.start, duration: incoming.duration)
-                    params.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: rampRange)
-                }
-                if let outgoing = segment.outgoingTransition, outgoing.style == .crossfade {
-                    let rampStart = CMTimeSubtract(CMTimeAdd(resolvedTimeRange.start, resolvedTimeRange.duration), outgoing.duration)
-                    let rampRange = CMTimeRange(start: rampStart, duration: outgoing.duration)
-                    params.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: rampRange)
+                if isClipMuted {
+                    params.setVolume(0, at: resolvedTimeRange.start)
+                } else {
+                    params.setVolume(1.0, at: resolvedTimeRange.start)
+
+                    if let incoming = segment.incomingTransition, incoming.style == .crossfade {
+                        let rampRange = CMTimeRange(start: resolvedTimeRange.start, duration: incoming.duration)
+                        params.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: rampRange)
+                    }
+                    if let outgoing = segment.outgoingTransition, outgoing.style == .crossfade {
+                        let rampStart = CMTimeSubtract(CMTimeAdd(resolvedTimeRange.start, resolvedTimeRange.duration), outgoing.duration)
+                        let rampRange = CMTimeRange(start: rampStart, duration: outgoing.duration)
+                        params.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: rampRange)
+                    }
                 }
 
                 audioMixParameters[key] = params
@@ -611,8 +635,9 @@ struct TapeCompositionBuilder {
                         let naturalSize = try await videoTrack.load(.naturalSize)
                         let preferredTransform = try await videoTrack.load(.preferredTransform)
                         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-                        let audioTrack = audioTracks.first
-                        let hasAudio = !audioTracks.isEmpty
+                        let shouldMute = clip.shouldMuteLiveAudio(tapeDefault: self.livePhotosMuted)
+                        let audioTrack = shouldMute ? nil : audioTracks.first
+                        let hasAudio = audioTrack != nil
                         return ClipAssetContext(
                             index: index,
                             clip: clip,
