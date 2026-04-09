@@ -8,16 +8,47 @@ struct CircularProgressRing: View {
     var size: CGFloat = 56
     var trackColor: Color = Color.gray.opacity(0.3)
     var ringColor: Color = Tokens.Colors.systemRed
+    var indeterminateWhenZero: Bool = false
+
+    @State private var isSpinning = false
+    @State private var arcLength: Double = 0.25
+    @State private var wasIndeterminate = false
+
+    private var isIndeterminate: Bool { indeterminateWhenZero && progress == 0 }
 
     var body: some View {
         ZStack {
             Circle()
                 .stroke(trackColor, lineWidth: lineWidth)
 
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(ringColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
+            if isIndeterminate {
+                Circle()
+                    .trim(from: 0, to: arcLength)
+                    .stroke(ringColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(isSpinning ? 270 : -90))
+                    .onAppear {
+                        wasIndeterminate = true
+                        withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
+                            isSpinning = true
+                        }
+                    }
+            } else {
+                Circle()
+                    .trim(from: 0, to: wasIndeterminate && progress > 0 ? progress : progress)
+                    .stroke(ringColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .onAppear {
+                        if wasIndeterminate {
+                            isSpinning = false
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                arcLength = 0
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                wasIndeterminate = false
+                            }
+                        }
+                    }
+            }
         }
         .frame(width: size, height: size)
         .animation(.easeInOut(duration: 0.3), value: progress)
@@ -46,7 +77,8 @@ struct ExportProgressDialog: View {
                         progress: coordinator.progress,
                         lineWidth: 3.5,
                         size: 56,
-                        ringColor: .green
+                        ringColor: .green,
+                        indeterminateWhenZero: true
                     )
 
                     Image(systemName: "arrow.down")
