@@ -426,16 +426,13 @@ struct TapeCompositionBuilder {
             playerItem = AVPlayerItem(asset: context.asset)
         }
 
-        let isMuted = clip.shouldMuteLiveAudio(tapeDefault: livePhotosMuted)
-        let singleClipVol = isMuted ? Float(0) : Float(clip.volume ?? 1.0)
-
-        if singleClipVol < 1.0 {
+        if clip.shouldMuteLiveAudio(tapeDefault: livePhotosMuted) {
             let audioTracks = try await playerItem.asset.loadTracks(withMediaType: .audio)
             if !audioTracks.isEmpty {
                 let audioMix = AVMutableAudioMix()
                 audioMix.inputParameters = audioTracks.map { track in
                     let params = AVMutableAudioMixInputParameters(track: track)
-                    params.setVolume(singleClipVol, at: .zero)
+                    params.setVolume(0, at: .zero)
                     return params
                 }
                 playerItem.audioMix = audioMix

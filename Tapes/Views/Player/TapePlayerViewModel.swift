@@ -33,10 +33,12 @@ final class TapePlayerViewModel: ObservableObject {
     @Published private(set) var loadError: String?
     @Published private(set) var skippedClipCount: Int = 0
     @Published private(set) var showSkipToast = false
+    @Published var clipVolume: Double = 1.0
+    @Published var clipMusicVolume: Double = 0.3
 
     // MARK: - Input
 
-    let tape: Tape
+    var tape: Tape
     var viewportSize: CGSize = UIScreen.main.bounds.size
 
     // MARK: - Computed Properties
@@ -422,7 +424,7 @@ final class TapePlayerViewModel: ObservableObject {
         currentClipIndex = index
         isFinished = false
         updateClipTime(with: .zero)
-        updateMusicVolumeForClip(at: index)
+        updateVolumeForClip(at: index)
     }
 
     private func loadClipComposition(
@@ -596,7 +598,7 @@ final class TapePlayerViewModel: ObservableObject {
 
         activeSlot = newSlot
         currentClipIndex = nextIndex
-        updateMusicVolumeForClip(at: nextIndex)
+        updateVolumeForClip(at: nextIndex)
         isTransitioning = false
         transitionProgress = 0
         clipDuration = slotClipDuration[newSlot] ?? 0
@@ -607,7 +609,7 @@ final class TapePlayerViewModel: ObservableObject {
         player(for: oldSlot)?.volume = 1.0
         player(for: oldSlot)?.allowsExternalPlayback = false
         player(for: oldSlot)?.usesExternalPlaybackWhileExternalScreenIsActive = false
-        player(for: newSlot)?.volume = 1.0
+        player(for: newSlot)?.volume = Float(clipVolume)
         player(for: newSlot)?.allowsExternalPlayback = true
         player(for: newSlot)?.usesExternalPlaybackWhileExternalScreenIsActive = true
 
@@ -933,12 +935,38 @@ final class TapePlayerViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Per-Clip Music Volume
+    // MARK: - Per-Clip Volume
 
-    private func updateMusicVolumeForClip(at index: Int) {
+    var hasBackgroundMusic: Bool { tape.musicMood != .none }
+
+    private func updateVolumeForClip(at index: Int) {
         guard index >= 0, index < tape.clips.count else { return }
-        let effectiveVol = Float(tape.clips[index].musicVolume ?? Double(tape.musicVolume))
-        backgroundMusic.setVolume(effectiveVol)
+        let clip = tape.clips[index]
+        clipVolume = clip.volume ?? 1.0
+        clipMusicVolume = clip.musicVolume ?? Double(tape.musicVolume)
+
+        player(for: activeSlot)?.volume = Float(clipVolume)
+        backgroundMusic.setVolume(Float(clipMusicVolume))
+    }
+
+    func setClipVolume(_ vol: Double) {
+        clipVolume = vol
+        player(for: activeSlot)?.volume = Float(vol)
+        persistCurrentClipVolumes()
+    }
+
+    func setClipMusicVolume(_ vol: Double) {
+        clipMusicVolume = vol
+        backgroundMusic.setVolume(Float(vol))
+        persistCurrentClipVolumes()
+    }
+
+    private func persistCurrentClipVolumes() {
+        guard currentClipIndex >= 0, currentClipIndex < tape.clips.count else { return }
+        tape.clips[currentClipIndex].volume = clipVolume < 0.99 ? clipVolume : nil
+        let tapeDefault = Double(tape.musicVolume)
+        tape.clips[currentClipIndex].musicVolume = abs(clipMusicVolume - tapeDefault) > 0.01 ? clipMusicVolume : nil
+        clipCache.removeValue(forKey: currentClipIndex)
     }
 
     // MARK: - Clip Event Handlers

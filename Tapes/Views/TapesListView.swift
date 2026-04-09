@@ -143,6 +143,8 @@ struct TapesListView: View {
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {
                 tapeToPreview = nil
+            }, onSave: { updatedTape in
+                tapesStore.updateTape(updatedTape)
             })
         }
         .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {

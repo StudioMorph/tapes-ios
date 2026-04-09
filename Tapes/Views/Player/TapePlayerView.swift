@@ -6,10 +6,12 @@ struct TapePlayerView: View {
     @StateObject private var vm: TapePlayerViewModel
     @Environment(\.scenePhase) private var scenePhase
     let onDismiss: () -> Void
+    let onSave: ((Tape) -> Void)?
 
-    init(tape: Tape, onDismiss: @escaping () -> Void) {
+    init(tape: Tape, onDismiss: @escaping () -> Void, onSave: ((Tape) -> Void)? = nil) {
         _vm = StateObject(wrappedValue: TapePlayerViewModel(tape: tape))
         self.onDismiss = onDismiss
+        self.onSave = onSave
     }
 
     // MARK: - Body
@@ -85,7 +87,7 @@ struct TapePlayerView: View {
                     tapeName: vm.tape.title,
                     currentClipIndex: vm.currentClipIndex,
                     totalClips: vm.totalClips,
-                    onDismiss: { vm.shutdown(); onDismiss() }
+                    onDismiss: { dismissPlayer() }
                 )
                 .padding(.top, 8)
                 .padding(.bottom, 20)
@@ -103,6 +105,29 @@ struct TapePlayerView: View {
                 }
 
                 Spacer()
+
+                HStack(alignment: .bottom, spacing: Tokens.Spacing.m) {
+                    Spacer()
+
+                    VerticalVolumeSlider(
+                        value: Binding(
+                            get: { vm.clipVolume },
+                            set: { vm.setClipVolume($0) }
+                        ),
+                        icon: "speaker.wave.2.fill"
+                    )
+
+                    if vm.hasBackgroundMusic {
+                        VerticalVolumeSlider(
+                            value: Binding(
+                                get: { vm.clipMusicVolume },
+                                set: { vm.setClipMusicVolume($0) }
+                            ),
+                            icon: "music.note"
+                        )
+                    }
+                }
+                .padding(.horizontal, Tokens.Spacing.l)
 
                 VStack(spacing: 32) {
                     PlayerProgressBar(
@@ -160,8 +185,16 @@ struct TapePlayerView: View {
             isLoading: vm.isLoading,
             loadError: vm.loadError,
             onRetry: { Task { await vm.retryLoading() } },
-            onDismiss: { vm.shutdown(); onDismiss() }
+            onDismiss: { dismissPlayer() }
         )
+    }
+
+    // MARK: - Dismiss
+
+    private func dismissPlayer() {
+        onSave?(vm.tape)
+        vm.shutdown()
+        onDismiss()
     }
 
     // MARK: - Swipe Gesture
