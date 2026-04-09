@@ -3,7 +3,7 @@ import AVFoundation
 
 struct ClipTrimView: View {
     @Binding var clip: Clip
-    let hasBackgroundMusic: Bool
+    let tape: Tape
     let onDismiss: () -> Void
     let onSave: (Clip) -> Void
 
@@ -22,6 +22,9 @@ struct ClipTrimView: View {
     @State private var isDragging = false
     @State private var videoNaturalSize: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
+    @StateObject private var musicPlayer = BackgroundMusicPlayer()
+
+    private var hasBackgroundMusic: Bool { tape.musicMood != .none }
 
     private var totalDuration: TimeInterval {
         assetDuration > 0 ? assetDuration : clip.duration
@@ -45,9 +48,9 @@ struct ClipTrimView: View {
         return videoIsLandscape == viewportIsLandscape ? .resizeAspectFill : .resizeAspect
     }
 
-    init(clip: Binding<Clip>, hasBackgroundMusic: Bool, onDismiss: @escaping () -> Void, onSave: @escaping (Clip) -> Void) {
+    init(clip: Binding<Clip>, tape: Tape, onDismiss: @escaping () -> Void, onSave: @escaping (Clip) -> Void) {
         self._clip = clip
-        self.hasBackgroundMusic = hasBackgroundMusic
+        self.tape = tape
         self.onDismiss = onDismiss
         self.onSave = onSave
         self._trimStart = State(initialValue: clip.wrappedValue.trimStart)
@@ -95,9 +98,13 @@ struct ClipTrimView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .task { await loadAsset() }
+        .task { await prepareMusic() }
         .onDisappear { cleanup() }
         .onChange(of: clipVolume) { _, newVol in
             player?.volume = Float(newVol)
+        }
+        .onChange(of: clipMusicVolume) { _, newVol in
+            musicPlayer.setVolume(Float(newVol))
         }
     }
 
@@ -241,12 +248,24 @@ struct ClipTrimView: View {
         }
     }
 
+    // MARK: - Background Music
+
+    private func prepareMusic() async {
+        guard hasBackgroundMusic else { return }
+        await musicPlayer.prepare(
+            mood: tape.musicMood,
+            tapeID: tape.id,
+            volume: Float(clipMusicVolume)
+        )
+    }
+
     // MARK: - Playback
 
     private func togglePlayback() {
         guard let player else { return }
         if isPlaying {
             player.pause()
+            musicPlayer.syncPause()
             isPlaying = false
         } else {
             if currentTime >= trimEndTime {
@@ -254,6 +273,7 @@ struct ClipTrimView: View {
             }
             player.volume = Float(clipVolume)
             player.play()
+            musicPlayer.syncPlay()
             isPlaying = true
         }
     }
@@ -261,6 +281,7 @@ struct ClipTrimView: View {
     private func pauseIfPlaying() {
         guard isPlaying else { return }
         player?.pause()
+        musicPlayer.syncPause()
         isPlaying = false
     }
 
@@ -280,6 +301,7 @@ struct ClipTrimView: View {
             currentTime = t
             if t >= trimEndTime && isPlaying {
                 player.pause()
+                musicPlayer.syncPause()
                 isPlaying = false
                 seekTo(trimStart)
             }
@@ -291,6 +313,7 @@ struct ClipTrimView: View {
             player.removeTimeObserver(observer)
         }
         player?.pause()
+        musicPlayer.syncStop()
         timeObserver = nil
     }
 
