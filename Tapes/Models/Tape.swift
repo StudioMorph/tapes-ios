@@ -145,6 +145,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var backgroundMusicVolume: Double?
     public var exportOrientation: ExportOrientation
     public var blurExportBackground: Bool
+    public var livePhotosAsVideo: Bool
 
     public init(
         id: UUID = UUID(),
@@ -162,7 +163,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         backgroundMusicMood: String? = nil,
         backgroundMusicVolume: Double? = nil,
         exportOrientation: ExportOrientation = .auto,
-        blurExportBackground: Bool = true
+        blurExportBackground: Bool = true,
+        livePhotosAsVideo: Bool = true
     ) {
         self.id = id
         self.title = title
@@ -180,6 +182,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.backgroundMusicVolume = backgroundMusicVolume
         self.exportOrientation = exportOrientation
         self.blurExportBackground = blurExportBackground
+        self.livePhotosAsVideo = livePhotosAsVideo
     }
     
     // MARK: - Coding Keys
@@ -191,6 +194,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case backgroundMusicMood, backgroundMusicVolume
         case exportOrientation
         case blurExportBackground
+        case livePhotosAsVideo
     }
     
     // MARK: - Custom Decoder for Backward Compatibility
@@ -215,6 +219,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         backgroundMusicVolume = try container.decodeIfPresent(Double.self, forKey: .backgroundMusicVolume)
         exportOrientation = try container.decodeIfPresent(ExportOrientation.self, forKey: .exportOrientation) ?? .auto
         blurExportBackground = try container.decodeIfPresent(Bool.self, forKey: .blurExportBackground) ?? true
+        livePhotosAsVideo = try container.decodeIfPresent(Bool.self, forKey: .livePhotosAsVideo) ?? true
     }
     
     // MARK: - Computed Properties

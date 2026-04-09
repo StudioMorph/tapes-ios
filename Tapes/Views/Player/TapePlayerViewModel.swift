@@ -63,7 +63,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     // MARK: - Private State
 
-    private let builder = TapeCompositionBuilder()
+    private let builder: TapeCompositionBuilder
     private var timeline: TapeCompositionBuilder.Timeline?
     private var transitionTask: Task<Void, Never>?
     private var volumeTask: Task<Void, Never>?
@@ -107,6 +107,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     init(tape: Tape) {
         self.tape = tape
+        self.builder = TapeCompositionBuilder(livePhotosAsVideo: tape.livePhotosAsVideo)
     }
 
     // MARK: - Public API

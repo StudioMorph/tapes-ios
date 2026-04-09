@@ -8,7 +8,16 @@ struct ImageClipSettingsView: View {
 
     @State private var selectedMotion: MotionStyle
     @State private var duration: Double
+    @State private var livePhotoAsVideo: Bool
     @State private var hasChanges = false
+
+    private var clip: Clip? {
+        tape.clips.first(where: { $0.id == clipID })
+    }
+
+    private var isLivePhoto: Bool {
+        clip?.isLivePhoto ?? false
+    }
 
     init(tape: Binding<Tape>, clipID: UUID, onDismiss: @escaping () -> Void) {
         self._tape = tape
@@ -18,9 +27,12 @@ struct ImageClipSettingsView: View {
         if let clip = tape.wrappedValue.clips.first(where: { $0.id == clipID }) {
             self._selectedMotion = State(initialValue: clip.motionStyle)
             self._duration = State(initialValue: clip.imageDuration)
+            let tapeDefault = tape.wrappedValue.livePhotosAsVideo
+            self._livePhotoAsVideo = State(initialValue: clip.livePhotoAsVideo ?? tapeDefault)
         } else {
             self._selectedMotion = State(initialValue: .kenBurns)
             self._duration = State(initialValue: 4.0)
+            self._livePhotoAsVideo = State(initialValue: tape.wrappedValue.livePhotosAsVideo)
         }
     }
 
@@ -28,8 +40,15 @@ struct ImageClipSettingsView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.xl) {
+                    if isLivePhoto {
+                        livePhotoSection
+                    }
                     motionSection
+                        .opacity(isLivePhoto && livePhotoAsVideo ? 0.4 : 1)
+                        .disabled(isLivePhoto && livePhotoAsVideo)
                     durationSection
+                        .opacity(isLivePhoto && livePhotoAsVideo ? 0.4 : 1)
+                        .disabled(isLivePhoto && livePhotoAsVideo)
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
@@ -56,6 +75,40 @@ struct ImageClipSettingsView: View {
     }
 
     // MARK: - Sections
+
+    private var livePhotoSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+            SectionHeader(title: "Live Photo")
+
+            HStack {
+                Image(systemName: "livephoto")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundColor(Tokens.Colors.primaryText)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+                    Text("Play as video")
+                        .font(Tokens.Typography.headline)
+                        .foregroundColor(Tokens.Colors.primaryText)
+
+                    Text("Use the Live Photo motion instead of a still image")
+                        .font(Tokens.Typography.caption)
+                        .foregroundColor(Tokens.Colors.secondaryText)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $livePhotoAsVideo)
+                    .labelsHidden()
+                    .tint(Color(red: 0, green: 0.533, blue: 1))
+                    .onChange(of: livePhotoAsVideo) { _ in hasChanges = true }
+            }
+            .padding(.vertical, Tokens.Spacing.m)
+            .padding(.horizontal, Tokens.Spacing.m)
+            .background(Tokens.Colors.secondaryBackground)
+            .cornerRadius(Tokens.Radius.card)
+        }
+    }
 
     private var motionSection: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
@@ -95,6 +148,10 @@ struct ImageClipSettingsView: View {
         clip.motionStyle = selectedMotion
         clip.imageDuration = duration
         clip.duration = duration
+        if clip.isLivePhoto {
+            let tapeDefault = tape.livePhotosAsVideo
+            clip.livePhotoAsVideo = (livePhotoAsVideo == tapeDefault) ? nil : livePhotoAsVideo
+        }
         clip.updatedAt = Date()
         tape.updateClip(clip)
         tapesStore.updateTape(tape)

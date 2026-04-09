@@ -121,16 +121,27 @@ struct ClipThumbnailView: View {
     private var isJiggling: Bool {
         tapeStore.jigglingTapeID == tapeID
     }
+
+    private var tapeLivePhotosAsVideo: Bool {
+        tapeStore.tapes.first(where: { $0.id == tapeID })?.livePhotosAsVideo ?? true
+    }
     
+    private var livePhotoState: String {
+        guard clip.isLivePhoto else { return "" }
+        let effective = clip.shouldPlayAsLiveVideo(tapeDefault: tapeLivePhotosAsVideo)
+        return "-lp\(effective)"
+    }
+
     var body: some View {
-        ResolvedClipThumbnail(clip: clip, isJiggling: isJiggling)
-            .id("clip-\(clip.id)-\(clip.hasThumbnail)-\(clip.updatedAt.timeIntervalSinceReferenceDate)")
+        ResolvedClipThumbnail(clip: clip, isJiggling: isJiggling, livePhotosAsVideo: tapeLivePhotosAsVideo)
+            .id("clip-\(clip.id)-\(clip.hasThumbnail)-\(clip.updatedAt.timeIntervalSinceReferenceDate)\(livePhotoState)")
     }
 }
 
 private struct ResolvedClipThumbnail: View {
     let clip: Clip
     var isJiggling: Bool = false
+    var livePhotosAsVideo: Bool = true
 
     var body: some View {
         ZStack {
@@ -153,7 +164,7 @@ private struct ResolvedClipThumbnail: View {
             }
             
             if !isJiggling {
-                ClipInfoBadge(clip: clip)
+                ClipInfoBadge(clip: clip, livePhotosAsVideo: livePhotosAsVideo)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -182,9 +193,20 @@ struct ClipBadge: View {
 
 struct ClipInfoBadge: View {
     let clip: Clip
+    var livePhotosAsVideo: Bool = true
+
+    private var isLiveVideoActive: Bool {
+        clip.shouldPlayAsLiveVideo(tapeDefault: livePhotosAsVideo)
+    }
 
     private var icon: String {
-        clip.clipType == .image ? "photo" : "play.rectangle"
+        if clip.isLivePhoto { return "livephoto" }
+        return clip.clipType == .image ? "photo" : "play.rectangle"
+    }
+
+    private var iconColor: Color {
+        if clip.isLivePhoto && isLiveVideoActive { return .yellow }
+        return .white
     }
 
     private var displayDuration: TimeInterval {
@@ -198,11 +220,17 @@ struct ClipInfoBadge: View {
         HStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(iconColor)
 
-            Text(formatDuration(displayDuration))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white)
+            if clip.isLivePhoto && isLiveVideoActive {
+                Text("Live Photo")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+            } else {
+                Text(formatDuration(displayDuration))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+            }
 
             Image(systemName: "chevron.down")
                 .font(.system(size: 9, weight: .bold))

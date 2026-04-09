@@ -13,16 +13,19 @@ struct TapeCompositionBuilder {
     let assetResolver: AssetResolver
     let imageConfiguration: ImageClipConfiguration
     let videoDeliveryMode: PHVideoRequestOptionsDeliveryMode
+    let livePhotosAsVideo: Bool
     let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
 
     init(
         assetResolver: @escaping AssetResolver = TapeCompositionBuilder.defaultAssetResolver,
         imageConfiguration: ImageClipConfiguration = .default,
-        videoDeliveryMode: PHVideoRequestOptionsDeliveryMode = .highQualityFormat
+        videoDeliveryMode: PHVideoRequestOptionsDeliveryMode = .highQualityFormat,
+        livePhotosAsVideo: Bool = true
     ) {
         self.assetResolver = assetResolver
         self.imageConfiguration = imageConfiguration
         self.videoDeliveryMode = videoDeliveryMode
+        self.livePhotosAsVideo = livePhotosAsVideo
     }
 
     // MARK: - Nested Types
@@ -324,7 +327,8 @@ struct TapeCompositionBuilder {
             throw BuilderError.assetUnavailable(clipID: UUID())
         }
         let clip = tape.clips[clipIndex]
-        if clip.clipType == .image {
+        let isLiveVideo = clip.shouldPlayAsLiveVideo(tapeDefault: livePhotosAsVideo)
+        if clip.clipType == .image && !isLiveVideo {
             let image = try await loadImage(for: clip)
             let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
             let duration = CMTime(seconds: durationSeconds, preferredTimescale: 600)

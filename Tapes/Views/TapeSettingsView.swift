@@ -30,11 +30,14 @@ struct TapeSettingsView: View {
                     transitionSection
                         .accessibilitySortPriority(1)
 
-                    mergeAndSaveSection
+                    livePhotosSection
                         .accessibilitySortPriority(2)
 
-                    destructiveActionSection
+                    mergeAndSaveSection
                         .accessibilitySortPriority(3)
+
+                    destructiveActionSection
+                        .accessibilitySortPriority(4)
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
@@ -96,6 +99,41 @@ struct TapeSettingsView: View {
         }
     }
     
+    private var livePhotosSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+            SectionHeader(title: "Live Photos")
+
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "livephoto")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Tokens.Colors.primaryText)
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+                        Text("Play as video")
+                            .font(Tokens.Typography.headline)
+                            .foregroundColor(Tokens.Colors.primaryText)
+
+                        Text("Live Photos will play as short videos instead of still images")
+                            .font(Tokens.Typography.caption)
+                            .foregroundColor(Tokens.Colors.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $tape.livePhotosAsVideo)
+                        .labelsHidden()
+                        .tint(Color(red: 0, green: 0.533, blue: 1))
+                }
+            }
+            .padding(.vertical, Tokens.Spacing.m)
+            .padding(.horizontal, Tokens.Spacing.m)
+            .background(Tokens.Colors.secondaryBackground)
+            .cornerRadius(Tokens.Radius.card)
+        }
+    }
+
     private var mergeAndSaveSection: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
             SectionHeader(title: "Merge and Save")

@@ -10,6 +10,13 @@ extension TapeCompositionBuilder {
             let asset = try await resolveVideoAsset(for: clip)
             return ResolvedAsset(asset: asset, isTemporary: false, motionEffect: nil)
         case .image:
+            if clip.shouldPlayAsLiveVideo(tapeDefault: livePhotosAsVideo),
+               let assetId = clip.assetLocalId,
+               let result = await extractLivePhotoVideo(assetIdentifier: assetId) {
+                let asset = AVURLAsset(url: result.url)
+                return ResolvedAsset(asset: asset, isTemporary: true, motionEffect: nil)
+            }
+
             let image = try await loadImage(for: clip)
             let durationSeconds = clip.duration > 0 ? clip.duration : imageConfiguration.defaultDuration
             let motionEffect = MotionEffect.from(style: clip.motionStyle)

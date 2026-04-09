@@ -110,7 +110,7 @@ class CameraCoordinator: NSObject, ObservableObject {
                     group.leave()
                 }
                 continue
-            case let .photo(image, assetIdentifier):
+            case let .photo(image, assetIdentifier, _):
                 var placeholderId: String?
                 PHPhotoLibrary.shared().performChanges({
                     let request = PHAssetChangeRequest.creationRequestForAsset(from: image)

@@ -2,6 +2,7 @@ import Foundation
 import PhotosUI
 import UniformTypeIdentifiers
 import Photos
+import AVFoundation
 import os
 
 enum MediaLoaderError: Error {
@@ -14,7 +15,7 @@ enum MediaLoaderError: Error {
 
 public enum PickedMedia {
     case video(url: URL?, duration: TimeInterval, assetIdentifier: String?)
-    case photo(image: UIImage, assetIdentifier: String?)
+    case photo(image: UIImage, assetIdentifier: String?, isLivePhoto: Bool = false)
 }
 
 private let log = Logger(subsystem: "com.studiomorph.tapes", category: "MediaPicker")
@@ -145,8 +146,9 @@ func resolvePickedMedia(from result: PHPickerResult) async throws -> PickedMedia
             let seconds = asset.duration
             return .video(url: nil, duration: seconds, assetIdentifier: assetIdentifier)
         case .image:
+            let isLive = asset.mediaSubtypes.contains(.photoLive)
             if let thumbnail = await requestThumbnail(for: asset) {
-                return .photo(image: thumbnail, assetIdentifier: assetIdentifier)
+                return .photo(image: thumbnail, assetIdentifier: assetIdentifier, isLivePhoto: isLive)
             }
         default:
             break
@@ -217,6 +219,46 @@ private func requestThumbnail(for asset: PHAsset) async -> UIImage? {
             PHImageManager.default().cancelImageRequest(reqID)
         }
         return result
+    }
+}
+
+/// Extracts the paired video component from a Live Photo asset and copies it to a temp file.
+func extractLivePhotoVideo(assetIdentifier: String) async -> (url: URL, duration: TimeInterval)? {
+    guard let asset = fetchPHAsset(localIdentifier: assetIdentifier) else { return nil }
+    guard asset.mediaSubtypes.contains(.photoLive) else { return nil }
+
+    let resources = PHAssetResource.assetResources(for: asset)
+    guard let pairedVideo = resources.first(where: { $0.type == .pairedVideo }) else {
+        log.warning("Live Photo has no paired video resource: \(assetIdentifier)")
+        return nil
+    }
+
+    let importsDir = FileManager.default.temporaryDirectory.appendingPathComponent("LivePhotoVideos", isDirectory: true)
+    try? FileManager.default.createDirectory(at: importsDir, withIntermediateDirectories: true)
+    let dest = importsDir.appendingPathComponent("\(UUID().uuidString).mov")
+
+    do {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+            PHAssetResourceManager.default().writeData(for: pairedVideo, toFile: dest, options: options) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+
+        let avAsset = AVURLAsset(url: dest)
+        let duration = try await avAsset.load(.duration)
+        let seconds = CMTimeGetSeconds(duration)
+        log.info("✅ Extracted Live Photo video: \(dest.lastPathComponent), duration: \(String(format: "%.2f", seconds))s")
+        return (url: dest, duration: seconds)
+    } catch {
+        log.error("❌ Failed to extract Live Photo video: \(error.localizedDescription)")
+        try? FileManager.default.removeItem(at: dest)
+        return nil
     }
 }
 

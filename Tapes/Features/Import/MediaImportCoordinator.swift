@@ -122,7 +122,7 @@ public class MediaImportCoordinator: ObservableObject {
             )
             clip.updatedAt = Date()
             return clip
-        case let .photo(image, assetIdentifier):
+        case let .photo(image, assetIdentifier, isLivePhoto):
             let thumbnailData = image.jpegData(compressionQuality: 0.9)
             let imageData: Data?
             if assetIdentifier == nil {
@@ -136,7 +136,8 @@ public class MediaImportCoordinator: ObservableObject {
                 imageData: imageData,
                 clipType: .image,
                 duration: Tokens.Timing.photoDefaultDuration,
-                thumbnail: thumbnailData
+                thumbnail: thumbnailData,
+                isLivePhoto: isLivePhoto
             )
             clip.updatedAt = Date()
             return clip

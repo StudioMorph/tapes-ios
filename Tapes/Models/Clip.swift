@@ -54,6 +54,8 @@ public struct Clip: Identifiable, Codable, Equatable {
     public var trimEnd: TimeInterval
     public var motionStyle: MotionStyle
     public var imageDuration: TimeInterval
+    public var isLivePhoto: Bool
+    public var livePhotoAsVideo: Bool?
     public var createdAt: Date
     public var updatedAt: Date
     public var isPlaceholder: Bool
@@ -72,6 +74,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         case trimEnd
         case motionStyle
         case imageDuration
+        case isLivePhoto
+        case livePhotoAsVideo
         case createdAt
         case updatedAt
         case isPlaceholder
@@ -91,6 +95,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         trimEnd: TimeInterval = 0,
         motionStyle: MotionStyle = .kenBurns,
         imageDuration: TimeInterval = 4.0,
+        isLivePhoto: Bool = false,
+        livePhotoAsVideo: Bool? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         isPlaceholder: Bool = false
@@ -108,6 +114,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         self.trimEnd = trimEnd
         self.motionStyle = motionStyle
         self.imageDuration = imageDuration
+        self.isLivePhoto = isLivePhoto
+        self.livePhotoAsVideo = livePhotoAsVideo
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isPlaceholder = isPlaceholder
@@ -128,6 +136,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         trimEnd = try container.decodeIfPresent(TimeInterval.self, forKey: .trimEnd) ?? 0
         motionStyle = try container.decodeIfPresent(MotionStyle.self, forKey: .motionStyle) ?? .kenBurns
         imageDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .imageDuration) ?? 4.0
+        isLivePhoto = try container.decodeIfPresent(Bool.self, forKey: .isLivePhoto) ?? false
+        livePhotoAsVideo = try container.decodeIfPresent(Bool.self, forKey: .livePhotoAsVideo)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .isPlaceholder) ?? false
@@ -148,6 +158,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         if trimEnd > 0 { try container.encode(trimEnd, forKey: .trimEnd) }
         if motionStyle != .kenBurns { try container.encode(motionStyle, forKey: .motionStyle) }
         if imageDuration != 4.0 { try container.encode(imageDuration, forKey: .imageDuration) }
+        if isLivePhoto { try container.encode(true, forKey: .isLivePhoto) }
+        if let override = livePhotoAsVideo { try container.encode(override, forKey: .livePhotoAsVideo) }
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         if isPlaceholder {
@@ -317,6 +329,12 @@ public struct Clip: Identifiable, Codable, Equatable {
         if thumbnail != nil { return true }
         let url = Self.mediaDirectory.appendingPathComponent("\(id)_thumb.jpg")
         return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// Whether this clip should play as a Live Photo video, given the tape-level default.
+    public func shouldPlayAsLiveVideo(tapeDefault: Bool) -> Bool {
+        guard isLivePhoto else { return false }
+        return livePhotoAsVideo ?? tapeDefault
     }
 
     public var isLocalVideo: Bool {

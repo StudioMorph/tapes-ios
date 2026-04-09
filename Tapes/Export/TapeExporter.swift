@@ -28,7 +28,8 @@ public final class TapeExportSession: @unchecked Sendable {
 
         let builder = TapeCompositionBuilder(
             imageConfiguration: .export,
-            videoDeliveryMode: .highQualityFormat
+            videoDeliveryMode: .highQualityFormat,
+            livePhotosAsVideo: tape.livePhotosAsVideo
         )
         let components = try await builder.buildExportComposition(for: tape)
 
