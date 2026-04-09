@@ -57,6 +57,8 @@ public struct Clip: Identifiable, Codable, Equatable {
     public var isLivePhoto: Bool
     public var livePhotoAsVideo: Bool?
     public var livePhotoMuted: Bool?
+    public var volume: Double?
+    public var musicVolume: Double?
     public var createdAt: Date
     public var updatedAt: Date
     public var isPlaceholder: Bool
@@ -78,6 +80,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         case isLivePhoto
         case livePhotoAsVideo
         case livePhotoMuted
+        case volume
+        case musicVolume
         case createdAt
         case updatedAt
         case isPlaceholder
@@ -100,6 +104,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         isLivePhoto: Bool = false,
         livePhotoAsVideo: Bool? = nil,
         livePhotoMuted: Bool? = nil,
+        volume: Double? = nil,
+        musicVolume: Double? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         isPlaceholder: Bool = false
@@ -120,6 +126,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         self.isLivePhoto = isLivePhoto
         self.livePhotoAsVideo = livePhotoAsVideo
         self.livePhotoMuted = livePhotoMuted
+        self.volume = volume
+        self.musicVolume = musicVolume
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isPlaceholder = isPlaceholder
@@ -143,6 +151,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         isLivePhoto = try container.decodeIfPresent(Bool.self, forKey: .isLivePhoto) ?? false
         livePhotoAsVideo = try container.decodeIfPresent(Bool.self, forKey: .livePhotoAsVideo)
         livePhotoMuted = try container.decodeIfPresent(Bool.self, forKey: .livePhotoMuted)
+        volume = try container.decodeIfPresent(Double.self, forKey: .volume)
+        musicVolume = try container.decodeIfPresent(Double.self, forKey: .musicVolume)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .isPlaceholder) ?? false
@@ -166,6 +176,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         if isLivePhoto { try container.encode(true, forKey: .isLivePhoto) }
         if let override = livePhotoAsVideo { try container.encode(override, forKey: .livePhotoAsVideo) }
         if let muted = livePhotoMuted { try container.encode(muted, forKey: .livePhotoMuted) }
+        if let vol = volume { try container.encode(vol, forKey: .volume) }
+        if let mVol = musicVolume { try container.encode(mVol, forKey: .musicVolume) }
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         if isPlaceholder {

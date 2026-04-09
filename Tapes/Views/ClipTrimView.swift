@@ -3,6 +3,7 @@ import AVFoundation
 
 struct ClipTrimView: View {
     @Binding var clip: Clip
+    let hasBackgroundMusic: Bool
     let onDismiss: () -> Void
     let onSave: (Clip) -> Void
 
@@ -11,12 +12,16 @@ struct ClipTrimView: View {
     @State private var assetDuration: TimeInterval = 0
     @State private var trimStart: TimeInterval
     @State private var trimEnd: TimeInterval
+    @State private var clipVolume: Double
+    @State private var clipMusicVolume: Double
     @State private var isPlaying = false
     @State private var currentTime: TimeInterval = 0
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var timeObserver: Any?
     @State private var isDragging = false
+    @State private var videoNaturalSize: CGSize = .zero
+    @State private var viewportSize: CGSize = .zero
 
     private var totalDuration: TimeInterval {
         assetDuration > 0 ? assetDuration : clip.duration
@@ -30,92 +35,144 @@ struct ClipTrimView: View {
         totalDuration - trimEnd
     }
 
-    init(clip: Binding<Clip>, onDismiss: @escaping () -> Void, onSave: @escaping (Clip) -> Void) {
+    private var videoGravity: AVLayerVideoGravity {
+        guard videoNaturalSize.width > 0, videoNaturalSize.height > 0,
+              viewportSize.width > 0, viewportSize.height > 0 else {
+            return .resizeAspect
+        }
+        let videoIsLandscape = videoNaturalSize.width > videoNaturalSize.height
+        let viewportIsLandscape = viewportSize.width > viewportSize.height
+        return videoIsLandscape == viewportIsLandscape ? .resizeAspectFill : .resizeAspect
+    }
+
+    init(clip: Binding<Clip>, hasBackgroundMusic: Bool, onDismiss: @escaping () -> Void, onSave: @escaping (Clip) -> Void) {
         self._clip = clip
+        self.hasBackgroundMusic = hasBackgroundMusic
         self.onDismiss = onDismiss
         self.onSave = onSave
         self._trimStart = State(initialValue: clip.wrappedValue.trimStart)
         self._trimEnd = State(initialValue: clip.wrappedValue.trimEnd)
+        self._clipVolume = State(initialValue: clip.wrappedValue.volume ?? 1.0)
+        self._clipMusicVolume = State(initialValue: clip.wrappedValue.musicVolume ?? 1.0)
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                videoBackground
+                    .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    videoPreview
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack {
+                    Spacer()
 
-                    HStack(spacing: Tokens.Spacing.s) {
-                        playButton
-
-                        if asset != nil, totalDuration > 0 {
-                            FrameTimelineView(
-                                asset: asset!,
-                                totalDuration: totalDuration,
-                                trimStart: $trimStart,
-                                trimEnd: $trimEnd,
-                                currentTime: $currentTime,
-                                isDragging: $isDragging,
-                                onSeek: { seekTo($0) },
-                                onDragStarted: { pauseIfPlaying() },
-                                onHandleDragEnded: { seekTo(trimStart) }
+                    bottomControls
+                        .padding(.bottom, 8)
+                        .background {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0),
+                                    .init(color: .black.opacity(0.2), location: 0.2),
+                                    .init(color: .black.opacity(0.7), location: 1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
-                            .frame(height: 56)
-                        } else {
-                            loadingPlaceholder
+                            .ignoresSafeArea()
                         }
-                    }
-                    .padding(.horizontal, Tokens.Spacing.m)
-                    .padding(.bottom, Tokens.Spacing.xl)
-                    .padding(.top, Tokens.Spacing.s)
                 }
             }
+            .navigationTitle("Trim Clip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { onDismiss() }
-                        .foregroundColor(.white)
                 }
-                ToolbarItem(placement: .principal) {
-                    Text("Trim Clip")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { save() }
-                        .fontWeight(.semibold)
-                        .foregroundColor(.yellow)
+                        .tint(.blue)
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .task { await loadAsset() }
         .onDisappear { cleanup() }
+        .onChange(of: clipVolume) { _, newVol in
+            player?.volume = Float(newVol)
+        }
+    }
+
+    // MARK: - Layer 1: Full-screen video
+
+    private var videoBackground: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color.black
+
+                if let player {
+                    TrimPlayerLayerView(player: player, videoGravity: videoGravity)
+                        .clipped()
+                } else {
+                    if loadError != nil {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.largeTitle)
+                            .foregroundColor(.gray)
+                    } else {
+                        ProgressView().tint(.white)
+                    }
+                }
+            }
+            .onAppear { viewportSize = geo.size }
+            .onChange(of: geo.size) { _, newSize in viewportSize = newSize }
+        }
+    }
+
+    // MARK: - Bottom controls
+
+    private var bottomControls: some View {
+        VStack(spacing: Tokens.Spacing.m) {
+            HStack(alignment: .bottom, spacing: Tokens.Spacing.m) {
+                Spacer()
+
+                VerticalVolumeSlider(
+                    value: $clipVolume,
+                    icon: "speaker.wave.2.fill"
+                )
+
+                if hasBackgroundMusic {
+                    VerticalVolumeSlider(
+                        value: $clipMusicVolume,
+                        icon: "music.note"
+                    )
+                }
+            }
+            .padding(.horizontal, Tokens.Spacing.l)
+
+            HStack(spacing: Tokens.Spacing.s) {
+                playButton
+
+                if asset != nil, totalDuration > 0 {
+                    FrameTimelineView(
+                        asset: asset!,
+                        totalDuration: totalDuration,
+                        trimStart: $trimStart,
+                        trimEnd: $trimEnd,
+                        currentTime: $currentTime,
+                        isDragging: $isDragging,
+                        onSeek: { seekTo($0) },
+                        onDragStarted: { pauseIfPlaying() },
+                        onHandleDragEnded: { seekTo(trimStart) }
+                    )
+                    .frame(height: 56)
+                } else {
+                    loadingPlaceholder
+                }
+            }
+            .padding(.horizontal, Tokens.Spacing.m)
+        }
+        .padding(.bottom, Tokens.Spacing.l)
     }
 
     // MARK: - Subviews
-
-    private var videoPreview: some View {
-        Group {
-            if let player {
-                TrimPlayerLayerView(player: player)
-                    .clipped()
-            } else {
-                Color.black
-                    .overlay {
-                        if loadError != nil {
-                            Image(systemName: "exclamationmark.triangle")
-                                .font(.largeTitle)
-                                .foregroundColor(.gray)
-                        } else {
-                            ProgressView().tint(.white)
-                        }
-                    }
-            }
-        }
-    }
 
     private var playButton: some View {
         Button { togglePlayback() } label: {
@@ -155,12 +212,23 @@ struct ClipTrimView: View {
             let duration = try await avAsset.load(.duration)
             let durationSeconds = CMTimeGetSeconds(duration)
 
+            let tracks = try await avAsset.loadTracks(withMediaType: .video)
+            var natSize = CGSize.zero
+            if let videoTrack = tracks.first {
+                let size = try await videoTrack.load(.naturalSize)
+                let transform = try await videoTrack.load(.preferredTransform)
+                let transformed = size.applying(transform)
+                natSize = CGSize(width: abs(transformed.width), height: abs(transformed.height))
+            }
+
             let item = AVPlayerItem(asset: avAsset)
             let newPlayer = AVPlayer(playerItem: item)
+            newPlayer.volume = Float(clipVolume)
 
             await MainActor.run {
                 self.asset = avAsset
                 self.assetDuration = durationSeconds.isNaN ? clip.duration : durationSeconds
+                self.videoNaturalSize = natSize
                 self.player = newPlayer
                 self.isLoading = false
                 self.currentTime = trimStart
@@ -184,6 +252,7 @@ struct ClipTrimView: View {
             if currentTime >= trimEndTime {
                 seekTo(trimStart)
             }
+            player.volume = Float(clipVolume)
             player.play()
             isPlaying = true
         }
@@ -230,6 +299,8 @@ struct ClipTrimView: View {
     private func save() {
         var updated = clip
         updated.setTrim(start: trimStart, end: trimEnd)
+        updated.volume = clipVolume < 0.99 ? clipVolume : nil
+        updated.musicVolume = clipMusicVolume < 0.99 ? clipMusicVolume : nil
         onSave(updated)
         onDismiss()
     }
@@ -254,17 +325,19 @@ private final class TrimPlayerContainerView: UIView {
 
 private struct TrimPlayerLayerView: UIViewRepresentable {
     let player: AVPlayer
+    let videoGravity: AVLayerVideoGravity
 
     func makeUIView(context: Context) -> TrimPlayerContainerView {
         let view = TrimPlayerContainerView()
         view.playerLayer.player = player
-        view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.videoGravity = videoGravity
         view.backgroundColor = .black
         return view
     }
 
     func updateUIView(_ uiView: TrimPlayerContainerView, context: Context) {
         uiView.playerLayer.player = player
+        uiView.playerLayer.videoGravity = videoGravity
     }
 }
 
@@ -313,14 +386,11 @@ struct FrameTimelineView: View {
             let playheadX = handleWidth + playheadFrac * trackWidth
 
             ZStack(alignment: .topLeading) {
-                // 0. Static skeleton frame (full-extent background)
                 skeletonFrame(totalWidth: totalWidth, trackHeight: trackHeight)
 
-                // 1. Thumbnail strip
                 thumbnailStrip(trackWidth: trackWidth, trackHeight: trackHeight)
                     .offset(x: handleWidth)
 
-                // 2. Dimmed overlays on excluded thumbnails
                 if leftHandleOffset > 0.5 {
                     Rectangle()
                         .fill(Color.black.opacity(0.6))
@@ -336,7 +406,6 @@ struct FrameTimelineView: View {
                         .allowsHitTesting(false)
                 }
 
-                // 3. Yellow frame borders (top + bottom between handles)
                 Rectangle()
                     .fill(Color.yellow)
                     .frame(width: barWidth, height: borderThickness)
@@ -349,12 +418,10 @@ struct FrameTimelineView: View {
                     .offset(x: selectedLeft, y: trackHeight - borderThickness)
                     .allowsHitTesting(false)
 
-                // 4. Scrub gesture overlay (captures tap/drag for playhead)
                 Color.clear
                     .contentShape(Rectangle())
                     .gesture(scrubGesture(trackWidth: trackWidth))
 
-                // 5. Playhead
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(Color.white)
                     .frame(width: 3, height: trackHeight + 10)
@@ -362,7 +429,6 @@ struct FrameTimelineView: View {
                     .offset(x: playheadX - 1.5, y: -5)
                     .allowsHitTesting(false)
 
-                // 6. Handles (on top for gesture priority)
                 trimHandleView(isLeft: true, trackHeight: trackHeight)
                     .frame(width: handleWidth, height: trackHeight)
                     .offset(x: leftHandleOffset)
@@ -373,7 +439,6 @@ struct FrameTimelineView: View {
                     .offset(x: totalWidth - handleWidth - rightHandleOffset)
                     .gesture(rightHandleDrag(trackWidth: trackWidth))
 
-                // 7. Tooltips (above timeline)
                 if isDraggingLeft {
                     timeTooltip(time: trimStart)
                         .position(x: leftHandleOffset + handleWidth / 2, y: -18)
@@ -419,7 +484,6 @@ struct FrameTimelineView: View {
     private func skeletonFrame(totalWidth: CGFloat, trackHeight: CGFloat) -> some View {
         let skeletonColor = Color.white.opacity(0.12)
         return ZStack(alignment: .topLeading) {
-            // Left handle ghost
             Rectangle()
                 .fill(skeletonColor)
                 .frame(width: handleWidth, height: trackHeight)
@@ -432,7 +496,6 @@ struct FrameTimelineView: View {
                     )
                 )
 
-            // Right handle ghost
             Rectangle()
                 .fill(skeletonColor)
                 .frame(width: handleWidth, height: trackHeight)
@@ -446,13 +509,11 @@ struct FrameTimelineView: View {
                 )
                 .offset(x: totalWidth - handleWidth)
 
-            // Top bar ghost
             Rectangle()
                 .fill(skeletonColor)
                 .frame(width: max(0, totalWidth - handleWidth * 2), height: borderThickness)
                 .offset(x: handleWidth)
 
-            // Bottom bar ghost
             Rectangle()
                 .fill(skeletonColor)
                 .frame(width: max(0, totalWidth - handleWidth * 2), height: borderThickness)

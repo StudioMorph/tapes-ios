@@ -426,13 +426,16 @@ struct TapeCompositionBuilder {
             playerItem = AVPlayerItem(asset: context.asset)
         }
 
-        if clip.shouldMuteLiveAudio(tapeDefault: livePhotosMuted) {
+        let isMuted = clip.shouldMuteLiveAudio(tapeDefault: livePhotosMuted)
+        let singleClipVol = isMuted ? Float(0) : Float(clip.volume ?? 1.0)
+
+        if singleClipVol < 1.0 {
             let audioTracks = try await playerItem.asset.loadTracks(withMediaType: .audio)
             if !audioTracks.isEmpty {
                 let audioMix = AVMutableAudioMix()
                 audioMix.inputParameters = audioTracks.map { track in
                     let params = AVMutableAudioMixInputParameters(track: track)
-                    params.setVolume(0, at: .zero)
+                    params.setVolume(singleClipVol, at: .zero)
                     return params
                 }
                 playerItem.audioMix = audioMix
@@ -533,19 +536,21 @@ struct TapeCompositionBuilder {
                 let key = audioTrack.trackID
                 let params = audioMixParameters[key] ?? AVMutableAudioMixInputParameters(track: audioTrack)
 
-                if isClipMuted {
+                let clipVol = isClipMuted ? Float(0) : Float(clip.volume ?? 1.0)
+
+                if clipVol <= 0 {
                     params.setVolume(0, at: resolvedTimeRange.start)
                 } else {
-                    params.setVolume(1.0, at: resolvedTimeRange.start)
+                    params.setVolume(clipVol, at: resolvedTimeRange.start)
 
                     if let incoming = segment.incomingTransition, incoming.style == .crossfade {
                         let rampRange = CMTimeRange(start: resolvedTimeRange.start, duration: incoming.duration)
-                        params.setVolumeRamp(fromStartVolume: 0, toEndVolume: 1, timeRange: rampRange)
+                        params.setVolumeRamp(fromStartVolume: 0, toEndVolume: clipVol, timeRange: rampRange)
                     }
                     if let outgoing = segment.outgoingTransition, outgoing.style == .crossfade {
                         let rampStart = CMTimeSubtract(CMTimeAdd(resolvedTimeRange.start, resolvedTimeRange.duration), outgoing.duration)
                         let rampRange = CMTimeRange(start: rampStart, duration: outgoing.duration)
-                        params.setVolumeRamp(fromStartVolume: 1, toEndVolume: 0, timeRange: rampRange)
+                        params.setVolumeRamp(fromStartVolume: clipVol, toEndVolume: 0, timeRange: rampRange)
                     }
                 }
 

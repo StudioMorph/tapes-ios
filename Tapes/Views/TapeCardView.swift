@@ -381,6 +381,7 @@ struct TapeCardView: View {
                let clipIndex = tape.clips.firstIndex(where: { $0.id == clipToTrim.id }) {
                 ClipTrimView(
                     clip: $tape.clips[clipIndex],
+                    hasBackgroundMusic: tape.musicMood != .none,
                     onDismiss: {
                         showingClipTrim = false
                         self.clipToTrim = nil
