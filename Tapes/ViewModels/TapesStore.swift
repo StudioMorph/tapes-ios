@@ -6,72 +6,6 @@ import UniformTypeIdentifiers
 import AVFoundation
 
 
-// MARK: - Clip Loading State Models
-
-public enum ClipLoadingPhase: Equatable {
-    case queued
-    case transferring
-    case processing
-    case ready
-    case error(message: String)
-    
-    var isTerminal: Bool {
-        switch self {
-        case .ready, .error:
-            return true
-        default:
-            return false
-        }
-    }
-}
-
-public extension ClipLoadingPhase {
-    static func == (lhs: ClipLoadingPhase, rhs: ClipLoadingPhase) -> Bool {
-        switch (lhs, rhs) {
-        case (.queued, .queued),
-             (.transferring, .transferring),
-             (.processing, .processing),
-             (.ready, .ready):
-            return true
-        case let (.error(a), .error(b)):
-            return a == b
-        default:
-            return false
-        }
-    }
-}
-
-public struct ClipLoadingState: Equatable {
-    public let phase: ClipLoadingPhase
-    public let progress: Double?
-    public let updatedAt: Date
-    
-    public init(phase: ClipLoadingPhase, progress: Double? = nil, updatedAt: Date = Date()) {
-        self.phase = phase
-        self.progress = progress
-        self.updatedAt = updatedAt
-    }
-    
-    public func updating(phase: ClipLoadingPhase, progress: Double? = nil) -> ClipLoadingState {
-        ClipLoadingState(phase: phase, progress: progress, updatedAt: Date())
-    }
-}
-
-public struct ClipBatchProgress: Equatable {
-    public let total: Int
-    public let ready: Int
-    public let failed: Int
-    
-    public var inProgress: Int {
-        total - ready - failed
-    }
-    
-    public var fractionComplete: Double {
-        guard total > 0 else { return 1.0 }
-        return Double(ready) / Double(total)
-    }
-}
-
 // MARK: - Persistence
 
 private actor TapePersistenceActor {
@@ -189,7 +123,6 @@ public class TapesStore: ObservableObject {
     @Published public var latestInsertedTapeID: UUID?
     @Published public var pendingTapeRevealID: UUID?
     @Published public var albumAssociationError: String?
-    @Published public private(set) var clipLoadingStates: [UUID: ClipLoadingState] = [:]
     @Published public var jigglingTapeID: UUID? = nil
 
     // MARK: - Floating Clip (drag-to-move)
@@ -275,12 +208,7 @@ public class TapesStore: ObservableObject {
         let task: Task<Void, Never>
     }
     
-    private struct ClipResolutionTimeoutError: Error {}
-
-    private static let clipResolutionTimeout: TimeInterval = 30
-    
     private let albumService: TapeAlbumServicing
-    private var placeholderTapeMap: [UUID: UUID] = [:]
     private var albumAssociationQueues: [UUID: AlbumAssociationQueueEntry] = [:]
     private let persistenceActor = TapePersistenceActor()
     private var saveTask: Task<Void, Never>?
@@ -390,19 +318,12 @@ public class TapesStore: ObservableObject {
     public func removeClip(from tapeId: UUID, at index: Int) {
         guard var tape = getTape(by: tapeId) else { return }
         guard index >= 0 && index < tape.clips.count else { return }
-        let clip = tape.clips[index]
-        if clip.isPlaceholder {
-            purgePlaceholderTrackingIfNeeded(for: clip.id)
-        }
         tape.removeClip(at: index)
         updateTape(tape)
     }
     
     public func removeClip(from tapeId: UUID, clip: Clip) {
         guard var tape = getTape(by: tapeId) else { return }
-        if clip.isPlaceholder {
-            purgePlaceholderTrackingIfNeeded(for: clip.id)
-        }
         tape.removeClip(clip)
         updateTape(tape)
     }
@@ -412,9 +333,6 @@ public class TapesStore: ObservableObject {
         
         if index < tape.clips.count {
             let clip = tape.clips[index]
-            if clip.isPlaceholder {
-                purgePlaceholderTrackingIfNeeded(for: clip.id)
-            }
             scheduleMediaCleanup(for: [clip.id])
             tape.clips.remove(at: index)
         }
@@ -433,9 +351,6 @@ public class TapesStore: ObservableObject {
         let assetId = clip.assetLocalId
 
         tape.clips.removeAll { $0.id == clip.id }
-        if clip.isPlaceholder {
-            purgePlaceholderTrackingIfNeeded(for: clip.id)
-        }
         scheduleMediaCleanup(for: [clip.id])
 
         if tape.clips.isEmpty {
@@ -490,154 +405,7 @@ public class TapesStore: ObservableObject {
         albumAssociationQueues[tapeID] = AlbumAssociationQueueEntry(id: entryID, task: newTask)
     }
 
-    // MARK: - Placeholder & Import Handling
-
-    @MainActor
-    @discardableResult
-    public func insertPlaceholderClips(count: Int, into tapeID: UUID, at insertionIndex: Int) -> [UUID] {
-        guard count > 0, let tapeIndex = tapes.firstIndex(where: { $0.id == tapeID }) else {
-            return []
-        }
-        var tape = tapes[tapeIndex]
-        var placeholderIDs: [UUID] = []
-        for offset in 0..<count {
-            var placeholder = Clip.placeholder()
-            let targetIndex = min(insertionIndex + offset, tape.clips.count)
-            tape.clips.insert(placeholder, at: targetIndex)
-            placeholderIDs.append(placeholder.id)
-            placeholderTapeMap[placeholder.id] = tapeID
-            clipLoadingStates[placeholder.id] = ClipLoadingState(phase: .queued)
-        }
-        tapes[tapeIndex] = tape
-        autoSave()
-        return placeholderIDs
-    }
-
-    public func processPickerResults(
-        _ results: [PHPickerResult],
-        placeholderIDs: [UUID],
-        tapeID: UUID
-    ) {
-        guard !results.isEmpty, results.count == placeholderIDs.count else { return }
-        
-        Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self else { return }
-            
-            for (placeholderID, result) in zip(placeholderIDs, results) {
-                await self.setClipLoadingState(placeholderID, phase: .transferring)
-                do {
-                    let media = try await self.resolvePickedMediaWithTimeout(
-                        result,
-                        timeout: Self.clipResolutionTimeout
-                    )
-                    await self.setClipLoadingState(placeholderID, phase: .processing)
-                    await self.applyResolvedMedia(media, to: placeholderID, tapeID: tapeID)
-                } catch {
-                    let message: String
-                    if error is ClipResolutionTimeoutError {
-                        message = "Timed out"
-                    } else {
-                        message = error.localizedDescription
-                    }
-                    await self.markPlaceholderFailure(
-                        placeholderID: placeholderID,
-                        tapeID: tapeID,
-                        error: message
-                    )
-                }
-            }
-        }
-    }
-
-    @MainActor
-    public func batchProgress(for tapeID: UUID) -> ClipBatchProgress? {
-        let activeIDs = placeholderTapeMap.filter { $0.value == tapeID }.map(\.key)
-        guard !activeIDs.isEmpty else { return nil }
-        var total = 0
-        var ready = 0
-        var failed = 0
-        for clipID in activeIDs {
-            guard let state = clipLoadingStates[clipID] else { continue }
-            total += 1
-            switch state.phase {
-            case .ready:
-                ready += 1
-            case .error:
-                failed += 1
-            default:
-                break
-            }
-        }
-        guard total > 0 else { return nil }
-        return ClipBatchProgress(total: total, ready: ready, failed: failed)
-    }
-
-    @MainActor
-    private func setClipLoadingState(_ clipID: UUID, phase: ClipLoadingPhase, progress: Double? = nil) {
-        let existing = clipLoadingStates[clipID]
-        let newState = existing?.updating(phase: phase, progress: progress) ?? ClipLoadingState(phase: phase, progress: progress)
-        clipLoadingStates[clipID] = newState
-        if phase == .ready, let tapeID = placeholderTapeMap[clipID] {
-            evaluateBatchCompletion(for: tapeID)
-        }
-    }
-
-    @MainActor
-    private func applyResolvedMedia(_ media: PickedMedia, to placeholderID: UUID, tapeID: UUID) async {
-        guard let tapeIndex = tapes.firstIndex(where: { $0.id == tapeID }) else { return }
-        var tape = tapes[tapeIndex]
-        guard let clipIndex = tape.clips.firstIndex(where: { $0.id == placeholderID }) else { return }
-
-        guard var resolvedClip = buildClip(from: media) else {
-            await markPlaceholderFailure(placeholderID: placeholderID, tapeID: tapeID, error: "Unsupported media.")
-            return
-        }
-
-        resolvedClip.id = placeholderID
-        resolvedClip.isPlaceholder = false
-        resolvedClip.createdAt = Date()
-        resolvedClip.updatedAt = Date()
-        tape.clips[clipIndex] = resolvedClip
-        tapes[tapeIndex] = tape
-        setClipLoadingState(placeholderID, phase: .ready)
-        autoSave()
-        associateClipsWithAlbum(tapeID: tapeID, clips: [resolvedClip])
-
-        if resolvedClip.clipType == .video {
-            generateThumbAndDuration(for: resolvedClip, tapeID: tapeID)
-        }
-    }
-
-    @MainActor
-    private func markPlaceholderFailure(placeholderID: UUID, tapeID: UUID, error: String) {
-        TapesLog.store.warning("Import placeholder \(placeholderID) failed for tape \(tapeID): \(error)")
-        removePlaceholderClip(placeholderID, from: tapeID)
-    }
-
-private func evaluateBatchCompletion(for tapeID: UUID) {
-    let ids = placeholderTapeMap.compactMap { $0.value == tapeID ? $0.key : nil }
-    guard !ids.isEmpty else { return }
-    let allReady = ids.allSatisfy { clipLoadingStates[$0]?.phase == .ready }
-    if allReady {
-        for id in ids {
-            clipLoadingStates.removeValue(forKey: id)
-            placeholderTapeMap.removeValue(forKey: id)
-        }
-    }
-    }
-
-    private func buildClip(from media: PickedMedia) -> Clip? {
-        switch media {
-        case let .video(url, duration, assetIdentifier):
-            let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
-            if clip.duration <= 0 {
-                TapesLog.store.info("Clip duration missing for \(clip.id); will resolve asynchronously.")
-            }
-            return clip
-        case let .photo(image, assetIdentifier):
-            return makeImageClip(image: image, assetIdentifier: assetIdentifier)
-        }
-    }
+    // MARK: - Clip Building Helpers
 
     private func makeVideoClip(url: URL?, duration: TimeInterval, assetIdentifier: String?) -> Clip {
         var clip = Clip(
@@ -674,46 +442,6 @@ private func evaluateBatchCompletion(for tapeID: UUID) {
         }
 
         return nil
-    }
-
-    private func resolvePickedMediaWithTimeout(_ result: PHPickerResult, timeout: TimeInterval) async throws -> PickedMedia {
-        try await withThrowingTaskGroup(of: PickedMedia.self) { group in
-            group.addTask {
-                try await resolvePickedMedia(from: result)
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                throw ClipResolutionTimeoutError()
-            }
-            guard let value = try await group.next() else {
-                group.cancelAll()
-                throw ClipResolutionTimeoutError()
-            }
-            group.cancelAll()
-            return value
-        }
-    }
-
-    @MainActor
-    private func removePlaceholderClip(_ placeholderID: UUID, from tapeID: UUID) {
-        clipLoadingStates.removeValue(forKey: placeholderID)
-        placeholderTapeMap.removeValue(forKey: placeholderID)
-        if let tapeIndex = tapes.firstIndex(where: { $0.id == tapeID }) {
-            var tape = tapes[tapeIndex]
-            if let clipIndex = tape.clips.firstIndex(where: { $0.id == placeholderID }) {
-                tape.clips.remove(at: clipIndex)
-                tapes[tapeIndex] = tape
-                autoSave()
-            }
-        }
-        evaluateBatchCompletion(for: tapeID)
-    }
-
-    private func purgePlaceholderTrackingIfNeeded(for clipID: UUID) {
-        clipLoadingStates.removeValue(forKey: clipID)
-        if let tapeID = placeholderTapeMap.removeValue(forKey: clipID) {
-            evaluateBatchCompletion(for: tapeID)
-        }
     }
 
     private func scheduleMediaCleanup(for clipIDs: [UUID]) {
@@ -922,54 +650,6 @@ extension TapesStore {
         tape.addClip(clip, at: insertIndex)
         updateTape(tape)
         associateClipsWithAlbum(tapeID: tapeId, clips: [clip])
-        
-        // Provide haptic feedback
-        #if os(iOS)
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
-        #endif
-    }
-    
-    /// Inserts multiple media items in order
-    public func insertMedia(_ items: [PickedMedia], at strategy: InsertionStrategy, in tapeID: UUID) {
-        guard var tape = getTape(by: tapeID) else { return }
-        
-        let startIndex: Int
-        switch strategy {
-        case .replaceThenAppend(let index):
-            startIndex = index
-        case .insertAtCenter:
-            startIndex = getCenterIndex(for: tapeID)
-        }
-        
-        // Convert picked media to clips
-        var newClips: [Clip] = []
-        for item in items {
-            let clip: Clip
-            switch item {
-            case let .video(url, duration, assetIdentifier):
-                clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
-            case let .photo(image, assetIdentifier):
-                guard let imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) else {
-                    continue // Skip invalid image
-                }
-                clip = imageClip
-            }
-            newClips.append(clip)
-        }
-        
-        // Insert clips in order
-        for (offset, clip) in newClips.enumerated() {
-            let insertAt = startIndex + offset
-            tape.addClip(clip, at: min(insertAt, tape.clips.count))
-        }
-        
-        updateTape(tape)
-        associateClipsWithAlbum(tapeID: tapeID, clips: newClips)
-
-        for clip in newClips where clip.clipType == .video {
-            generateThumbAndDuration(for: clip, tapeID: tapeID)
-        }
         
         // Provide haptic feedback
         #if os(iOS)

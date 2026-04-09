@@ -123,14 +123,8 @@ struct ClipThumbnailView: View {
     }
     
     var body: some View {
-        Group {
-            if clip.isPlaceholder {
-                PlaceholderClipView(state: tapeStore.clipLoadingStates[clip.id])
-            } else {
-                ResolvedClipThumbnail(clip: clip, isJiggling: isJiggling)
-            }
-        }
-        .id("clip-\(clip.id)-\(clip.hasThumbnail)-\(clip.isPlaceholder)-\(clip.updatedAt.timeIntervalSinceReferenceDate)")
+        ResolvedClipThumbnail(clip: clip, isJiggling: isJiggling)
+            .id("clip-\(clip.id)-\(clip.hasThumbnail)-\(clip.updatedAt.timeIntervalSinceReferenceDate)")
     }
 }
 
@@ -166,61 +160,6 @@ private struct ResolvedClipThumbnail: View {
             Text(clip.hasThumbnail ? "thumb" : "no thumb")
                 .font(.caption2)
                 .opacity(0.001)
-        }
-    }
-}
-
-private struct PlaceholderClipView: View {
-    let state: ClipLoadingState?
-    
-    private var statusText: String {
-        guard let state else { return "Queued" }
-        switch state.phase {
-        case .queued:
-            return "Queued"
-        case .transferring:
-            return "Loading…"
-        case .processing:
-            return "Processing…"
-        case .ready:
-            return "Ready"
-        case .error(let message):
-            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "Failed" : trimmed
-        }
-    }
-    
-    private var isError: Bool {
-        guard let state else { return false }
-        if case .error = state.phase {
-            return true
-        }
-        return false
-    }
-    
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
-                .fill(Tokens.Colors.tertiaryBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Tokens.Radius.thumb)
-                        .strokeBorder(isError ? Color.red : Tokens.Colors.primaryText.opacity(0.1), lineWidth: 1)
-                )
-            VStack(spacing: 8) {
-                if isError {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(.yellow)
-                } else {
-                    ProgressView()
-                        .controlSize(.regular)
-                        .tint(Tokens.Colors.primaryText)
-                }
-                Text(statusText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Tokens.Colors.primaryText)
-            }
-            .padding(12)
         }
     }
 }

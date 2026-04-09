@@ -220,38 +220,6 @@ private func requestThumbnail(for asset: PHAsset) async -> UIImage? {
     }
 }
 
-/// Preserve selection order, loading items in batches of 10 but returning in-order.
-func resolvePickedMediaOrdered(_ results: [PHPickerResult]) async -> [PickedMedia] {
-    if results.isEmpty { return [] }
-    var out = Array<PickedMedia?>(repeating: nil, count: results.count)
-    let chunkSize = 10
-
-    for chunkStart in stride(from: 0, to: results.count, by: chunkSize) {
-        let chunkEnd = min(chunkStart + chunkSize, results.count)
-
-        await withTaskGroup(of: (Int, PickedMedia?).self) { group in
-            for idx in chunkStart..<chunkEnd {
-                let r = results[idx]
-                group.addTask {
-                    do {
-                        let media = try await resolvePickedMedia(from: r)
-                        return (idx, media)
-                    } catch {
-                        log.error("❌ Resolving item failed at index \(idx): \(String(describing: error), privacy: .public)")
-                        return (idx, nil)
-                    }
-                }
-            }
-
-            for await (idx, media) in group {
-                out[idx] = media
-            }
-        }
-    }
-
-    return out.compactMap { $0 }
-}
-
 /// Optional persistence helper to move files from temp to Application Support
 func moveToPersistentStorage(_ tempURL: URL) -> URL? {
     do {
