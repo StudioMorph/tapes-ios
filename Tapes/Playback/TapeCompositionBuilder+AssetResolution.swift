@@ -140,13 +140,44 @@ extension TapeCompositionBuilder {
         }
 
         if let assetLocalId = clip.assetLocalId {
-            return try await Self.fetchAVAssetFromPhotos(
+            let cached = Self.photosCachedURL(for: clip)
+            if fileManager.fileExists(atPath: cached.path) {
+                return AVURLAsset(url: cached)
+            }
+
+            let asset = try await Self.fetchAVAssetFromPhotos(
                 localIdentifier: assetLocalId,
                 deliveryMode: videoDeliveryMode
             )
+
+            if let urlAsset = asset as? AVURLAsset {
+                Self.cachePhotosAsset(from: urlAsset.url, to: cached)
+            }
+
+            return asset
         }
 
         throw BuilderError.assetUnavailable(clipID: clip.id)
+    }
+
+    private static func photosCachedURL(for clip: Clip) -> URL {
+        let cacheDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PlaybackCache", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: cacheDir.path) {
+            try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        }
+        let timestamp = Int((clip.updatedAt.timeIntervalSince1970 * 1_000).rounded())
+        let name = "\(clip.id.uuidString)-\(timestamp).mov"
+        return cacheDir.appendingPathComponent(name)
+    }
+
+    private static func cachePhotosAsset(from source: URL, to destination: URL) {
+        guard !FileManager.default.fileExists(atPath: destination.path) else { return }
+        do {
+            try FileManager.default.linkItem(at: source, to: destination)
+        } catch {
+            try? FileManager.default.copyItem(at: source, to: destination)
+        }
     }
 
     static func accessibleURL(for clip: Clip, url: URL) throws -> URL {
