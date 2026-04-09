@@ -84,7 +84,7 @@ struct ClipTrimView: View {
                         }
                 }
             }
-            .navigationTitle("Trim Clip")
+            .navigationTitle("Edit Clip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
