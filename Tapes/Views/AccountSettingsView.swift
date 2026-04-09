@@ -16,17 +16,19 @@ struct AccountSettingsView: View {
     var body: some View {
         NavigationView {
             Form {
-                accountSection
-                appearanceSection
-                hotTipsSection
-                aboutSection
-                creditsSection
-                legalSection
+                accountSection.listRowBackground(Tokens.Colors.secondaryBackground)
+                appearanceSection.listRowBackground(Tokens.Colors.secondaryBackground)
+                hotTipsSection.listRowBackground(Tokens.Colors.secondaryBackground)
+                aboutSection.listRowBackground(Tokens.Colors.secondaryBackground)
+                creditsSection.listRowBackground(Tokens.Colors.secondaryBackground)
+                legalSection.listRowBackground(Tokens.Colors.secondaryBackground)
 
                 if isAppleSignedIn {
-                    signOutSection
+                    signOutSection.listRowBackground(Tokens.Colors.secondaryBackground)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
             .navigationTitle("Account & Settings")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -47,25 +49,28 @@ struct AccountSettingsView: View {
                 if let name = authManager.userName {
                     HStack {
                         Text("Name")
+                            .foregroundColor(Tokens.Colors.primaryText)
                         Spacer()
                         Text(name)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(Tokens.Colors.secondaryText)
                     }
                 }
                 if let email = authManager.userEmail {
                     HStack {
                         Text("Email")
+                            .foregroundColor(Tokens.Colors.primaryText)
                         Spacer()
                         Text(email)
-                            .foregroundStyle(.secondary)
+                            .foregroundColor(Tokens.Colors.secondaryText)
                     }
                 }
 
                 HStack {
                     Text("Plan")
+                        .foregroundColor(Tokens.Colors.primaryText)
                     Spacer()
                     Text(entitlementManager.isPremium ? "Premium" : "Free")
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(Tokens.Colors.secondaryText)
                 }
 
                 if !entitlementManager.isPremium {
@@ -79,7 +84,7 @@ struct AccountSettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Sign in to sync your account and manage your subscription.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(Tokens.Colors.secondaryText)
 
                     SignInWithAppleButton(.signIn) { request in
                         request.requestedScopes = [.fullName, .email]
@@ -93,6 +98,9 @@ struct AccountSettingsView: View {
             }
         } header: {
             Text("Account")
+                .font(Tokens.Typography.title)
+                .foregroundColor(Tokens.Colors.primaryText)
+                .textCase(nil)
         }
     }
 
@@ -108,8 +116,12 @@ struct AccountSettingsView: View {
             .pickerStyle(.segmented)
         } header: {
             Text("Appearance")
+                .font(Tokens.Typography.title)
+                .foregroundColor(Tokens.Colors.primaryText)
+                .textCase(nil)
         } footer: {
             Text("Choose how Tapes looks. System follows your device settings.")
+                .foregroundColor(Tokens.Colors.secondaryText)
         }
     }
 
@@ -126,10 +138,10 @@ struct AccountSettingsView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "lightbulb.max")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.blue)
+                        .foregroundColor(.blue)
                         .frame(width: 24)
                     Text("Hot Tips")
-                        .foregroundStyle(.primary)
+                        .foregroundColor(Tokens.Colors.primaryText)
                 }
             }
         }
@@ -141,19 +153,24 @@ struct AccountSettingsView: View {
         Section {
             HStack {
                 Text("Version")
+                    .foregroundColor(Tokens.Colors.primaryText)
                 Spacer()
                 Text(appVersion)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(Tokens.Colors.secondaryText)
             }
 
             HStack {
                 Text("Build")
+                    .foregroundColor(Tokens.Colors.primaryText)
                 Spacer()
                 Text(appBuild)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(Tokens.Colors.secondaryText)
             }
         } header: {
             Text("About")
+                .font(Tokens.Typography.title)
+                .foregroundColor(Tokens.Colors.primaryText)
+                .textCase(nil)
         }
     }
 
@@ -168,6 +185,9 @@ struct AccountSettingsView: View {
             )
         } header: {
             Text("Credits")
+                .font(Tokens.Typography.title)
+                .foregroundColor(Tokens.Colors.primaryText)
+                .textCase(nil)
         }
     }
 
@@ -178,26 +198,29 @@ struct AccountSettingsView: View {
             Link(destination: URL(string: "https://studiomorph.com/privacy")!) {
                 HStack {
                     Text("Privacy Policy")
-                        .foregroundStyle(.primary)
+                        .foregroundColor(Tokens.Colors.primaryText)
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(Tokens.Colors.secondaryText)
                 }
             }
 
             Link(destination: URL(string: "https://studiomorph.com/terms")!) {
                 HStack {
                     Text("Terms of Service")
-                        .foregroundStyle(.primary)
+                        .foregroundColor(Tokens.Colors.primaryText)
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(Tokens.Colors.secondaryText)
                 }
             }
         } header: {
             Text("Legal")
+                .font(Tokens.Typography.title)
+                .foregroundColor(Tokens.Colors.primaryText)
+                .textCase(nil)
         }
     }
 
@@ -265,15 +288,16 @@ private struct CreditRow: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundColor(Tokens.Colors.secondaryText)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .font(.body)
+                    .foregroundColor(Tokens.Colors.primaryText)
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(Tokens.Colors.secondaryText)
             }
         }
     }

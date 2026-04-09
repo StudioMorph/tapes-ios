@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TapesListView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
@@ -17,6 +18,7 @@ struct TapesListView: View {
     @State private var showHotTips = false
     @State private var hotTipsJiggling = false
     @State private var showingAccountSettings = false
+    @State private var showInlineTitle = false
 
     var body: some View {
         NavigationStack {
@@ -38,7 +40,8 @@ struct TapesListView: View {
                         onThumbnailDelete: handleThumbnailDelete,
                         onCameraCapture: handleCameraCapture,
                         onTitleFocusRequest: handleTitleFocusRequest,
-                        onTitleCommit: commitTitleEditing
+                        onTitleCommit: commitTitleEditing,
+                        showInlineTitle: $showInlineTitle
                     )
                 }
 
@@ -72,13 +75,20 @@ struct TapesListView: View {
                 hoveredTarget = nil
                 tapesStore.floatingDragDidEnd = false
             }
-            .navigationTitle("TAPES")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Image(colorScheme == .dark ? "Tapes_logo-Dark mode" : "Tapes_logo-Light mode")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 20)
+                        .opacity(showInlineTitle ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.2), value: showInlineTitle)
+                }
+            }
             .onChange(of: scenePhase) { _, newPhase in
                 exportCoordinator.handleScenePhaseChange(newPhase)
             }
-            .onAppear { Self.applyLargeTitleAppearance() }
-            .onDisappear { Self.resetTitleAppearance() }
             .toolbar {
                 if tapesStore.jigglingTapeID != nil {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -203,21 +213,6 @@ struct TapesListView: View {
         .onAppear {
             // Hot tips visit tracking deactivated — kept for future use
         }
-    }
-
-    // MARK: - Navigation Bar Appearance
-
-    private static func applyLargeTitleAppearance() {
-        let appearance = UINavigationBarAppearance()
-        appearance.configureWithTransparentBackground()
-        appearance.largeTitleTextAttributes = [
-            .font: UIFont.systemFont(ofSize: 46, weight: .heavy)
-        ]
-        UINavigationBar.appearance().scrollEdgeAppearance = appearance
-    }
-
-    private static func resetTitleAppearance() {
-        UINavigationBar.appearance().scrollEdgeAppearance = nil
     }
 
     // MARK: - Floating Clip Overlay

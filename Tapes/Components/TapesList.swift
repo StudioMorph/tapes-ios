@@ -10,6 +10,7 @@ import SwiftUI
 struct TapesList: View {
     @EnvironmentObject private var tapeStore: TapesStore
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var tapes: [Tape]
     let editingTapeID: UUID?
     @Binding var draftTitle: String
@@ -19,6 +20,7 @@ struct TapesList: View {
     let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: (UUID, String) -> Void
     let onTitleCommit: () -> Void
+    @Binding var showInlineTitle: Bool
 
     private let columnSpacing: CGFloat = 16
 
@@ -32,6 +34,14 @@ struct TapesList: View {
 
             ScrollViewReader { scrollProxy in
                 ScrollView {
+                    Image(colorScheme == .dark ? "Tapes_logo-Dark mode" : "Tapes_logo-Light mode")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 40)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Tokens.Spacing.m)
+                        .padding(.top, Tokens.Spacing.s)
+
                     if isLandscape {
                         LazyVGrid(
                             columns: [
@@ -58,6 +68,11 @@ struct TapesList: View {
                 .scrollDisabled(tapeStore.isFloatingDragActive)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.interactively)
+                .onScrollGeometryChange(for: Bool.self) { geo in
+                    geo.contentOffset.y > 40
+                } action: { _, scrolledPastTitle in
+                    showInlineTitle = scrolledPastTitle
+                }
                 .onChange(of: editingTapeID) { _, newID in
                     guard let id = newID else { return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -184,7 +199,8 @@ struct AmbientTutorialCarousel: View {
         onThumbnailDelete: { _, _ in },
         onCameraCapture: { _ in },
         onTitleFocusRequest: { _, _ in },
-        onTitleCommit: {}
+        onTitleCommit: {},
+        showInlineTitle: .constant(false)
     )
     .background(Tokens.Colors.primaryBackground)
 }
