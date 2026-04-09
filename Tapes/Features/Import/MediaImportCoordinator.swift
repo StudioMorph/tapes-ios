@@ -96,6 +96,7 @@ public class MediaImportCoordinator: ObservableObject {
         targetTapeID = nil
         insertionIndex = 0
         importTask = nil
+        cleanupTempImports()
     }
 
     func consumeResults(for requestingTapeID: UUID) -> (clips: [Clip], tapeID: UUID, insertionIndex: Int)? {
@@ -157,9 +158,12 @@ public class MediaImportCoordinator: ObservableObject {
     }
 
     nonisolated private static func requestFastThumbnail(for asset: PHAsset) async -> UIImage? {
-        await withTaskGroup(of: UIImage?.self) { group in
+        let requestIDBox = UnsafeSendableBox<PHImageRequestID>()
+
+        return await withTaskGroup(of: UIImage?.self) { group in
             group.addTask {
-                await withCheckedContinuation { continuation in
+                await withCheckedContinuation { (continuation: CheckedContinuation<UIImage?, Never>) in
+                    let resumed = AtomicFlag()
                     let options = PHImageRequestOptions()
                     options.isNetworkAccessAllowed = true
                     options.deliveryMode = .highQualityFormat
@@ -167,14 +171,17 @@ public class MediaImportCoordinator: ObservableObject {
                     options.isSynchronous = false
 
                     let targetSize = CGSize(width: 480, height: 480)
-                    PHImageManager.default().requestImage(
+                    let reqID = PHImageManager.default().requestImage(
                         for: asset,
                         targetSize: targetSize,
                         contentMode: .aspectFill,
                         options: options
                     ) { image, _ in
-                        continuation.resume(returning: image)
+                        if resumed.testAndSet() {
+                            continuation.resume(returning: image)
+                        }
                     }
+                    requestIDBox.value = reqID
                 }
             }
             group.addTask {
@@ -183,6 +190,9 @@ public class MediaImportCoordinator: ObservableObject {
             }
             let result = await group.next() ?? nil
             group.cancelAll()
+            if let reqID = requestIDBox.value {
+                PHImageManager.default().cancelImageRequest(reqID)
+            }
             return result
         }
     }

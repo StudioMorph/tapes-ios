@@ -181,23 +181,42 @@ private func fetchPHAsset(localIdentifier: String) -> PHAsset? {
 }
 
 private func requestThumbnail(for asset: PHAsset) async -> UIImage? {
-    await withCheckedContinuation { continuation in
-        let options = PHImageRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.deliveryMode = .highQualityFormat
-        options.resizeMode = .exact
-        let targetSize = CGSize(width: 960, height: 960)
-        PHImageManager.default().requestImage(
-            for: asset,
-            targetSize: targetSize,
-            contentMode: .aspectFill,
-            options: options
-        ) { image, info in
-            if let isDegraded = info?[PHImageResultIsDegradedKey] as? NSNumber, isDegraded.boolValue {
-                return
+    let requestIDBox = UnsafeSendableBox<PHImageRequestID>()
+
+    return await withTaskGroup(of: UIImage?.self) { group in
+        group.addTask {
+            await withCheckedContinuation { (continuation: CheckedContinuation<UIImage?, Never>) in
+                let resumed = AtomicFlag()
+                let options = PHImageRequestOptions()
+                options.isNetworkAccessAllowed = true
+                options.deliveryMode = .highQualityFormat
+                options.resizeMode = .exact
+                let targetSize = CGSize(width: 960, height: 960)
+                let reqID = PHImageManager.default().requestImage(
+                    for: asset,
+                    targetSize: targetSize,
+                    contentMode: .aspectFill,
+                    options: options
+                ) { image, info in
+                    let isDegraded = (info?[PHImageResultIsDegradedKey] as? NSNumber)?.boolValue ?? false
+                    if isDegraded { return }
+                    if resumed.testAndSet() {
+                        continuation.resume(returning: image)
+                    }
+                }
+                requestIDBox.value = reqID
             }
-            continuation.resume(returning: image)
         }
+        group.addTask {
+            try? await Task.sleep(nanoseconds: 15_000_000_000) // 15s safety timeout
+            return nil
+        }
+        let result = await group.next() ?? nil
+        group.cancelAll()
+        if let reqID = requestIDBox.value {
+            PHImageManager.default().cancelImageRequest(reqID)
+        }
+        return result
     }
 }
 

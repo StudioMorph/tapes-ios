@@ -1143,12 +1143,32 @@ extension TapesStore {
         drainMetadataQueue()
     }
 
+    private static let metadataSlotTimeout: UInt64 = 20_000_000_000 // 20 seconds
+
     private func drainMetadataQueue() {
         guard activeMetadataTasks < Self.maxConcurrentMetadata, !metadataQueue.isEmpty else { return }
         let work = metadataQueue.removeFirst()
         activeMetadataTasks += 1
         Task.detached(priority: .utility) { [weak self] in
-            await work()
+            await withTaskGroup(of: Void.self) { group in
+                let done = AtomicFlag()
+
+                group.addTask {
+                    await work()
+                    _ = done.testAndSet()
+                }
+
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: Self.metadataSlotTimeout)
+                    if done.testAndSet() {
+                        TapesLog.store.warning("Metadata slot timed out after 20s — freeing slot")
+                    }
+                }
+
+                _ = await group.next()
+                group.cancelAll()
+            }
+
             await MainActor.run { [weak self] in
                 self?.activeMetadataTasks -= 1
                 self?.drainMetadataQueue()
@@ -1235,9 +1255,12 @@ extension TapesStore {
     private static let thumbnailTimeout: UInt64 = 10_000_000_000 // 10 seconds
 
     nonisolated private static func requestThumbnail(for asset: PHAsset) async -> UIImage? {
-        await withTaskGroup(of: UIImage?.self) { group in
+        let requestIDBox = UnsafeSendableBox<PHImageRequestID>()
+
+        return await withTaskGroup(of: UIImage?.self) { group in
             group.addTask {
-                await withCheckedContinuation { continuation in
+                await withCheckedContinuation { (continuation: CheckedContinuation<UIImage?, Never>) in
+                    let resumed = AtomicFlag()
                     let options = PHImageRequestOptions()
                     options.isNetworkAccessAllowed = true
                     options.deliveryMode = .highQualityFormat
@@ -1245,14 +1268,17 @@ extension TapesStore {
                     options.isSynchronous = false
 
                     let targetSize = CGSize(width: 480, height: 480)
-                    PHImageManager.default().requestImage(
+                    let reqID = PHImageManager.default().requestImage(
                         for: asset,
                         targetSize: targetSize,
                         contentMode: .aspectFill,
                         options: options
                     ) { image, _ in
-                        continuation.resume(returning: image)
+                        if resumed.testAndSet() {
+                            continuation.resume(returning: image)
+                        }
                     }
+                    requestIDBox.value = reqID
                 }
             }
             group.addTask {
@@ -1261,6 +1287,9 @@ extension TapesStore {
             }
             let result = await group.next() ?? nil
             group.cancelAll()
+            if let reqID = requestIDBox.value {
+                PHImageManager.default().cancelImageRequest(reqID)
+            }
             return result
         }
     }
