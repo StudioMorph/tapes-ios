@@ -46,7 +46,9 @@ public final class TapeExportSession: @unchecked Sendable {
                 try Self.addBackgroundMusic(
                     to: composition,
                     musicURL: musicURL,
-                    volume: tape.musicVolume,
+                    tapeVolume: tape.musicVolume,
+                    clips: tape.clips,
+                    segments: components.timeline.segments,
                     totalDuration: totalDuration,
                     audioParams: &allAudioParams
                 )
@@ -88,7 +90,9 @@ public final class TapeExportSession: @unchecked Sendable {
     private static func addBackgroundMusic(
         to composition: AVMutableComposition,
         musicURL: URL,
-        volume: Float,
+        tapeVolume: Float,
+        clips: [Clip],
+        segments: [TapeCompositionBuilder.Segment],
         totalDuration: CMTime,
         audioParams: inout [AVAudioMixInputParameters]
     ) throws {
@@ -118,20 +122,29 @@ public final class TapeExportSession: @unchecked Sendable {
         }
 
         let musicParams = AVMutableAudioMixInputParameters(track: musicTrack)
-        musicParams.setVolume(volume, at: .zero)
+
+        for segment in segments {
+            let clipIndex = segment.clipIndex
+            let effectiveVol = clipIndex < clips.count ? Float(clips[clipIndex].musicVolume ?? Double(tapeVolume)) : tapeVolume
+            musicParams.setVolume(effectiveVol, at: segment.timeRange.start)
+        }
 
         let fadeOutDuration = CMTime(seconds: 1.5, preferredTimescale: 600)
         if CMTimeCompare(totalDuration, fadeOutDuration) > 0 {
             let fadeStart = CMTimeSubtract(totalDuration, fadeOutDuration)
+            let lastVol = segments.last.map { seg in
+                let idx = seg.clipIndex
+                return idx < clips.count ? Float(clips[idx].musicVolume ?? Double(tapeVolume)) : tapeVolume
+            } ?? tapeVolume
             musicParams.setVolumeRamp(
-                fromStartVolume: volume,
+                fromStartVolume: lastVol,
                 toEndVolume: 0,
                 timeRange: CMTimeRange(start: fadeStart, duration: fadeOutDuration)
             )
         }
 
         audioParams.append(musicParams)
-        log.info("Added background music: volume=\(volume), looped to \(CMTimeGetSeconds(totalDuration))s")
+        log.info("Added background music: tapeVolume=\(tapeVolume), per-clip volumes applied, looped to \(CMTimeGetSeconds(totalDuration))s")
     }
 
     // MARK: - Reader/Writer Export

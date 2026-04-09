@@ -422,6 +422,7 @@ final class TapePlayerViewModel: ObservableObject {
         currentClipIndex = index
         isFinished = false
         updateClipTime(with: .zero)
+        updateMusicVolumeForClip(at: index)
     }
 
     private func loadClipComposition(
@@ -595,6 +596,7 @@ final class TapePlayerViewModel: ObservableObject {
 
         activeSlot = newSlot
         currentClipIndex = nextIndex
+        updateMusicVolumeForClip(at: nextIndex)
         isTransitioning = false
         transitionProgress = 0
         clipDuration = slotClipDuration[newSlot] ?? 0
@@ -929,6 +931,14 @@ final class TapePlayerViewModel: ObservableObject {
             task.cancel()
             preRenderTasks.removeValue(forKey: index)
         }
+    }
+
+    // MARK: - Per-Clip Music Volume
+
+    private func updateMusicVolumeForClip(at index: Int) {
+        guard index >= 0, index < tape.clips.count else { return }
+        let effectiveVol = Float(tape.clips[index].musicVolume ?? Double(tape.musicVolume))
+        backgroundMusic.setVolume(effectiveVol)
     }
 
     // MARK: - Clip Event Handlers

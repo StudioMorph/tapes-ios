@@ -56,7 +56,7 @@ struct ClipTrimView: View {
         self._trimStart = State(initialValue: clip.wrappedValue.trimStart)
         self._trimEnd = State(initialValue: clip.wrappedValue.trimEnd)
         self._clipVolume = State(initialValue: clip.wrappedValue.volume ?? 1.0)
-        self._clipMusicVolume = State(initialValue: clip.wrappedValue.musicVolume ?? 1.0)
+        self._clipMusicVolume = State(initialValue: clip.wrappedValue.musicVolume ?? Double(tape.musicVolume))
     }
 
     var body: some View {
@@ -323,7 +323,8 @@ struct ClipTrimView: View {
         var updated = clip
         updated.setTrim(start: trimStart, end: trimEnd)
         updated.volume = clipVolume < 0.99 ? clipVolume : nil
-        updated.musicVolume = clipMusicVolume < 0.99 ? clipMusicVolume : nil
+        let tapeDefault = Double(tape.musicVolume)
+        updated.musicVolume = abs(clipMusicVolume - tapeDefault) > 0.01 ? clipMusicVolume : nil
         onSave(updated)
         onDismiss()
     }
