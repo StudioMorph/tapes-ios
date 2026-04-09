@@ -108,7 +108,6 @@ final class TapePlayerViewModel: ObservableObject {
     init(tape: Tape) {
         self.tape = tape
         self.builder = TapeCompositionBuilder(livePhotosAsVideo: tape.livePhotosAsVideo, livePhotosMuted: tape.livePhotosMuted)
-        print("🔇 TapePlayerViewModel init: livePhotosMuted=\(tape.livePhotosMuted), livePhotosAsVideo=\(tape.livePhotosAsVideo)")
     }
 
     // MARK: - Public API
