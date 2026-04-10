@@ -42,6 +42,7 @@ struct TransitionOption: View {
             .padding(.horizontal, Tokens.Spacing.m)
             .background(Tokens.Colors.secondaryBackground)
             .cornerRadius(Tokens.Radius.card)
+            .animation(.easeInOut(duration: 0.2), value: isSelected)
         }
         .buttonStyle(.plain)
         .frame(minHeight: Tokens.HitTarget.minimum)

@@ -79,23 +79,45 @@ struct TapeSettingsView: View {
     
     private var transitionSection: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
-            SectionHeader(title: "Choose default transition")
-            
-            VStack(spacing: Tokens.Spacing.s) {
-                ForEach(TransitionType.allCases, id: \.self) { transition in
-                    TransitionOption(
-                        transition: transition,
-                        isSelected: tape.transition == transition,
-                        duration: $tape.transitionDuration,
-                        onSelect: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                tape.transition = transition
-                            }
-                            provideHapticFeedback()
-                        }
-                    )
+            SectionHeader(title: "Transitions")
+
+            NavigationLink {
+                TransitionPickerView(tape: $tape)
+            } label: {
+                HStack(spacing: Tokens.Spacing.m) {
+                    Image(systemName: "rectangle.on.rectangle")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Tokens.Colors.primaryText)
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+                        Text("Current transition")
+                            .font(Tokens.Typography.caption)
+                            .foregroundColor(Tokens.Colors.secondaryText)
+
+                        Text(tape.transition.displayName)
+                            .font(Tokens.Typography.headline)
+                            .foregroundColor(Tokens.Colors.primaryText)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: Tokens.Spacing.xs) {
+                        Text("Edit")
+                            .font(Tokens.Typography.body)
+                            .foregroundColor(Tokens.Colors.secondaryText)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Tokens.Colors.secondaryText)
+                    }
                 }
+                .padding(.vertical, Tokens.Spacing.m)
+                .padding(.horizontal, Tokens.Spacing.m)
+                .background(Tokens.Colors.secondaryBackground)
+                .cornerRadius(Tokens.Radius.card)
             }
+            .buttonStyle(.plain)
         }
     }
     
