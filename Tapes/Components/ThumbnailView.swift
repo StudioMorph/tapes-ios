@@ -129,7 +129,8 @@ struct ClipThumbnailView: View {
     private var livePhotoState: String {
         guard clip.isLivePhoto else { return "" }
         let effective = clip.shouldPlayAsLiveVideo(tapeDefault: tapeLivePhotosAsVideo)
-        return "-lp\(effective)"
+        let override = clip.livePhotoAsVideo.map { "\($0)" } ?? "nil"
+        return "-lp\(effective)-ov\(override)"
     }
 
     var body: some View {
@@ -200,6 +201,7 @@ struct ClipInfoBadge: View {
     }
 
     private var icon: String {
+        if clip.isLivePhoto && isLiveVideoActive { return "livephoto.play" }
         if clip.isLivePhoto { return "livephoto" }
         return clip.clipType == .image ? "photo" : "play.rectangle"
     }
@@ -223,7 +225,7 @@ struct ClipInfoBadge: View {
                 .foregroundColor(iconColor)
 
             if clip.isLivePhoto && isLiveVideoActive {
-                Text("Live Photo")
+                Text("Live")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white)
             } else {

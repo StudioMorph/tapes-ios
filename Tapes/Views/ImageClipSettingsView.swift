@@ -25,7 +25,11 @@ struct ImageClipSettingsView: View {
 
     // Live Photo video preview
     @State private var livePhotoPlayer: AVPlayer?
+    @State private var livePhotoVideoURL: URL?
     @State private var loopObserver: Any?
+
+    // Background music
+    @State private var bgMusic = BackgroundMusicPlayer()
 
     private var clip: Clip? {
         tape.clips.first(where: { $0.id == clipID })
@@ -99,6 +103,14 @@ struct ImageClipSettingsView: View {
         .task {
             await loadClipImage()
             if livePhotoIsOn { startLivePhotoPlayback() }
+            if hasBackgroundMusic {
+                await bgMusic.prepare(
+                    mood: tape.musicMood,
+                    tapeID: tape.id,
+                    volume: Float(clipMusicVolume)
+                )
+                bgMusic.syncPlay()
+            }
         }
         .onChange(of: livePhotoAsVideo) { _, isOn in
             if isOn { startLivePhotoPlayback() } else { stopLivePhotoPlayback() }
@@ -106,11 +118,18 @@ struct ImageClipSettingsView: View {
         .onChange(of: clipVolume) { _, vol in
             livePhotoPlayer?.volume = Float(vol)
         }
+        .onChange(of: clipMusicVolume) { _, vol in
+            bgMusic.setVolume(Float(vol))
+        }
         .onChange(of: selectedMotion) { _, _ in
+            motionAnimationID = UUID()
+        }
+        .onChange(of: duration) { _, _ in
             motionAnimationID = UUID()
         }
         .onDisappear {
             stopLivePhotoPlayback()
+            bgMusic.syncStop()
         }
     }
 
@@ -193,7 +212,7 @@ struct ImageClipSettingsView: View {
                     )
                 }
 
-                if livePhotoIsOn && hasBackgroundMusic {
+                if hasBackgroundMusic {
                     VerticalVolumeSlider(
                         value: $clipMusicVolume,
                         icon: "music.note"
@@ -436,6 +455,7 @@ struct ImageClipSettingsView: View {
     // MARK: - Live Photo Video Playback
 
     private func startLivePhotoPlayback() {
+        stopLivePhotoPlayback()
         guard let clip, let assetId = clip.assetLocalId else { return }
 
         Task {
@@ -453,6 +473,7 @@ struct ImageClipSettingsView: View {
             }
 
             await MainActor.run {
+                self.livePhotoVideoURL = result.url
                 self.livePhotoPlayer = player
                 self.loopObserver = observer
                 player.play()
@@ -467,6 +488,11 @@ struct ImageClipSettingsView: View {
         }
         livePhotoPlayer = nil
         loopObserver = nil
+
+        if let url = livePhotoVideoURL {
+            try? FileManager.default.removeItem(at: url)
+            livePhotoVideoURL = nil
+        }
     }
 
     private func provideHaptic() {
