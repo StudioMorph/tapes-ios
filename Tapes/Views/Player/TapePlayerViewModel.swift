@@ -288,12 +288,16 @@ final class TapePlayerViewModel: ObservableObject {
         switch phase {
         case .background, .inactive:
             wasPlayingBeforeBackground = isPlaying
-            if isPlaying { pausePlayers() }
+            if isPlaying {
+                pausePlayers()
+                backgroundMusic.syncPause()
+            }
         case .active:
             if wasPlayingBeforeBackground {
                 activePlayer()?.play()
                 if isTransitioning { inactivePlayer()?.play() }
                 isPlaying = true
+                backgroundMusic.syncPlay()
                 wasPlayingBeforeBackground = false
             }
         @unknown default:

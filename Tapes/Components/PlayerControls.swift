@@ -22,42 +22,34 @@ struct PlayerControls: View {
     var body: some View {
         HStack(spacing: 32) {
             Button(action: onPrevious) {
-                Image(systemName: "backward.fill")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                Image(systemName: "backward.end.fill")
+                    .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(canGoBack ? .white : .white.opacity(0.4))
-                    .frame(width: 56, height: 56)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .contentShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .disabled(!canGoBack)
             .accessibilityLabel("Previous clip")
 
             Button(action: onPlayPause) {
                 Image(systemName: playButtonIcon)
-                    .font(.largeTitle)
-                    .fontWeight(.semibold)
+                    .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(.white)
-                    .frame(width: 72, height: 72)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .contentShape(Circle())
-                    .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(playButtonLabel)
 
             Button(action: onNext) {
-                Image(systemName: "forward.fill")
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                Image(systemName: "forward.end.fill")
+                    .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(canGoForward ? .white : .white.opacity(0.4))
-                    .frame(width: 56, height: 56)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .contentShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .disabled(!canGoForward)
             .accessibilityLabel("Next clip")
         }
-        .padding(.horizontal, 20)
     }
 }
 

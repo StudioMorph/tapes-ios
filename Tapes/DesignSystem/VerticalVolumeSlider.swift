@@ -5,10 +5,13 @@ struct VerticalVolumeSlider: View {
     let icon: String
     var range: ClosedRange<Double> = 0...1
 
-    @State private var isDragging = false
+    @State private var isExpanded = false
+    @State private var collapseTask: Task<Void, Never>?
     @GestureState private var dragStartValue: Double?
 
-    private let sliderWidth: CGFloat = 48
+    private let pillSize: CGFloat = 40
+    private let expandedWidth: CGFloat = 40
+    private let collapseDuration: TimeInterval = 3
 
     private var fraction: Double {
         let span = range.upperBound - range.lowerBound
@@ -36,61 +39,101 @@ struct VerticalVolumeSlider: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                GeometryReader { geo in
-                    let height = geo.size.height
-                    let fillHeight = fraction * height
-                    let cornerRadius = sliderWidth / 2
-
-                    ZStack(alignment: .bottom) {
-                        Capsule()
-                            .fill(.clear)
-
-                        Capsule()
-                            .fill(.white.opacity(0.4))
-                            .frame(height: fillHeight)
-
-                        VStack {
-                            Spacer()
-                            Image(systemName: volumeIcon)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .shadow(color: .black.opacity(0.3), radius: 2)
-                                .padding(.bottom, 12)
-                        }
-                    }
-                    .clipShape(Capsule())
-                    .modifier(GlassEffectModifier())
-                    .contentShape(Capsule())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .updating($dragStartValue) { _, state, _ in
-                                if state == nil { state = value }
-                            }
-                            .onChanged { gesture in
-                                isDragging = true
-                                let y = gesture.location.y
-                                let newFraction = 1.0 - (y / height)
-                                let span = range.upperBound - range.lowerBound
-                                value = range.lowerBound + min(max(newFraction, 0), 1) * span
-                            }
-                            .onEnded { _ in
-                                isDragging = false
-                            }
-                    )
+                if isExpanded {
+                    expandedSlider(height: sliderHeight)
+                        .transition(.scale(scale: 0.5, anchor: .bottom).combined(with: .opacity))
+                } else {
+                    collapsedPill
+                        .transition(.scale(scale: 0.8, anchor: .bottom).combined(with: .opacity))
                 }
-                .frame(width: sliderWidth, height: sliderHeight)
             }
         }
-        .frame(width: sliderWidth)
+        .frame(width: expandedWidth)
     }
-}
 
-private struct GlassEffectModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.glassEffect(.regular, in: .capsule)
-        } else {
-            content.background(.ultraThinMaterial, in: Capsule())
+    // MARK: - Collapsed Pill
+
+    private var collapsedPill: some View {
+        Button {
+            expand()
+        } label: {
+            Image(systemName: volumeIcon)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: pillSize, height: pillSize)
+                .background(.black.opacity(0.2))
+                .background(.ultraThinMaterial)
+                .clipShape(Circle())
+        }
+    }
+
+    // MARK: - Expanded Slider
+
+    private func expandedSlider(height: CGFloat) -> some View {
+        GeometryReader { geo in
+            let h = geo.size.height
+            let fillHeight = fraction * h
+
+            ZStack(alignment: .bottom) {
+                Capsule()
+                    .fill(.black.opacity(0.2))
+                    .background(.ultraThinMaterial, in: Capsule())
+
+                Capsule()
+                    .fill(.white.opacity(0.8))
+                    .frame(height: fillHeight)
+
+                VStack {
+                    Spacer()
+                    Image(systemName: volumeIcon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color(red: 0, green: 0.478, blue: 1))
+                        .padding(.bottom, 10)
+                }
+            }
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .updating($dragStartValue) { _, state, _ in
+                        if state == nil { state = value }
+                    }
+                    .onChanged { gesture in
+                        resetCollapseTimer()
+                        let y = gesture.location.y
+                        let newFraction = 1.0 - (y / h)
+                        let span = range.upperBound - range.lowerBound
+                        value = range.lowerBound + min(max(newFraction, 0), 1) * span
+                    }
+                    .onEnded { _ in
+                        resetCollapseTimer()
+                    }
+            )
+        }
+        .frame(width: expandedWidth, height: height)
+    }
+
+    // MARK: - Expand / Collapse
+
+    private func expand() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            isExpanded = true
+        }
+        resetCollapseTimer()
+    }
+
+    private func collapse() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            isExpanded = false
+        }
+    }
+
+    private func resetCollapseTimer() {
+        collapseTask?.cancel()
+        collapseTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(collapseDuration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { collapse() }
         }
     }
 }

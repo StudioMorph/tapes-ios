@@ -1,6 +1,8 @@
 import SwiftUI
 
-struct PlayerProgressBar: View {
+// MARK: - Scrub Bar (Group 2)
+
+struct PlayerScrubBar: View {
     let currentTime: Double
     let totalDuration: Double
     let onSeek: (Double) -> Void
@@ -11,55 +13,56 @@ struct PlayerProgressBar: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(.white.opacity(0.3))
-                        .frame(height: 6)
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(.white.opacity(0.3))
+                    .background(.ultraThinMaterial)
 
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(.white)
-                        .frame(
-                            width: geometry.size.width * progressFraction,
-                            height: 6
+                Rectangle()
+                    .fill(Color(red: 0, green: 0.478, blue: 1))
+                    .frame(width: max(0, geometry.size.width * progressFraction))
+                    .clipShape(
+                        .rect(
+                            topLeadingRadius: 0,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 100,
+                            topTrailingRadius: 100
                         )
-                        .shadow(color: .white.opacity(0.5), radius: 2, x: 0, y: 0)
-
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 16, height: 16)
-                        .offset(x: geometry.size.width * progressFraction - 8)
-                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-                }
-                .frame(height: 44)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            let progress = max(0, min(1, value.location.x / geometry.size.width))
-                            onSeek(totalDuration * progress)
-                        }
-                )
+                    )
             }
-            .frame(height: 44)
-
-            HStack {
-                Text(formatTime(currentTime))
-                    .font(Tokens.Typography.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-
-                Spacer()
-
-                Text(formatTime(totalDuration))
-                    .font(Tokens.Typography.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 1)
-            }
+            .contentShape(Rectangle().inset(by: -8))
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let progress = max(0, min(1, value.location.x / geometry.size.width))
+                        onSeek(totalDuration * progress)
+                    }
+            )
         }
+        .frame(height: 8)
+    }
+}
+
+// MARK: - Time Labels (inside Group 3)
+
+struct PlayerTimeLabels: View {
+    let currentTime: Double
+    let totalDuration: Double
+
+    var body: some View {
+        HStack {
+            Text(formatTime(currentTime))
+                .font(.system(size: 12))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Text(formatTime(totalDuration))
+                .font(.system(size: 12))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 20)
     }
 
     private func formatTime(_ time: Double) -> String {
@@ -77,11 +80,10 @@ struct PlayerProgressBar: View {
 }
 
 #Preview {
-    PlayerProgressBar(
-        currentTime: 45.0,
-        totalDuration: 120.0,
-        onSeek: { _ in }
-    )
-    .padding()
+    VStack(spacing: 0) {
+        PlayerScrubBar(currentTime: 155, totalDuration: 326, onSeek: { _ in })
+        PlayerTimeLabels(currentTime: 155, totalDuration: 326)
+            .padding(.top, 6)
+    }
     .background(Color.black)
 }

@@ -77,7 +77,7 @@ struct TapePlayerView: View {
         }
     }
 
-    // MARK: - Layer 2: Controls overlay (safe-area-respecting)
+    // MARK: - Layer 2: Controls overlay
 
     @ViewBuilder
     private var controlsOverlay: some View {
@@ -87,56 +87,62 @@ struct TapePlayerView: View {
                     tapeName: vm.tape.title,
                     currentClipIndex: vm.currentClipIndex,
                     totalClips: vm.totalClips,
+                    totalDuration: vm.totalTapeDuration,
                     onDismiss: { dismissPlayer() }
                 )
                 .padding(.top, 8)
-                .padding(.bottom, 20)
-                .background {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.8), location: 0),
-                            .init(color: .black.opacity(0.3), location: 0.7),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                }
 
                 Spacer()
 
-                HStack(alignment: .bottom, spacing: Tokens.Spacing.m) {
+                HStack(alignment: .bottom) {
+                    AirPlayButton()
+                        .offset(y: 2)
+                        .frame(width: 40, height: 40)
+                        .background(.black.opacity(0.2))
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+
                     Spacer()
 
-                    VerticalVolumeSlider(
-                        value: Binding(
-                            get: { vm.clipVolume },
-                            set: { vm.setClipVolume($0) }
-                        ),
-                        icon: "speaker.wave.2.fill"
-                    )
-
-                    if vm.hasBackgroundMusic {
+                    HStack(alignment: .bottom, spacing: 16) {
                         VerticalVolumeSlider(
                             value: Binding(
-                                get: { vm.clipMusicVolume },
-                                set: { vm.setClipMusicVolume($0) }
+                                get: { vm.clipVolume },
+                                set: { vm.setClipVolume($0) }
                             ),
-                            icon: "music.note"
+                            icon: "speaker.wave.2.fill"
                         )
+
+                        if vm.hasBackgroundMusic {
+                            VerticalVolumeSlider(
+                                value: Binding(
+                                    get: { vm.clipMusicVolume },
+                                    set: { vm.setClipMusicVolume($0) }
+                                ),
+                                icon: "music.note"
+                            )
+                        }
                     }
                 }
-                .padding(.horizontal, Tokens.Spacing.l)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
 
-                VStack(spacing: 32) {
-                    PlayerProgressBar(
+                PlayerScrubBar(
+                    currentTime: vm.clipTime,
+                    totalDuration: vm.clipDuration,
+                    onSeek: { time in
+                        Task { await vm.seekWithinClip(time) }
+                    }
+                )
+
+                VStack(spacing: 0) {
+                    PlayerTimeLabels(
                         currentTime: vm.clipTime,
-                        totalDuration: vm.clipDuration,
-                        onSeek: { time in
-                            Task { await vm.seekWithinClip(time) }
-                        }
+                        totalDuration: vm.clipDuration
                     )
+                    .padding(.top, 6)
+
+                    Spacer()
 
                     PlayerControls(
                         isPlaying: vm.isPlaying,
@@ -147,22 +153,41 @@ struct TapePlayerView: View {
                         onPrevious: { vm.previousClip() },
                         onNext: { vm.nextClip() }
                     )
+
+                    Spacer()
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-                .background {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black.opacity(0.3), location: 0.3),
-                            .init(color: .black.opacity(0.8), location: 1)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                }
+                .frame(height: 72)
+                .background(
+                    Color.black.opacity(0.4)
+                        .background(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                )
+            }
+            .background(alignment: .top) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.6), location: 0),
+                        .init(color: .black.opacity(0.25), location: 0.4),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 220)
+                .ignoresSafeArea()
+            }
+            .background(alignment: .bottom) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.15), location: 0.5),
+                        .init(color: .black.opacity(0.5), location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 200)
+                .ignoresSafeArea()
             }
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.2), value: vm.showingControls)
