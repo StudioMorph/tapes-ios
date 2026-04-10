@@ -115,6 +115,16 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         )
 
         context.saveGState()
+
+        if instruction.scaleMode == .fit, instruction.motionEffect != nil {
+            let clipRect = fittedRect(
+                imageSize: instruction.imageSize,
+                rotationTurns: instruction.rotationTurns,
+                renderSize: instruction.renderSize
+            )
+            context.clip(to: clipRect)
+        }
+
         context.concatenate(transform)
         context.draw(
             instruction.image,
@@ -178,6 +188,29 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         effectTransform = effectTransform.translatedBy(x: -renderCenter.x, y: -renderCenter.y)
         effectTransform = effectTransform.translatedBy(x: offsetX, y: offsetY)
         return base.concatenating(effectTransform)
+    }
+
+    private func fittedRect(
+        imageSize: CGSize,
+        rotationTurns: Int,
+        renderSize: CGSize
+    ) -> CGRect {
+        let rotatedWidth = rotationTurns % 2 == 0 ? imageSize.width : imageSize.height
+        let rotatedHeight = rotationTurns % 2 == 0 ? imageSize.height : imageSize.width
+        guard rotatedWidth > 0, rotatedHeight > 0 else {
+            return CGRect(origin: .zero, size: renderSize)
+        }
+
+        let scaleX = renderSize.width / rotatedWidth
+        let scaleY = renderSize.height / rotatedHeight
+        let scale = min(scaleX, scaleY)
+
+        let fittedWidth = rotatedWidth * scale
+        let fittedHeight = rotatedHeight * scale
+        let originX = (renderSize.width - fittedWidth) / 2
+        let originY = (renderSize.height - fittedHeight) / 2
+
+        return CGRect(x: originX, y: originY, width: fittedWidth, height: fittedHeight)
     }
 
     private func lerp(_ start: CGFloat, _ end: CGFloat, progress: CGFloat) -> CGFloat {

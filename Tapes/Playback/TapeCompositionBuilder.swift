@@ -363,13 +363,22 @@ struct TapeCompositionBuilder {
                 transitionSequence: []
             )
 
+            let effectiveScaleMode: ScaleMode
+            if let override = clip.overrideScaleMode {
+                effectiveScaleMode = override
+            } else {
+                let imageIsLandscape = naturalSize.width > naturalSize.height
+                let renderIsLandscape = timeline.renderSize.width > timeline.renderSize.height
+                effectiveScaleMode = (imageIsLandscape == renderIsLandscape) ? .fill : .fit
+            }
+
             let playerItem = try await makeStillImagePlayerItem(
                 cgImage: cgImage,
                 clip: clip,
                 duration: duration,
                 renderSize: timeline.renderSize,
                 motionEffect: motionEffect,
-                scaleMode: clip.overrideScaleMode ?? imageConfiguration.baseScaleMode
+                scaleMode: effectiveScaleMode
             )
             return PlayerComposition(playerItem: playerItem, timeline: singleTimeline)
         }
@@ -1110,11 +1119,18 @@ struct TapeCompositionBuilder {
         start + (end - start) * max(0, min(progress, 1))
     }
 
-    private func effectiveScaleMode(for segment: Segment, tapeScaleMode: ScaleMode) -> ScaleMode {
-        // TIMELINE FIX: Use metadata.clip if assetContext is not available
+    private func effectiveScaleMode(for segment: Segment, tapeScaleMode: ScaleMode, renderSize: CGSize) -> ScaleMode {
         let clip = segment.assetContext?.clip ?? segment.metadata.clip
         if let override = clip.overrideScaleMode {
             return override
+        }
+        if clip.clipType == .image,
+           let naturalSize = segment.metadata.naturalSize,
+           naturalSize.width > 0, naturalSize.height > 0,
+           renderSize.width > 0, renderSize.height > 0 {
+            let imageIsLandscape = naturalSize.width > naturalSize.height
+            let renderIsLandscape = renderSize.width > renderSize.height
+            return (imageIsLandscape == renderIsLandscape) ? .fill : .fit
         }
         if segment.motionEffect != nil {
             return imageConfiguration.baseScaleMode
@@ -1132,7 +1148,7 @@ struct TapeCompositionBuilder {
 
         for (index, segment) in timeline.segments.enumerated() {
             guard let track = videoTrackMap[segment.clipIndex] else { continue }
-            let segmentScaleMode = effectiveScaleMode(for: segment, tapeScaleMode: tapeScaleMode)
+            let segmentScaleMode = effectiveScaleMode(for: segment, tapeScaleMode: tapeScaleMode, renderSize: renderSize)
 
             let incomingDuration = segment.incomingTransition?.duration ?? .zero
             let outgoingDuration = segment.outgoingTransition?.duration ?? .zero
@@ -1186,7 +1202,7 @@ struct TapeCompositionBuilder {
                     at: transitionRange.start
                 )
 
-                let nextScaleMode = effectiveScaleMode(for: nextSegment, tapeScaleMode: tapeScaleMode)
+                let nextScaleMode = effectiveScaleMode(for: nextSegment, tapeScaleMode: tapeScaleMode, renderSize: renderSize)
                 let toLayer = baseLayerInstruction(
                     for: nextSegment,
                     track: nextTrack,
@@ -1331,7 +1347,7 @@ struct TapeCompositionBuilder {
 
         for (index, segment) in timeline.segments.enumerated() {
             guard let track = videoTrackMap[segment.clipIndex] else { continue }
-            let segmentScaleMode = effectiveScaleMode(for: segment, tapeScaleMode: tapeScaleMode)
+            let segmentScaleMode = effectiveScaleMode(for: segment, tapeScaleMode: tapeScaleMode, renderSize: renderSize)
 
             let incomingDuration = segment.incomingTransition?.duration ?? .zero
             let outgoingDuration = segment.outgoingTransition?.duration ?? .zero
@@ -1382,7 +1398,7 @@ struct TapeCompositionBuilder {
             )
             let transitionRange = CMTimeRange(start: transitionStart, duration: transition.duration)
 
-            let nextScaleMode = effectiveScaleMode(for: nextSegment, tapeScaleMode: tapeScaleMode)
+            let nextScaleMode = effectiveScaleMode(for: nextSegment, tapeScaleMode: tapeScaleMode, renderSize: renderSize)
 
             let fromFitStart = transform(for: segment, renderSize: renderSize, scaleMode: segmentScaleMode, at: transitionStart)
             let fromFitEnd = transform(for: segment, renderSize: renderSize, scaleMode: segmentScaleMode, at: CMTimeAdd(transitionStart, transition.duration))

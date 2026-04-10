@@ -348,16 +348,15 @@ final class TapePlayerViewModel: ObservableObject {
         if let override = clip.overrideScaleMode {
             return override == .fill ? .resizeAspectFill : .resizeAspect
         }
-        guard clip.clipType == .video,
-              let videoSize = slotVideoNaturalSize[slot],
-              videoSize.width > 0, videoSize.height > 0,
+        guard let contentSize = slotVideoNaturalSize[slot],
+              contentSize.width > 0, contentSize.height > 0,
               viewportSize.width > 0, viewportSize.height > 0
         else {
             return .resizeAspectFill
         }
-        let videoIsLandscape = videoSize.width > videoSize.height
+        let contentIsLandscape = contentSize.width > contentSize.height
         let viewportIsLandscape = viewportSize.width > viewportSize.height
-        return videoIsLandscape == viewportIsLandscape ? .resizeAspectFill : .resizeAspect
+        return contentIsLandscape == viewportIsLandscape ? .resizeAspectFill : .resizeAspect
     }
 
     // MARK: - Swipe Gesture
@@ -772,6 +771,9 @@ final class TapePlayerViewModel: ObservableObject {
                     width: abs(transformed.width),
                     height: abs(transformed.height)
                 )
+            } else if let imageSize = segment.metadata.naturalSize,
+                      imageSize.width > 0, imageSize.height > 0 {
+                slotVideoNaturalSize[slot] = imageSize
             } else {
                 slotVideoNaturalSize.removeValue(forKey: slot)
             }
