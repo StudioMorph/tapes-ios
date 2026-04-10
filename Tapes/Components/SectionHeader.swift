@@ -8,6 +8,7 @@ struct SectionHeader: View {
             .font(Tokens.Typography.title)
             .foregroundColor(Tokens.Colors.primaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, Tokens.Spacing.m)
             .accessibilityAddTraits(.isHeader)
     }
 }
