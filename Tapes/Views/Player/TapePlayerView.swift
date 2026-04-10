@@ -263,6 +263,9 @@ private struct PlayerLayerView: UIViewRepresentable {
 
     func updateUIView(_ uiView: PlayerLayerContainerView, context: Context) {
         uiView.playerLayer.player = player
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         uiView.playerLayer.videoGravity = videoGravity
+        CATransaction.commit()
     }
 }
