@@ -9,8 +9,8 @@ struct VerticalVolumeSlider: View {
     @State private var collapseTask: Task<Void, Never>?
     @GestureState private var dragStartValue: Double?
 
-    private let pillSize: CGFloat = 40
-    private let expandedWidth: CGFloat = 40
+    private let pillSize: CGFloat = 44
+    private let expandedWidth: CGFloat = 44
     private let collapseDuration: TimeInterval = 3
 
     private var fraction: Double {

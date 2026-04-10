@@ -97,7 +97,7 @@ struct TapePlayerView: View {
                 HStack(alignment: .bottom) {
                     AirPlayButton()
                         .offset(y: 2)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .background(.black.opacity(0.2))
                         .background(.ultraThinMaterial)
                         .clipShape(Circle())

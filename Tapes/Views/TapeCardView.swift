@@ -393,7 +393,7 @@ struct TapeCardView: View {
                 )
             }
         }
-        .sheet(isPresented: $showingImageSettings) {
+        .fullScreenCover(isPresented: $showingImageSettings) {
             if let clipID = imageSettingsClipID {
                 ImageClipSettingsView(
                     tape: $tape,

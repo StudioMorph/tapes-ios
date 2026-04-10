@@ -1,4 +1,6 @@
 import SwiftUI
+import Photos
+import AVFoundation
 
 struct ImageClipSettingsView: View {
     @Binding var tape: Tape
@@ -10,7 +12,20 @@ struct ImageClipSettingsView: View {
     @State private var duration: Double
     @State private var livePhotoAsVideo: Bool
     @State private var livePhotoMuted: Bool
+    @State private var clipVolume: Double
+    @State private var clipMusicVolume: Double
     @State private var hasChanges = false
+    @State private var clipImage: UIImage?
+    @State private var showLivePhotoToast = false
+    @State private var showMotionMenu = false
+    @State private var livePhotoCollapseTask: Task<Void, Never>?
+
+    // Motion preview
+    @State private var motionAnimationID = UUID()
+
+    // Live Photo video preview
+    @State private var livePhotoPlayer: AVPlayer?
+    @State private var loopObserver: Any?
 
     private var clip: Clip? {
         tape.clips.first(where: { $0.id == clipID })
@@ -19,6 +34,12 @@ struct ImageClipSettingsView: View {
     private var isLivePhoto: Bool {
         clip?.isLivePhoto ?? false
     }
+
+    private var livePhotoIsOn: Bool {
+        isLivePhoto && livePhotoAsVideo
+    }
+
+    private var hasBackgroundMusic: Bool { tape.musicMood != .none }
 
     init(tape: Binding<Tape>, clipID: UUID, onDismiss: @escaping () -> Void) {
         self._tape = tape
@@ -32,165 +53,420 @@ struct ImageClipSettingsView: View {
             self._livePhotoAsVideo = State(initialValue: clip.livePhotoAsVideo ?? tapeDefault)
             let muteDefault = tape.wrappedValue.livePhotosMuted
             self._livePhotoMuted = State(initialValue: clip.livePhotoMuted ?? muteDefault)
+            self._clipVolume = State(initialValue: clip.volume ?? 1.0)
+            self._clipMusicVolume = State(initialValue: clip.musicVolume ?? Double(tape.wrappedValue.musicVolume))
         } else {
             self._selectedMotion = State(initialValue: .kenBurns)
             self._duration = State(initialValue: 4.0)
             self._livePhotoAsVideo = State(initialValue: tape.wrappedValue.livePhotosAsVideo)
             self._livePhotoMuted = State(initialValue: tape.wrappedValue.livePhotosMuted)
+            self._clipVolume = State(initialValue: 1.0)
+            self._clipMusicVolume = State(initialValue: Double(tape.wrappedValue.musicVolume))
         }
     }
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: Tokens.Spacing.xl) {
-                    if isLivePhoto {
-                        livePhotoSection
-                    }
-                    motionSection
-                        .opacity(isLivePhoto && livePhotoAsVideo ? 0.4 : 1)
-                        .disabled(isLivePhoto && livePhotoAsVideo)
-                    durationSection
-                        .opacity(isLivePhoto && livePhotoAsVideo ? 0.4 : 1)
-                        .disabled(isLivePhoto && livePhotoAsVideo)
-                }
-                .padding(.horizontal, Tokens.Spacing.l)
-                .padding(.vertical, Tokens.Spacing.l)
-            }
-            .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
-            .navigationTitle("Image Settings")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { onDismiss() }
-                        .foregroundColor(Tokens.Colors.primaryText)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        save()
-                        onDismiss()
-                    }
-                    .foregroundColor(hasChanges ? .blue : Tokens.Colors.secondaryText)
-                    .disabled(!hasChanges)
-                }
-            }
-        }
-        .onChange(of: duration) { _ in hasChanges = true }
-    }
-
-    // MARK: - Sections
-
-    private var livePhotoSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
-            SectionHeader(title: "Live Photo")
+        ZStack {
+            previewBackground
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                HStack {
-                    Image(systemName: "livephoto")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Tokens.Colors.primaryText)
-                        .frame(width: 24)
+                settingsHeader
+                    .padding(.top, 8)
 
-                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
-                        Text("Play as video")
-                            .font(Tokens.Typography.headline)
-                            .foregroundColor(Tokens.Colors.primaryText)
+                Spacer()
 
-                        Text("Use the Live Photo motion instead of a still image")
-                            .font(Tokens.Typography.caption)
-                            .foregroundColor(Tokens.Colors.secondaryText)
-                    }
+                controlsPills
+                    .padding(.bottom, 16)
 
-                    Spacer()
-
-                    Toggle("", isOn: $livePhotoAsVideo)
-                        .labelsHidden()
-                        .tint(Color(red: 0, green: 0.533, blue: 1))
-                        .onChange(of: livePhotoAsVideo) { _ in hasChanges = true }
-                }
-
-                Divider()
-                    .padding(.vertical, Tokens.Spacing.s)
-
-                HStack {
-                    Image(systemName: livePhotoMuted ? "speaker.slash" : "speaker.wave.2")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(livePhotoAsVideo ? Tokens.Colors.primaryText : Tokens.Colors.secondaryText)
-                        .frame(width: 24)
-
-                    Text("Sound")
-                        .font(Tokens.Typography.headline)
-                        .foregroundColor(livePhotoAsVideo ? Tokens.Colors.primaryText : Tokens.Colors.secondaryText)
-
-                    Spacer()
-
-                    Toggle("", isOn: Binding(
-                        get: { !livePhotoMuted },
-                        set: {
-                            livePhotoMuted = !$0
-                            hasChanges = true
-                        }
-                    ))
-                        .labelsHidden()
-                        .tint(Color(red: 0, green: 0.533, blue: 1))
-                        .disabled(!livePhotoAsVideo)
-                }
-                .opacity(livePhotoAsVideo ? 1 : 0.5)
+                bottomBar
             }
-            .padding(.vertical, Tokens.Spacing.m)
-            .padding(.horizontal, Tokens.Spacing.m)
-            .background(Tokens.Colors.secondaryBackground)
-            .cornerRadius(Tokens.Radius.card)
+            .background(alignment: .top) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.8), location: 0),
+                        .init(color: .black.opacity(0.3), location: 0.4),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 300)
+                .ignoresSafeArea()
+            }
+
+        }
+        .task {
+            await loadClipImage()
+            if livePhotoIsOn { startLivePhotoPlayback() }
+        }
+        .onChange(of: livePhotoAsVideo) { _, isOn in
+            if isOn { startLivePhotoPlayback() } else { stopLivePhotoPlayback() }
+        }
+        .onChange(of: clipVolume) { _, vol in
+            livePhotoPlayer?.volume = Float(vol)
+        }
+        .onChange(of: selectedMotion) { _, _ in
+            motionAnimationID = UUID()
+        }
+        .onDisappear {
+            stopLivePhotoPlayback()
         }
     }
 
-    private var motionSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
-            SectionHeader(title: "Motion style")
+    // MARK: - Preview Background
 
-            VStack(spacing: Tokens.Spacing.s) {
-                ForEach(MotionStyle.allCases, id: \.self) { style in
-                    MotionOptionRow(
-                        style: style,
-                        isSelected: selectedMotion == style,
-                        onSelect: {
-                            selectedMotion = style
-                            hasChanges = true
-                            provideHaptic()
-                        }
+    private var previewBackground: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color.black
+
+                if livePhotoIsOn, let player = livePhotoPlayer {
+                    LivePhotoPlayerLayerView(player: player)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                } else if let clipImage {
+                    MotionPreviewImage(
+                        image: clipImage,
+                        style: selectedMotion,
+                        cycleDuration: duration,
+                        size: geo.size
+                    )
+                    .id(motionAnimationID)
+                }
+            }
+        }
+    }
+
+    // MARK: - Header
+
+    private var settingsHeader: some View {
+        HStack {
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.black.opacity(0.2))
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+            }
+
+            Spacer()
+
+            Text("Image settings")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Button(action: { save() }) {
+                Text("Done")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 44)
+                    .background(.black.opacity(0.2))
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .contentShape(Capsule())
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Controls Pills (floating above bottom bar)
+
+    private var controlsPills: some View {
+        HStack(alignment: .bottom) {
+            if isLivePhoto {
+                livePhotoButton
+            }
+
+            Spacer()
+
+            HStack(alignment: .bottom, spacing: 16) {
+                if livePhotoIsOn {
+                    VerticalVolumeSlider(
+                        value: $clipVolume,
+                        icon: "speaker.wave.2.fill"
+                    )
+                }
+
+                if livePhotoIsOn && hasBackgroundMusic {
+                    VerticalVolumeSlider(
+                        value: $clipMusicVolume,
+                        icon: "music.note"
                     )
                 }
             }
         }
+        .padding(.horizontal, 16)
     }
 
-    private var durationSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
-            SectionHeader(title: "Display duration")
+    // MARK: - Live Photo Toggle Pill
 
-            ImageDurationSlider(
-                duration: $duration,
-                hasChanges: $hasChanges
-            )
+    private var livePhotoButton: some View {
+        Button {
+            toggleLivePhoto()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: livePhotoAsVideo ? "livephoto.play" : "livephoto")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(livePhotoAsVideo ? .yellow : .white)
+                    .frame(width: 24, height: 24)
+
+                if showLivePhotoToast {
+                    Text("Live photo **\(livePhotoAsVideo ? "ON" : "OFF")**")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .transition(
+                            .asymmetric(
+                                insertion: .scale(scale: 0, anchor: .leading).combined(with: .opacity),
+                                removal: .scale(scale: 0, anchor: .leading).combined(with: .opacity)
+                            )
+                        )
+                }
+            }
+            .padding(.leading, 10)
+            .padding(.trailing, showLivePhotoToast ? 14 : 10)
+            .frame(height: 44)
+            .background(.black.opacity(0.2))
+            .background(.ultraThinMaterial)
+            .clipShape(Capsule())
+            .contentShape(Capsule())
         }
     }
 
+    // MARK: - Bottom Bar
+
+    private var bottomBar: some View {
+        VStack(spacing: 4) {
+            Text("Image play Duration")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.6))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+
+            HStack(spacing: 12) {
+                Text("3s")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(livePhotoIsOn ? 0.3 : 0.6))
+                    .monospacedDigit()
+
+                Slider(value: $duration, in: 3.0...10.0, step: 0.5)
+                    .tint(Color(red: 0, green: 0.478, blue: 1))
+                    .disabled(livePhotoIsOn)
+                    .opacity(livePhotoIsOn ? 0.4 : 1)
+                    .onChange(of: duration) { _, _ in hasChanges = true }
+
+                Text("10s")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(livePhotoIsOn ? 0.3 : 0.6))
+                    .monospacedDigit()
+
+                Button {
+                    showMotionMenu = true
+                } label: {
+                    Image(systemName: "circle.dotted.and.circle")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(selectedMotion == .none ? .white : Color(red: 0, green: 0.478, blue: 1))
+                        .frame(width: 44, height: 44)
+                        .background(.black.opacity(0.2))
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                        .contentShape(Circle())
+                }
+                .disabled(livePhotoIsOn)
+                .opacity(livePhotoIsOn ? 0.4 : 1)
+                .popover(isPresented: $showMotionMenu) {
+                    motionOptionsList
+                        .presentationCompactAdaptation(.popover)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 12)
+        .background(
+            Color.black.opacity(0.4)
+                .background(.ultraThinMaterial)
+                .ignoresSafeArea()
+        )
+    }
+
+    private func motionIcon(for style: MotionStyle) -> String {
+        switch style {
+        case .none: return "rectangle.slash"
+        case .kenBurns: return "camera.metering.matrix"
+        case .pan: return "arrow.left.and.right"
+        case .zoomIn: return "plus.magnifyingglass"
+        case .zoomOut: return "minus.magnifyingglass"
+        case .drift: return "wind"
+        }
+    }
+
+    // MARK: - Motion Options List
+
+    private var motionOptionsList: some View {
+        VStack(spacing: 0) {
+            ForEach(MotionStyle.allCases, id: \.self) { style in
+                Button {
+                    selectedMotion = style
+                    hasChanges = true
+                    showMotionMenu = false
+                    provideHaptic()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: motionIcon(for: style))
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 24)
+
+                        Text(style.displayName)
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white)
+
+                        Spacer()
+
+                        if selectedMotion == style {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+
+                if style != MotionStyle.allCases.last {
+                    Divider()
+                }
+            }
+        }
+        .frame(width: 200)
+    }
+
     // MARK: - Actions
+
+    private func toggleLivePhoto() {
+        livePhotoAsVideo.toggle()
+        hasChanges = true
+
+        if livePhotoAsVideo {
+            duration = 3.0
+            livePhotoMuted = false
+        }
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            showLivePhotoToast = true
+        }
+
+        livePhotoCollapseTask?.cancel()
+        livePhotoCollapseTask = Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                showLivePhotoToast = false
+            }
+        }
+
+        provideHaptic()
+    }
 
     private func save() {
         guard var clip = tape.clips.first(where: { $0.id == clipID }) else { return }
         clip.motionStyle = selectedMotion
         clip.imageDuration = duration
         clip.duration = duration
+
         if clip.isLivePhoto {
             let tapeDefault = tape.livePhotosAsVideo
             clip.livePhotoAsVideo = (livePhotoAsVideo == tapeDefault) ? nil : livePhotoAsVideo
             let muteDefault = tape.livePhotosMuted
             clip.livePhotoMuted = (livePhotoMuted == muteDefault) ? nil : livePhotoMuted
         }
+
+        clip.volume = clipVolume < 0.99 ? clipVolume : nil
+        let tapeDefault = Double(tape.musicVolume)
+        clip.musicVolume = abs(clipMusicVolume - tapeDefault) > 0.01 ? clipMusicVolume : nil
+
         clip.updatedAt = Date()
         tape.updateClip(clip)
         tapesStore.updateTape(tape)
+        onDismiss()
+    }
+
+    // MARK: - Image Loading
+
+    private func loadClipImage() async {
+        guard let clip else { return }
+
+        if let imageData = clip.imageData, let image = UIImage(data: imageData) {
+            await MainActor.run { clipImage = image }
+            return
+        }
+
+        guard let assetId = clip.assetLocalId else { return }
+        let result = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
+        guard let asset = result.firstObject else { return }
+
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.isSynchronous = false
+
+        let targetSize = CGSize(width: UIScreen.main.bounds.width * UIScreen.main.scale,
+                                height: UIScreen.main.bounds.height * UIScreen.main.scale)
+
+        PHImageManager.default().requestImage(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: .aspectFill,
+            options: options
+        ) { image, _ in
+            if let image {
+                Task { @MainActor in clipImage = image }
+            }
+        }
+    }
+
+    // MARK: - Live Photo Video Playback
+
+    private func startLivePhotoPlayback() {
+        guard let clip, let assetId = clip.assetLocalId else { return }
+
+        Task {
+            guard let result = await extractLivePhotoVideo(assetIdentifier: assetId) else { return }
+            let player = AVPlayer(url: result.url)
+            player.volume = Float(clipVolume)
+
+            let observer = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: player.currentItem,
+                queue: .main
+            ) { _ in
+                player.seek(to: .zero)
+                player.play()
+            }
+
+            await MainActor.run {
+                self.livePhotoPlayer = player
+                self.loopObserver = observer
+                player.play()
+            }
+        }
+    }
+
+    private func stopLivePhotoPlayback() {
+        livePhotoPlayer?.pause()
+        if let observer = loopObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        livePhotoPlayer = nil
+        loopObserver = nil
     }
 
     private func provideHaptic() {
@@ -200,90 +476,98 @@ struct ImageClipSettingsView: View {
     }
 }
 
-// MARK: - Motion Option Row
+// MARK: - Motion Preview Image
 
-private struct MotionOptionRow: View {
+private struct MotionPreviewImage: View {
+    let image: UIImage
     let style: MotionStyle
-    let isSelected: Bool
-    let onSelect: () -> Void
+    let cycleDuration: Double
+    let size: CGSize
+
+    @State private var progress: CGFloat = 0
+    @State private var animationStartDate = Date()
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack {
-                VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
-                    Text(style.displayName)
-                        .font(Tokens.Typography.headline)
-                        .foregroundColor(Tokens.Colors.primaryText)
+        let effect = motionValues
+        let t = progress
+        let scale = effect.startScale + (effect.endScale - effect.startScale) * t
+        let ox = (effect.startOffset.x + (effect.endOffset.x - effect.startOffset.x) * t) * size.width
+        let oy = (effect.startOffset.y + (effect.endOffset.y - effect.startOffset.y) * t) * size.height
 
-                    Text(style.description)
-                        .font(Tokens.Typography.caption)
-                        .foregroundColor(Tokens.Colors.secondaryText)
-                }
+        Image(uiImage: image)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: size.width, height: size.height)
+            .scaleEffect(scale)
+            .offset(x: ox, y: oy)
+            .clipped()
+            .onAppear { startCycle() }
+    }
 
-                Spacer()
-
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.blue)
-                        .font(Tokens.Typography.title)
-                }
-            }
-            .padding(.vertical, Tokens.Spacing.m)
-            .padding(.horizontal, Tokens.Spacing.m)
-            .background(Tokens.Colors.secondaryBackground)
-            .cornerRadius(Tokens.Radius.card)
+    private func startCycle() {
+        guard style != .none else { return }
+        progress = 0
+        animationStartDate = Date()
+        withAnimation(.easeInOut(duration: cycleDuration)) {
+            progress = 1
         }
-        .buttonStyle(.plain)
-        .frame(minHeight: Tokens.HitTarget.minimum)
-        .accessibilityLabel(style.displayName)
-        .accessibilityHint(style.description)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        scheduleReset()
+    }
+
+    private func scheduleReset() {
+        let cycleStart = animationStartDate
+        DispatchQueue.main.asyncAfter(deadline: .now() + cycleDuration + 0.3) {
+            guard cycleStart == animationStartDate else { return }
+            withAnimation(.none) {
+                progress = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                guard cycleStart == animationStartDate else { return }
+                animationStartDate = Date()
+                withAnimation(.easeInOut(duration: cycleDuration)) {
+                    progress = 1
+                }
+                scheduleReset()
+            }
+        }
+    }
+
+    private var motionValues: (startScale: CGFloat, endScale: CGFloat, startOffset: CGPoint, endOffset: CGPoint) {
+        switch style {
+        case .none:
+            return (1, 1, .zero, .zero)
+        case .kenBurns:
+            return (1.0, 1.2, CGPoint(x: -0.05, y: 0.03), CGPoint(x: 0.05, y: -0.03))
+        case .pan:
+            return (1.2, 1.2, CGPoint(x: -0.10, y: 0.0), CGPoint(x: 0.10, y: 0.0))
+        case .zoomIn:
+            return (1.0, 1.3, .zero, .zero)
+        case .zoomOut:
+            return (1.3, 1.0, .zero, .zero)
+        case .drift:
+            return (1.03, 1.09, CGPoint(x: 0.02, y: -0.02), CGPoint(x: -0.02, y: 0.02))
+        }
     }
 }
 
-// MARK: - Image Duration Slider
+// MARK: - Live Photo Player Layer
 
-private struct ImageDurationSlider: View {
-    @Binding var duration: Double
-    @Binding var hasChanges: Bool
+private final class LivePhotoPlayerContainerView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+}
 
-    var body: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            HStack {
-                Text("4s")
-                    .font(Tokens.Typography.caption)
-                    .foregroundColor(Tokens.Colors.secondaryText)
+private struct LivePhotoPlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
 
-                Slider(value: $duration, in: 4.0...10.0, step: 0.5)
-                    .accentColor(.blue)
-                    .onChange(of: duration) { _ in
-                        hasChanges = true
-                    }
+    func makeUIView(context: Context) -> LivePhotoPlayerContainerView {
+        let view = LivePhotoPlayerContainerView()
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = .resizeAspectFill
+        return view
+    }
 
-                Text("10s")
-                    .font(Tokens.Typography.caption)
-                    .foregroundColor(Tokens.Colors.secondaryText)
-            }
-
-            Text("\(String(format: "%.1f", duration))s")
-                .font(Tokens.Typography.headline)
-                .foregroundColor(Tokens.Colors.primaryText)
-        }
-        .padding(Tokens.Spacing.l)
-        .background(Tokens.Colors.secondaryBackground)
-        .cornerRadius(Tokens.Radius.card)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Display duration")
-        .accessibilityValue("\(String(format: "%.1f", duration)) seconds")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment:
-                duration = min(10.0, duration + 0.5)
-            case .decrement:
-                duration = max(4.0, duration - 0.5)
-            @unknown default:
-                break
-            }
-        }
+    func updateUIView(_ uiView: LivePhotoPlayerContainerView, context: Context) {
+        uiView.playerLayer.player = player
     }
 }
