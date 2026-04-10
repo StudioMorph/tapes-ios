@@ -14,6 +14,7 @@ final class BlurredBackgroundInstruction: NSObject, AVVideoCompositionInstructio
         let startOpacity: Float
         let endOpacity: Float
         let needsBlurBackground: Bool
+        var fitClipRect: CGRect?
     }
 
     let theTimeRange: CMTimeRange
@@ -127,9 +128,18 @@ final class BlurredBackgroundCompositor: NSObject, AVVideoCompositing {
                         .transformed(by: upscale)
                         .cropped(to: renderBounds)
 
+                    let fitCropRect: CGRect
+                    if let clipRect = layer.fitClipRect {
+                        fitCropRect = clipRect.applying(
+                            CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: renderSize.height)
+                        )
+                    } else {
+                        fitCropRect = renderBounds
+                    }
+
                     let fit = sourceImage
                         .transformed(by: ciFit)
-                        .cropped(to: renderBounds)
+                        .cropped(to: fitCropRect)
 
                     layerImage = fit.composited(over: blurred)
                 } else {

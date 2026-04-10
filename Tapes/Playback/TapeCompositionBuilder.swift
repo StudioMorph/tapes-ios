@@ -1373,6 +1373,8 @@ struct TapeCompositionBuilder {
 
                 let needsBlur = segmentScaleMode == .fit
                     && clipNeedsBlurBackground(segment: segment, renderSize: renderSize)
+                let clipRect = (segmentScaleMode == .fit)
+                    ? fittedClipRect(for: segment, renderSize: renderSize) : nil
 
                 let layer = BlurredBackgroundInstruction.LayerInfo(
                     trackID: track.trackID,
@@ -1382,7 +1384,8 @@ struct TapeCompositionBuilder {
                     fillEndTransform: fillEnd,
                     startOpacity: 1.0,
                     endOpacity: 1.0,
-                    needsBlurBackground: needsBlur
+                    needsBlurBackground: needsBlur,
+                    fitClipRect: clipRect
                 )
 
                 instructions.append(BlurredBackgroundInstruction(timeRange: timeRange, layers: [layer]))
@@ -1414,6 +1417,10 @@ struct TapeCompositionBuilder {
                 && clipNeedsBlurBackground(segment: segment, renderSize: renderSize)
             let toNeedsBlur = nextScaleMode == .fit
                 && clipNeedsBlurBackground(segment: nextSegment, renderSize: renderSize)
+            let fromClipRect = (segmentScaleMode == .fit)
+                ? fittedClipRect(for: segment, renderSize: renderSize) : nil
+            let toClipRect = (nextScaleMode == .fit)
+                ? fittedClipRect(for: nextSegment, renderSize: renderSize) : nil
 
             let fromLayer: BlurredBackgroundInstruction.LayerInfo
             let toLayer: BlurredBackgroundInstruction.LayerInfo
@@ -1428,7 +1435,8 @@ struct TapeCompositionBuilder {
                     fillEndTransform: fromFillEnd,
                     startOpacity: 1.0,
                     endOpacity: 0.0,
-                    needsBlurBackground: fromNeedsBlur
+                    needsBlurBackground: fromNeedsBlur,
+                    fitClipRect: fromClipRect
                 )
                 toLayer = BlurredBackgroundInstruction.LayerInfo(
                     trackID: nextTrack.trackID,
@@ -1438,7 +1446,8 @@ struct TapeCompositionBuilder {
                     fillEndTransform: toFillEnd,
                     startOpacity: 0.0,
                     endOpacity: 1.0,
-                    needsBlurBackground: toNeedsBlur
+                    needsBlurBackground: toNeedsBlur,
+                    fitClipRect: toClipRect
                 )
 
             case .slideLR, .slideRL:
@@ -1457,7 +1466,8 @@ struct TapeCompositionBuilder {
                     fillEndTransform: fromFillSlideEnd,
                     startOpacity: 1.0,
                     endOpacity: 1.0,
-                    needsBlurBackground: fromNeedsBlur
+                    needsBlurBackground: fromNeedsBlur,
+                    fitClipRect: fromClipRect
                 )
                 toLayer = BlurredBackgroundInstruction.LayerInfo(
                     trackID: nextTrack.trackID,
@@ -1467,7 +1477,8 @@ struct TapeCompositionBuilder {
                     fillEndTransform: toFillStart,
                     startOpacity: 1.0,
                     endOpacity: 1.0,
-                    needsBlurBackground: toNeedsBlur
+                    needsBlurBackground: toNeedsBlur,
+                    fitClipRect: toClipRect
                 )
 
             case .none, .randomise:
@@ -1482,6 +1493,26 @@ struct TapeCompositionBuilder {
 
         instructions.sort { CMTimeCompare($0.theTimeRange.start, $1.theTimeRange.start) < 0 }
         return instructions
+    }
+
+    private func fittedClipRect(for segment: Segment, renderSize: CGSize) -> CGRect? {
+        guard let context = segment.assetContext else { return nil }
+        guard segment.motionEffect != nil else { return nil }
+        let naturalSize = context.naturalSize.applying(context.preferredTransform)
+        let absWidth = abs(naturalSize.width)
+        let absHeight = abs(naturalSize.height)
+        guard absWidth > 0, absHeight > 0 else { return nil }
+
+        let scaleX = renderSize.width / absWidth
+        let scaleY = renderSize.height / absHeight
+        let scale = min(scaleX, scaleY)
+
+        let fittedWidth = absWidth * scale
+        let fittedHeight = absHeight * scale
+        let originX = (renderSize.width - fittedWidth) / 2
+        let originY = (renderSize.height - fittedHeight) / 2
+
+        return CGRect(x: originX, y: originY, width: fittedWidth, height: fittedHeight)
     }
 
     private func clipNeedsBlurBackground(segment: Segment, renderSize: CGSize) -> Bool {
