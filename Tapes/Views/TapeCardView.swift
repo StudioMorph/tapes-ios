@@ -52,7 +52,7 @@ struct TapeCardView: View {
     @State private var importSource: ImportSource? = nil
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
-    @State private var showingMusicSheet = false
+    
     @State private var showingDeleteTapeAlert = false
     @State private var showingPaywall = false
     @FocusState private var isTitleFocused: Bool
@@ -179,18 +179,8 @@ struct TapeCardView: View {
                 // 32pt minimum gap
                 Spacer(minLength: 32)
                 
-                // Right group: music 16 settings 16 play
+                // Right group: settings 16 play
                 HStack(spacing: 16) {
-                    HStack(spacing: 0) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 13, weight: .semibold))
-                        Image(systemName: "music.note")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
-                    .onTapGesture { guard !isEmptyTape else { return }; showingMusicSheet = true }
-                    .id("music-\(tapeID)")
-
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
@@ -423,9 +413,6 @@ struct TapeCardView: View {
             }
         } message: {
             Text("This will delete the Tape and its album. Your photos and videos remain in your device's Library.")
-        }
-        .sheet(isPresented: $showingMusicSheet) {
-            BackgroundMusicView(tape: $tape)
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
