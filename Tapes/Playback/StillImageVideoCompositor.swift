@@ -41,7 +41,10 @@ final class StillImageCompositionInstruction: NSObject, AVVideoCompositionInstru
 }
 
 final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
-    private let renderQueue = DispatchQueue(label: "tapes.still-image-compositor")
+    private let renderQueue = DispatchQueue(label: "tapes.still-image-compositor", qos: .userInteractive)
+    private var cachedBaseImage: CGImage?
+    private var cachedBaseSize: CGSize = .zero
+    private var cachedRenderSize: CGSize = .zero
 
     var sourcePixelBufferAttributes: [String: Any]? {
         [
@@ -55,7 +58,9 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         ]
     }
 
-    func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
+    func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {
+        cachedBaseImage = nil
+    }
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
         renderQueue.async {
@@ -74,6 +79,41 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
             )
             request.finish(withComposedVideoFrame: buffer)
         }
+    }
+
+    private func preRenderedBaseImage(for instruction: StillImageCompositionInstruction) -> CGImage? {
+        if let cached = cachedBaseImage,
+           cachedBaseSize == instruction.imageSize,
+           cachedRenderSize == instruction.renderSize {
+            return cached
+        }
+
+        let base = baseTransform(
+            imageSize: instruction.imageSize,
+            rotationTurns: instruction.rotationTurns,
+            renderSize: instruction.renderSize,
+            scaleMode: .fill
+        )
+        let w = Int(instruction.renderSize.width)
+        let h = Int(instruction.renderSize.height)
+        guard let ctx = CGContext(
+            data: nil,
+            width: w, height: h,
+            bitsPerComponent: 8,
+            bytesPerRow: w * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
+        ) else { return nil }
+
+        ctx.interpolationQuality = .high
+        ctx.concatenate(base)
+        ctx.draw(instruction.image, in: CGRect(origin: .zero, size: instruction.imageSize))
+
+        guard let image = ctx.makeImage() else { return nil }
+        cachedBaseImage = image
+        cachedBaseSize = instruction.imageSize
+        cachedRenderSize = instruction.renderSize
+        return image
     }
 
     private func render(
@@ -97,40 +137,50 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         }
 
         context.clear(CGRect(origin: .zero, size: instruction.renderSize))
-        context.interpolationQuality = .high
 
         let reduceMotion = UIAccessibility.isReduceMotionEnabled
         let progress = reduceMotion ? 0 : normalizedProgress(time: time, duration: instruction.duration)
-        let base = baseTransform(
-            imageSize: instruction.imageSize,
-            rotationTurns: instruction.rotationTurns,
-            renderSize: instruction.renderSize,
-            scaleMode: instruction.scaleMode
-        )
-        let transform = apply(
-            effect: instruction.motionEffect,
-            to: base,
-            renderSize: instruction.renderSize,
-            progress: progress
-        )
 
-        context.saveGState()
+        if instruction.motionEffect != nil, let baseImage = preRenderedBaseImage(for: instruction) {
+            let effect = instruction.motionEffect!
+            let scale = lerp(effect.startScale, effect.endScale, progress: progress)
+            let offsetX = lerp(effect.startOffset.x, effect.endOffset.x, progress: progress) * instruction.renderSize.width
+            let offsetY = lerp(effect.startOffset.y, effect.endOffset.y, progress: progress) * instruction.renderSize.height
 
-        if instruction.scaleMode == .fit, instruction.motionEffect != nil {
-            let clipRect = fittedRect(
+            let renderCenter = CGPoint(x: instruction.renderSize.width * 0.5, y: instruction.renderSize.height * 0.5)
+
+            context.saveGState()
+
+            if instruction.scaleMode == .fit {
+                let clipRect = fittedRect(
+                    imageSize: instruction.imageSize,
+                    rotationTurns: instruction.rotationTurns,
+                    renderSize: instruction.renderSize
+                )
+                context.clip(to: clipRect)
+            }
+
+            context.translateBy(x: renderCenter.x, y: renderCenter.y)
+            context.scaleBy(x: scale, y: scale)
+            context.translateBy(x: -renderCenter.x, y: -renderCenter.y)
+            context.translateBy(x: offsetX, y: offsetY)
+
+            context.interpolationQuality = .low
+            context.draw(baseImage, in: CGRect(origin: .zero, size: instruction.renderSize))
+            context.restoreGState()
+        } else {
+            context.interpolationQuality = .high
+            let base = baseTransform(
                 imageSize: instruction.imageSize,
                 rotationTurns: instruction.rotationTurns,
-                renderSize: instruction.renderSize
+                renderSize: instruction.renderSize,
+                scaleMode: instruction.scaleMode
             )
-            context.clip(to: clipRect)
+            context.saveGState()
+            context.concatenate(base)
+            context.draw(instruction.image, in: CGRect(origin: .zero, size: instruction.imageSize))
+            context.restoreGState()
         }
-
-        context.concatenate(transform)
-        context.draw(
-            instruction.image,
-            in: CGRect(origin: .zero, size: instruction.imageSize)
-        )
-        context.restoreGState()
     }
 
     private func normalizedProgress(time: CMTime, duration: CMTime) -> CGFloat {
@@ -168,26 +218,6 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         }
         transform = transform.translatedBy(x: -baseWidth * 0.5, y: -baseHeight * 0.5)
         return transform
-    }
-
-    private func apply(
-        effect: TapeCompositionBuilder.MotionEffect?,
-        to base: CGAffineTransform,
-        renderSize: CGSize,
-        progress: CGFloat
-    ) -> CGAffineTransform {
-        guard let effect else { return base }
-        let scale = lerp(effect.startScale, effect.endScale, progress: progress)
-        let offsetX = lerp(effect.startOffset.x, effect.endOffset.x, progress: progress) * renderSize.width
-        let offsetY = lerp(effect.startOffset.y, effect.endOffset.y, progress: progress) * renderSize.height
-
-        let renderCenter = CGPoint(x: renderSize.width * 0.5, y: renderSize.height * 0.5)
-        var effectTransform = CGAffineTransform.identity
-        effectTransform = effectTransform.translatedBy(x: renderCenter.x, y: renderCenter.y)
-        effectTransform = effectTransform.scaledBy(x: scale, y: scale)
-        effectTransform = effectTransform.translatedBy(x: -renderCenter.x, y: -renderCenter.y)
-        effectTransform = effectTransform.translatedBy(x: offsetX, y: offsetY)
-        return base.concatenating(effectTransform)
     }
 
     private func fittedRect(

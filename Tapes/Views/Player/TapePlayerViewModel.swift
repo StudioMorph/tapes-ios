@@ -152,6 +152,7 @@ final class TapePlayerViewModel: ObservableObject {
             }
 
             startSequentialPreload(from: 1)
+            resetControlsTimer()
         } catch {
             loadError = error.localizedDescription
         }
@@ -1258,7 +1259,7 @@ final class TapePlayerViewModel: ObservableObject {
         preloadTask?.cancel()
         preloadNextIndex = clampedStart
         let tapeTimeline = updateTimelineRenderSize(timeline)
-        preloadTask = Task { [weak self] in
+        preloadTask = Task(priority: .utility) { [weak self] in
             guard let self else { return }
             var index = self.preloadNextIndex
             while index <= maxIndex, !Task.isCancelled {
@@ -1267,11 +1268,13 @@ final class TapePlayerViewModel: ObservableObject {
                     _ = try? await self.loadClipComposition(
                         index: index, timeline: tapeTimeline, allowTrim: false
                     )
+                    await Task.yield()
                 }
                 if self.isAirPlayActive,
                    index < self.tape.clips.count,
                    self.tape.clips[index].clipType == .image {
                     self.preRenderImageClip(at: index)
+                    await Task.yield()
                 }
                 index += 1
             }

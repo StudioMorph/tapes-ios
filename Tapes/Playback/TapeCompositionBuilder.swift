@@ -81,7 +81,7 @@ struct TapeCompositionBuilder {
 
         /// Cinematic slow zoom + diagonal pan, classic documentary feel.
         static let kenBurns = MotionEffect(
-            startScale: 1.0,
+            startScale: 1.05,
             endScale: 1.2,
             startOffset: CGPoint(x: -0.05, y: 0.03),
             endOffset: CGPoint(x: 0.05, y: -0.03)
