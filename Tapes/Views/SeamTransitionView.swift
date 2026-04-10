@@ -85,7 +85,7 @@ struct SeamTransitionView: View {
     // MARK: - Sections
 
     private var transitionSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
             SectionHeader(title: "Transition style")
 
             VStack(spacing: Tokens.Spacing.s) {
@@ -106,7 +106,7 @@ struct SeamTransitionView: View {
     }
 
     private var durationSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
             SectionHeader(title: "Duration")
 
             TransitionDurationSlider(

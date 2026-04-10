@@ -13,7 +13,7 @@ struct SectionHeader: View {
 }
 
 #Preview {
-    VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
+    VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
         SectionHeader(title: "Choose default transition")
         SectionHeader(title: "Transition Duration")
     }

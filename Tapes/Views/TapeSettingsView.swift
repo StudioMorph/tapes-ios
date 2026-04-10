@@ -81,7 +81,7 @@ struct TapeSettingsView: View {
     // MARK: - Sections
     
     private var transitionSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
             SectionHeader(title: "Transitions")
 
             NavigationLink {
@@ -125,7 +125,7 @@ struct TapeSettingsView: View {
     }
     
     private var backgroundMusicSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
             SectionHeader(title: "Background Music")
 
             NavigationLink {
@@ -169,7 +169,7 @@ struct TapeSettingsView: View {
     }
 
     private var livePhotosSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
             SectionHeader(title: "Live Photos")
 
             VStack(spacing: Tokens.Spacing.m) {
@@ -260,7 +260,7 @@ struct TapeSettingsView: View {
     }
 
     private var mergeAndSaveSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
             SectionHeader(title: "Merge and Save")
 
             if tape.duration > Tokens.Timing.maxTapeDuration || tape.clips.count > Tokens.Timing.maxTapeClipCount {

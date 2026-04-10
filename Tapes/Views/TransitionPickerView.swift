@@ -6,7 +6,7 @@ struct TransitionPickerView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Tokens.Spacing.xl) {
-                VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
+                VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
                     SectionHeader(title: "Choose default transition")
 
                     VStack(spacing: Tokens.Spacing.s) {
