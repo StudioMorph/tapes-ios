@@ -258,18 +258,25 @@ struct TapeCompositionBuilder {
     
     // Legacy method for backward compatibility - now resolves full contexts
     func makeTimeline(for tape: Tape, contexts: [ClipAssetContext]) -> Timeline {
-        // Convert contexts to metadata for timeline building
         let metadata = contexts.map { context in
-            ClipMetadata(
+            let clip = context.clip
+            let effectiveDuration: CMTime
+            if clip.isTrimmed {
+                let trimmed = CMTimeGetSeconds(context.duration) - clip.trimStart - clip.trimEnd
+                effectiveDuration = CMTime(seconds: max(0.1, trimmed), preferredTimescale: 600)
+            } else {
+                effectiveDuration = context.duration
+            }
+            return ClipMetadata(
                 index: context.index,
-                clip: context.clip,
-                duration: context.duration,
+                clip: clip,
+                duration: effectiveDuration,
                 naturalSize: context.naturalSize,
                 motionEffect: context.motionEffect
             )
         }
         let transitionDescriptors = buildTransitionDescriptors(for: tape, metadata: metadata)
-        let segments = buildSegments(for: contexts, transitions: transitionDescriptors)
+        let segments = buildSegments(for: metadata, contexts: contexts, transitions: transitionDescriptors)
         let totalDuration = segments.last.map { CMTimeAdd($0.timeRange.start, $0.timeRange.duration) } ?? .zero
         return Timeline(
             segments: segments,
@@ -972,21 +979,9 @@ struct TapeCompositionBuilder {
         return segments
     }
     
-    // Legacy method for backward compatibility
-    private func buildSegments(for assets: [ClipAssetContext], transitions: [TransitionDescriptor?]) -> [Segment] {
-        // Convert to metadata and build segments
-        let metadata = assets.map { context in
-            ClipMetadata(
-                index: context.index,
-                clip: context.clip,
-                duration: context.duration,
-                naturalSize: context.naturalSize,
-                motionEffect: context.motionEffect
-            )
-        }
-        // Build segments with metadata, then attach asset contexts
+    private func buildSegments(for metadata: [ClipMetadata], contexts: [ClipAssetContext], transitions: [TransitionDescriptor?]) -> [Segment] {
         var segments = buildSegments(for: metadata, transitions: transitions)
-        for (index, context) in assets.enumerated() {
+        for (index, context) in contexts.enumerated() {
             segments[index] = Segment(
                 clipIndex: segments[index].clipIndex,
                 metadata: segments[index].metadata,
