@@ -60,42 +60,60 @@ struct ClipTrimView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                videoBackground
-                    .ignoresSafeArea()
+        ZStack {
+            videoBackground
+                .ignoresSafeArea()
 
-                VStack {
-                    Spacer()
+            VStack(spacing: 0) {
+                editClipHeader
+                    .padding(.top, 8)
 
-                    bottomControls
-                        .padding(.bottom, 8)
-                        .background {
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0),
-                                    .init(color: .black.opacity(0.2), location: 0.2),
-                                    .init(color: .black.opacity(0.7), location: 1)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .ignoresSafeArea()
-                        }
+                Spacer()
+
+                volumeSliders
+                    .padding(.bottom, 16)
+
+                HStack(spacing: 8) {
+                    playButton
+
+                    if asset != nil, totalDuration > 0 {
+                        FrameTimelineView(
+                            asset: asset!,
+                            totalDuration: totalDuration,
+                            trimStart: $trimStart,
+                            trimEnd: $trimEnd,
+                            currentTime: $currentTime,
+                            isDragging: $isDragging,
+                            onSeek: { seekTo($0) },
+                            onDragStarted: { pauseIfPlaying() },
+                            onHandleDragEnded: { seekTo(trimStart) }
+                        )
+                        .frame(height: 56)
+                    } else {
+                        loadingPlaceholder
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
+                .background(
+                    Color.black.opacity(0.4)
+                        .background(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                )
             }
-            .navigationTitle("Edit Clip")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onDismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { save() }
-                        .tint(.blue)
-                }
+            .background(alignment: .top) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0.8), location: 0),
+                        .init(color: .black.opacity(0.3), location: 0.4),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 300)
+                .ignoresSafeArea()
             }
-            .toolbarBackground(.hidden, for: .navigationBar)
         }
         .task { await loadAsset() }
         .task { await prepareMusic() }
@@ -133,50 +151,63 @@ struct ClipTrimView: View {
         }
     }
 
-    // MARK: - Bottom controls
+    // MARK: - Header
 
-    private var bottomControls: some View {
-        VStack(spacing: Tokens.Spacing.m) {
-            HStack(alignment: .bottom, spacing: Tokens.Spacing.m) {
-                Spacer()
-
-                VerticalVolumeSlider(
-                    value: $clipVolume,
-                    icon: "speaker.wave.2.fill"
-                )
-
-                if hasBackgroundMusic {
-                    VerticalVolumeSlider(
-                        value: $clipMusicVolume,
-                        icon: "music.note"
-                    )
-                }
+    private var editClipHeader: some View {
+        HStack {
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(.black.opacity(0.2))
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .contentShape(Circle())
             }
-            .padding(.horizontal, Tokens.Spacing.l)
 
-            HStack(spacing: Tokens.Spacing.s) {
-                playButton
+            Spacer()
 
-                if asset != nil, totalDuration > 0 {
-                    FrameTimelineView(
-                        asset: asset!,
-                        totalDuration: totalDuration,
-                        trimStart: $trimStart,
-                        trimEnd: $trimEnd,
-                        currentTime: $currentTime,
-                        isDragging: $isDragging,
-                        onSeek: { seekTo($0) },
-                        onDragStarted: { pauseIfPlaying() },
-                        onHandleDragEnded: { seekTo(trimStart) }
-                    )
-                    .frame(height: 56)
-                } else {
-                    loadingPlaceholder
-                }
+            Text("Edit clip")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Button(action: { save() }) {
+                Text("Done")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 40)
+                    .background(.black.opacity(0.2))
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .contentShape(Capsule())
             }
-            .padding(.horizontal, Tokens.Spacing.m)
         }
-        .padding(.bottom, Tokens.Spacing.l)
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Volume Sliders
+
+    private var volumeSliders: some View {
+        HStack(alignment: .bottom, spacing: 16) {
+            Spacer()
+
+            VerticalVolumeSlider(
+                value: $clipVolume,
+                icon: "speaker.wave.2.fill"
+            )
+
+            if hasBackgroundMusic {
+                VerticalVolumeSlider(
+                    value: $clipMusicVolume,
+                    icon: "music.note"
+                )
+            }
+        }
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Subviews
@@ -186,9 +217,8 @@ struct ClipTrimView: View {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                 .font(.system(size: 22, weight: .medium))
                 .foregroundColor(.white)
-                .frame(width: Tokens.HitTarget.recommended, height: 56)
-                .background(Color.white.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(width: 44, height: 56)
+                .contentShape(Rectangle())
         }
     }
 
@@ -446,13 +476,6 @@ struct FrameTimelineView: View {
                     .contentShape(Rectangle())
                     .gesture(scrubGesture(trackWidth: trackWidth))
 
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color.white)
-                    .frame(width: 3, height: trackHeight + 10)
-                    .shadow(color: .black.opacity(0.4), radius: 2)
-                    .offset(x: playheadX - 1.5, y: -5)
-                    .allowsHitTesting(false)
-
                 trimHandleView(isLeft: true, trackHeight: trackHeight)
                     .frame(width: handleWidth, height: trackHeight)
                     .offset(x: leftHandleOffset)
@@ -462,6 +485,13 @@ struct FrameTimelineView: View {
                     .frame(width: handleWidth, height: trackHeight)
                     .offset(x: totalWidth - handleWidth - rightHandleOffset)
                     .gesture(rightHandleDrag(trackWidth: trackWidth))
+
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.white)
+                    .frame(width: 4, height: trackHeight + 14)
+                    .shadow(color: .black.opacity(0.4), radius: 2)
+                    .offset(x: playheadX - 2, y: -7)
+                    .allowsHitTesting(false)
 
                 if isDraggingLeft {
                     timeTooltip(time: trimStart)
@@ -552,9 +582,9 @@ struct FrameTimelineView: View {
         ZStack {
             Rectangle()
                 .fill(Color.yellow)
-            Image(systemName: isLeft ? "chevron.compact.left" : "chevron.compact.right")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.black.opacity(0.6))
+            Image(systemName: isLeft ? "chevron.left" : "chevron.right")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.black)
         }
         .clipShape(
             .rect(
