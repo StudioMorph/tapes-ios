@@ -38,7 +38,6 @@ struct PlayerHeader: View {
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(2)
-                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
         }
         .padding(.horizontal, 16)
     }

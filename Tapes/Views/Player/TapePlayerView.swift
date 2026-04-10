@@ -105,13 +105,15 @@ struct TapePlayerView: View {
                     Spacer()
 
                     HStack(alignment: .bottom, spacing: 16) {
-                        VerticalVolumeSlider(
-                            value: Binding(
-                                get: { vm.clipVolume },
-                                set: { vm.setClipVolume($0) }
-                            ),
-                            icon: "speaker.wave.2.fill"
-                        )
+                        if vm.hasClipAudio {
+                            VerticalVolumeSlider(
+                                value: Binding(
+                                    get: { vm.clipVolume },
+                                    set: { vm.setClipVolume($0) }
+                                ),
+                                icon: "speaker.wave.2.fill"
+                            )
+                        }
 
                         if vm.hasBackgroundMusic {
                             VerticalVolumeSlider(

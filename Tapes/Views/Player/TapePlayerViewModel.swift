@@ -943,6 +943,17 @@ final class TapePlayerViewModel: ObservableObject {
 
     var hasBackgroundMusic: Bool { tape.musicMood != .none }
 
+    var hasClipAudio: Bool {
+        let clip = tape.clips[currentClipIndex]
+        if clip.clipType == .video { return true }
+        if clip.isLivePhoto {
+            let playsAsVideo = clip.shouldPlayAsLiveVideo(tapeDefault: tape.livePhotosAsVideo)
+            let isMuted = clip.shouldMuteLiveAudio(tapeDefault: tape.livePhotosMuted)
+            return playsAsVideo && !isMuted
+        }
+        return false
+    }
+
     private func updateVolumeForClip(at index: Int) {
         guard index >= 0, index < tape.clips.count else { return }
         let clip = tape.clips[index]
