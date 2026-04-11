@@ -81,21 +81,22 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         }
     }
 
-    private func preRenderedBaseImage(for instruction: StillImageCompositionInstruction) -> CGImage? {
+    private func preRenderedBaseImage(for instruction: StillImageCompositionInstruction, targetSize: CGSize) -> CGImage? {
         if let cached = cachedBaseImage,
            cachedBaseSize == instruction.imageSize,
-           cachedRenderSize == instruction.renderSize {
+           cachedRenderSize == targetSize {
             return cached
         }
 
         let base = baseTransform(
             imageSize: instruction.imageSize,
             rotationTurns: instruction.rotationTurns,
-            renderSize: instruction.renderSize,
+            renderSize: targetSize,
             scaleMode: .fill
         )
-        let w = Int(instruction.renderSize.width)
-        let h = Int(instruction.renderSize.height)
+        let w = Int(ceil(targetSize.width))
+        let h = Int(ceil(targetSize.height))
+        guard w > 0, h > 0 else { return nil }
         guard let ctx = CGContext(
             data: nil,
             width: w, height: h,
@@ -112,7 +113,7 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         guard let image = ctx.makeImage() else { return nil }
         cachedBaseImage = image
         cachedBaseSize = instruction.imageSize
-        cachedRenderSize = instruction.renderSize
+        cachedRenderSize = targetSize
         return image
     }
 
@@ -141,15 +142,8 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
         let reduceMotion = UIAccessibility.isReduceMotionEnabled
         let progress = reduceMotion ? 0 : normalizedProgress(time: time, duration: instruction.duration)
 
-        if instruction.motionEffect != nil, let baseImage = preRenderedBaseImage(for: instruction) {
-            let effect = instruction.motionEffect!
+        if let effect = instruction.motionEffect {
             let scale = lerp(effect.startScale, effect.endScale, progress: progress)
-            let offsetX = lerp(effect.startOffset.x, effect.endOffset.x, progress: progress) * instruction.renderSize.width
-            let offsetY = lerp(effect.startOffset.y, effect.endOffset.y, progress: progress) * instruction.renderSize.height
-
-            let renderCenter = CGPoint(x: instruction.renderSize.width * 0.5, y: instruction.renderSize.height * 0.5)
-
-            context.saveGState()
 
             if instruction.scaleMode == .fit {
                 let clipRect = fittedRect(
@@ -157,17 +151,37 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
                     rotationTurns: instruction.rotationTurns,
                     renderSize: instruction.renderSize
                 )
+                guard let baseImage = preRenderedBaseImage(for: instruction, targetSize: clipRect.size) else { return }
+
+                let offsetX = lerp(effect.startOffset.x, effect.endOffset.x, progress: progress) * clipRect.width
+                let offsetY = lerp(effect.startOffset.y, effect.endOffset.y, progress: progress) * clipRect.height
+                let center = CGPoint(x: clipRect.midX, y: clipRect.midY)
+
+                context.saveGState()
                 context.clip(to: clipRect)
+                context.translateBy(x: center.x, y: center.y)
+                context.scaleBy(x: scale, y: scale)
+                context.translateBy(x: -center.x, y: -center.y)
+                context.translateBy(x: offsetX, y: offsetY)
+                context.interpolationQuality = .low
+                context.draw(baseImage, in: clipRect)
+                context.restoreGState()
+            } else {
+                guard let baseImage = preRenderedBaseImage(for: instruction, targetSize: instruction.renderSize) else { return }
+
+                let offsetX = lerp(effect.startOffset.x, effect.endOffset.x, progress: progress) * instruction.renderSize.width
+                let offsetY = lerp(effect.startOffset.y, effect.endOffset.y, progress: progress) * instruction.renderSize.height
+                let center = CGPoint(x: instruction.renderSize.width * 0.5, y: instruction.renderSize.height * 0.5)
+
+                context.saveGState()
+                context.translateBy(x: center.x, y: center.y)
+                context.scaleBy(x: scale, y: scale)
+                context.translateBy(x: -center.x, y: -center.y)
+                context.translateBy(x: offsetX, y: offsetY)
+                context.interpolationQuality = .low
+                context.draw(baseImage, in: CGRect(origin: .zero, size: instruction.renderSize))
+                context.restoreGState()
             }
-
-            context.translateBy(x: renderCenter.x, y: renderCenter.y)
-            context.scaleBy(x: scale, y: scale)
-            context.translateBy(x: -renderCenter.x, y: -renderCenter.y)
-            context.translateBy(x: offsetX, y: offsetY)
-
-            context.interpolationQuality = .low
-            context.draw(baseImage, in: CGRect(origin: .zero, size: instruction.renderSize))
-            context.restoreGState()
         } else {
             context.interpolationQuality = .high
             let base = baseTransform(
