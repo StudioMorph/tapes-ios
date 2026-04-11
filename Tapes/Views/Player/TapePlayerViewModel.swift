@@ -39,7 +39,15 @@ final class TapePlayerViewModel: ObservableObject {
     // MARK: - Input
 
     var tape: Tape
-    var viewportSize: CGSize = UIScreen.main.bounds.size
+    var viewportSize: CGSize = UIScreen.main.bounds.size {
+        didSet {
+            let wasLandscape = oldValue.width > oldValue.height
+            let isLandscape = viewportSize.width > viewportSize.height
+            if wasLandscape != isLandscape {
+                handleOrientationChange()
+            }
+        }
+    }
 
     // MARK: - Computed Properties
 
@@ -939,6 +947,25 @@ final class TapePlayerViewModel: ObservableObject {
         for (index, task) in preRenderTasks where !keepSet.contains(index) {
             task.cancel()
             preRenderTasks.removeValue(forKey: index)
+        }
+    }
+
+    private func handleOrientationChange() {
+        clipCache.removeAll()
+        cacheAccessOrder.removeAll()
+        guard let tl = timeline, !isTornDown else { return }
+        timeline = updateTimelineRenderSize(tl)
+        let wasPlaying = isPlaying
+        let seekTime = CMTime(seconds: clipTime, preferredTimescale: 600)
+        Task { @MainActor in
+            do {
+                let composition = try await loadClipComposition(
+                    index: currentClipIndex,
+                    timeline: timeline!,
+                    allowTrim: false
+                )
+                installComposition(composition, in: activeSlot, autoplay: wasPlaying, seekTime: seekTime)
+            } catch {}
         }
     }
 
