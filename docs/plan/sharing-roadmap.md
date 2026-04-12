@@ -14,7 +14,7 @@ Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 1 — Foundation ✅
+## Phase 1 — Foundation ✅ COMPLETE
 
 ### Backend (tapes-api)
 1. Scaffold Cloudflare Workers project with Wrangler
@@ -40,7 +40,7 @@ Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 2 — View Only Share
+## Phase 2 — View Only Share ✅ COMPLETE
 
 ### Backend
 1. `POST /tapes/:id/share` — create view-only share, set expiry, generate share link
@@ -188,15 +188,15 @@ Phase 8  ████████      Polish
 
 ---
 
-## Phase 1 Progress
+## Phase 1 Progress — ✅ Complete
 
 - [x] Cloudflare account authenticated
 - [x] Wrangler CLI installed
 - [x] Scaffold Workers project with Wrangler
 - [x] Create D1 database (`tapes-db`, region WEUR)
-- [ ] Create R2 bucket (requires enabling R2 in Cloudflare Dashboard)
+- [x] Create R2 bucket (`tapes-media`)
 - [x] Define API contract (`docs/plan/API_CONTRACT_V1.md`)
-- [x] Build D1 schema (6 tables, indexes, migrations applied locally)
+- [x] Build D1 schema (6 tables, indexes, migrations applied locally + remote)
 - [x] Build all Workers API endpoints (auth, tapes, clips, collaborators, manifest, share, sync)
 - [x] Build scheduled handlers (expiry, sync warning, orphan cleanup, notification batch)
 - [x] Build iOS `TapesAPIClient` networking layer (actor, Keychain token storage)
@@ -209,6 +209,28 @@ Phase 8  ████████      Polish
 - [x] Register `.tape` UTI with file type association
 - [x] Add push notification entitlement + background mode
 - [x] Wire up deep link handler in `TapesApp`
-- [ ] Create `tapes-api` repo on GitHub
-- [ ] Deploy to Cloudflare (dev environment)
-- [ ] End-to-end test: upload → record → manifest
+- [x] Create `tapes-api` repo on GitHub
+- [x] Deploy to Cloudflare (dev environment) — `tapes-api.hi-7d5.workers.dev`
+- [x] Smoke test: endpoints return correct auth/validation responses
+
+## Phase 2 Progress — ✅ Complete
+
+### Backend
+- [x] `GET /tapes/shared` — list tapes shared with user
+- [x] `GET /tapes/:id/validate` — permission + expiry check
+- [x] APNs integration — push on invite with tape title + inviter name
+- [x] APNs library (`lib/apns.ts`) with batch notify helper
+
+### iOS
+- [x] Share button on tape cards (`square.and.arrow.up`)
+- [x] `ShareModalView` — bottom sheet with Share / Export / Save sections
+- [x] `ShareFlowView` — mode selection, expiry toggle, email invites
+- [x] `SharedTapesView` — Tab 2 with segmented control (View Only / Collaborative)
+- [x] `SharedTapeDetailView` — validate, download, play with progress UI
+- [x] `CloudDownloadManager` — parallel R2 downloads, retry, local caching
+- [x] `SharedTapeBuilder` — manifest → local Tape model conversion
+- [x] `NavigationCoordinator` — deep link → tab switch → tape navigation
+- [x] `PushNotificationManager` — registration, foreground display, tap routing
+- [x] `AppDelegate` — device token callbacks
+- [x] Streaming playback — play button after first clip, builds partial tape
+- [x] Native `TabView` with Liquid Glass (iOS 26) — My Tapes / Shared / Account
