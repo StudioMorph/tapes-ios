@@ -19,6 +19,8 @@ struct TapesListView: View {
     @State private var hotTipsJiggling = false
     @State private var showingAccountSettings = false
     @State private var showInlineTitle = false
+    @State private var showingShareModal = false
+    @State private var tapeToShare: Tape?
 
     var body: some View {
         NavigationStack {
@@ -35,6 +37,7 @@ struct TapesListView: View {
                         tapes: $tapesStore.tapes,
                         editingTapeID: editingTapeID,
                         draftTitle: $draftTitle,
+                        onShare: handleShare,
                         onSettings: handleSettings,
                         onPlay: handlePlay,
                         onThumbnailDelete: handleThumbnailDelete,
@@ -139,6 +142,11 @@ struct TapesListView: View {
         .environmentObject(importCoordinator)
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
+        }
+        .sheet(isPresented: $showingShareModal) {
+            if let tape = tapeToShare {
+                ShareModalView(tape: tape)
+            }
         }
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {
@@ -295,7 +303,12 @@ struct TapesListView: View {
     }
 
     // MARK: - Action Handlers
-    
+
+    private func handleShare(_ tape: Tape) {
+        tapeToShare = tape
+        showingShareModal = true
+    }
+
     private func handleSettings(_ tape: Tape) {
         tapesStore.selectTape(tape)
     }

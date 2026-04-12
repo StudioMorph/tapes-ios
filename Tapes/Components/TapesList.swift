@@ -14,6 +14,7 @@ struct TapesList: View {
     @Binding var tapes: [Tape]
     let editingTapeID: UUID?
     @Binding var draftTitle: String
+    let onShare: (Tape) -> Void
     let onSettings: (Tape) -> Void
     let onPlay: (Tape) -> Void
     let onThumbnailDelete: (Tape, Clip) -> Void
@@ -108,6 +109,7 @@ struct TapesList: View {
                 tapeID: tapeID,
                 tapeWidth: tapeWidth,
                 isLandscape: isLandscape,
+                onShare: { onShare(tape) },
                 onSettings: { onSettings(tape) },
                 onPlay: { onPlay(tape) },
                 onThumbnailDelete: { clip in onThumbnailDelete(tape, clip) },

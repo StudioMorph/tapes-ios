@@ -32,6 +32,7 @@ struct TapeCardView: View {
     let tapeID: UUID
     let tapeWidth: CGFloat
     let isLandscape: Bool
+    let onShare: () -> Void
     let onSettings: () -> Void
     let onPlay: () -> Void
     let onThumbnailDelete: (Clip) -> Void
@@ -135,6 +136,7 @@ struct TapeCardView: View {
         tapeID: UUID,
         tapeWidth: CGFloat,
         isLandscape: Bool = false,
+        onShare: @escaping () -> Void = {},
         onSettings: @escaping () -> Void,
         onPlay: @escaping () -> Void,
         onThumbnailDelete: @escaping (Clip) -> Void,
@@ -146,6 +148,7 @@ struct TapeCardView: View {
         self.tapeID = tapeID
         self.tapeWidth = tapeWidth
         self.isLandscape = isLandscape
+        self.onShare = onShare
         self.onSettings = onSettings
         self.onPlay = onPlay
         self.onThumbnailDelete = onThumbnailDelete
@@ -179,8 +182,14 @@ struct TapeCardView: View {
                 // 32pt minimum gap
                 Spacer(minLength: 32)
                 
-                // Right group: settings 16 play
+                // Right group: share 16 settings 16 play
                 HStack(spacing: 16) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .onTapGesture { guard !isEmptyTape else { return }; onShare() }
+                        .id("share-\(tapeID)")
+
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
