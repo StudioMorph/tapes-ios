@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 
+@MainActor
 enum SharedTapeBuilder {
 
     static func buildTape(from manifest: TapeManifest, downloadManager: CloudDownloadManager) -> Tape? {
@@ -62,8 +63,8 @@ enum SharedTapeBuilder {
 
         var tape = Tape(title: manifest.title, clips: clips)
         tape.updateSettings(
-            orientation: .auto,
-            scaleMode: .aspectFit,
+            orientation: .portrait,
+            scaleMode: .fit,
             transition: transitionType,
             transitionDuration: transitionDuration
         )

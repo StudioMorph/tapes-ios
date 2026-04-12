@@ -128,8 +128,7 @@ struct SharedTapeDetailView: View {
 
                 if let dm = downloadManager, dm.isComplete || hasAnyCompleted {
                     Button {
-                        if let manifest = manifest, let dm = downloadManager,
-                           let tape = SharedTapeBuilder.buildTape(from: manifest, downloadManager: dm) {
+                        if let tape = SharedTapeBuilder.buildTape(from: manifest, downloadManager: dm) {
                             playableTape = tape
                         }
                     } label: {

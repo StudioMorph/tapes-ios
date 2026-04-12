@@ -14,7 +14,6 @@ struct TapesListView: View {
     @State private var dropTargets: [DropTargetInfo] = []
     @State private var hoveredTarget: DropTargetInfo? = nil
     @State private var showInlineTitle = false
-    @State private var showingShareModal = false
     @State private var tapeToShare: Tape?
 
     var body: some View {
@@ -126,10 +125,8 @@ struct TapesListView: View {
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
         }
-        .sheet(isPresented: $showingShareModal) {
-            if let tape = tapeToShare {
-                ShareModalView(tape: tape)
-            }
+        .sheet(item: $tapeToShare) { tape in
+            ShareModalView(tape: tape)
         }
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {
@@ -226,7 +223,6 @@ struct TapesListView: View {
 
     private func handleShare(_ tape: Tape) {
         tapeToShare = tape
-        showingShareModal = true
     }
 
     private func handleSettings(_ tape: Tape) {
