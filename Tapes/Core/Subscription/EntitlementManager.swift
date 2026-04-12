@@ -1,10 +1,3 @@
-//
-//  EntitlementManager.swift
-//  Tapes
-//
-//  Created by AI Assistant on 26/01/2026.
-//
-
 import Foundation
 import SwiftUI
 
@@ -17,12 +10,12 @@ final class EntitlementManager: ObservableObject {
 
     // MARK: - Published
 
-    @Published private(set) var accessLevel: AccessLevel = .freeTrial
+    @Published private(set) var accessLevel: AccessLevel = .free
 
     enum AccessLevel: Equatable {
-        case freeTrial
-        case trialExpired
-        case premium
+        case free
+        case plus
+        case together
     }
 
     // MARK: - Lifecycle
@@ -36,9 +29,10 @@ final class EntitlementManager: ObservableObject {
 
     // MARK: - Derived Helpers
 
-    var isPremium: Bool { accessLevel == .premium }
-    var canUseFully: Bool { accessLevel == .freeTrial || accessLevel == .premium }
-    var shouldShowPaywall: Bool { accessLevel == .trialExpired }
+    var isPremium: Bool { accessLevel == .plus || accessLevel == .together }
+    var isTogether: Bool { accessLevel == .together }
+    var canUseFully: Bool { isPremium || trialManager.isTrialActive }
+    var shouldShowPaywall: Bool { !isPremium && trialManager.isTrialExpired }
 
     func canCreateTape(currentCount: Int) -> Bool {
         if isPremium { return true }
@@ -48,11 +42,14 @@ final class EntitlementManager: ObservableObject {
     // MARK: - Refresh
 
     func refresh() {
-        if subscriptionManager.isSubscribed {
-            accessLevel = .premium
+        if let tier = subscriptionManager.activeTier {
+            switch tier {
+            case .plus:     accessLevel = .plus
+            case .together: accessLevel = .together
+            }
         } else {
             trialManager.refreshTrialState()
-            accessLevel = trialManager.isTrialExpired ? .trialExpired : .freeTrial
+            accessLevel = .free
         }
     }
 

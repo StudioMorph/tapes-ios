@@ -2,7 +2,7 @@
 
 ## Summary
 
-Sign in with Apple authentication and StoreKit 2 subscription with a 3-day free trial, £0.99 introductory offer (7 days), and £2.99/month auto-renewable subscription.
+Sign in with Apple authentication and StoreKit 2 subscription with a 3-day free trial and two paid tiers: **TAPES Plus** and **TAPES Together**, each available as monthly or annual billing.
 
 ## Purpose & Scope
 
@@ -10,7 +10,7 @@ Sign in with Apple authentication and StoreKit 2 subscription with a 3-day free 
 - Enforce a 3-day free trial limited to 3 tapes
 - Present a paywall after the trial expires
 - Manage subscription lifecycle via StoreKit 2 (on-device)
-- Unlock unlimited tapes and future premium features for subscribers
+- Two paid tiers: Plus (core premium) and Together (collaboration-focused)
 
 ## Architecture
 
@@ -19,22 +19,22 @@ Sign in with Apple authentication and StoreKit 2 subscription with a 3-day free 
 | File | Role |
 |------|------|
 | `Auth/AuthManager.swift` | Sign in with Apple credential handling, session persistence via UserDefaults |
-| `Subscription/SubscriptionManager.swift` | StoreKit 2 product loading, purchasing, transaction listening, entitlement checking |
+| `Subscription/SubscriptionManager.swift` | StoreKit 2 multi-product loading, purchasing, transaction listening, tier resolution |
 | `Subscription/TrialManager.swift` | Install date tracking, 3-day free trial logic, tape count limits |
-| `Subscription/EntitlementManager.swift` | Unified access-control layer combining subscription + trial state |
+| `Subscription/EntitlementManager.swift` | Unified access-control layer combining subscription tiers + trial state |
 
 ### Views (`Tapes/Views/`)
 
 | File | Role |
 |------|------|
 | `Auth/SignInView.swift` | Sign-in screen with Sign in with Apple button and skip option |
-| `Subscription/PaywallView.swift` | Full-screen paywall with features, pricing, and purchase actions |
+| `Subscription/PaywallView.swift` | Full-screen paywall with billing toggle, three tier cards, and purchase actions |
 
 ### Configuration
 
 | File | Role |
 |------|------|
-| `Configuration/TapesProducts.storekit` | Local StoreKit testing configuration with subscription product and intro offer |
+| `Configuration/TapesProducts.storekit` | Local StoreKit testing configuration with subscription products |
 
 ## Data Flow
 
@@ -42,28 +42,41 @@ Sign in with Apple authentication and StoreKit 2 subscription with a 3-day free 
 TapesApp
 ├── AuthManager (session state)
 ├── EntitlementManager
-│   ├── SubscriptionManager (StoreKit 2)
+│   ├── SubscriptionManager (StoreKit 2, multi-tier)
 │   └── TrialManager (install date + limits)
 └── ContentView
     ├── SignInView (if not signed in)
     └── TapesListView (if signed in)
-        └── PaywallView (full-screen cover if trial expired)
+        └── PaywallView (sheet if trial expired)
 ```
 
 ## Access Levels
 
 | Level | Condition | Capabilities |
 |-------|-----------|-------------|
-| `freeTrial` | Within 3 days of install, not subscribed | Max 3 tapes |
-| `trialExpired` | Past 3 days, not subscribed | Paywall shown, app blocked |
-| `premium` | Active subscription | Unlimited tapes, all features |
+| `free` | Free tier or within 3 days of install | Max 3 tapes/month, 1 shared tape, watermark exports |
+| `plus` | Active Plus subscription | Unlimited tapes, no watermarks, 12k music library, AI mood music, 1 collab TAPE/month |
+| `together` | Active Together subscription | Everything in Plus, AI prompt music, unlimited collaborative tapes |
 
-## Subscription Product
+## Subscription Products
 
-- **Product ID**: `com.tapes.premium.monthly`
-- **Price**: £2.99/month
-- **Intro offer**: £0.99 for 7 days (pay-up-front)
-- **Group**: `Tapes Premium`
+| Product ID | Tier | Billing |
+|------------|------|---------|
+| `com.tapes.plus.monthly` | Plus | Monthly |
+| `com.tapes.plus.annual` | Plus | Annual (-30%) |
+| `com.tapes.together.monthly` | Together | Monthly |
+| `com.tapes.together.annual` | Together | Annual (-30%) |
+
+Legacy alias `com.tapes.premium.monthly` maps to `com.tapes.plus.monthly` for backward compatibility.
+
+## Paywall Design
+
+- **Header**: TAPES logo centred, close button (44pt, blurred material) top-left
+- **Billing toggle**: Segmented control — Monthly (default) | Annually with -30% badge
+- **Three tier cards** (8pt gap, 28pt corner radius, `#223246` background):
+  - **Plus**: white CTA button, blue accent checkmarks, feature grid
+  - **Together**: blue border (4pt), blue CTA button, hero "Unlimited collaborative TAPES" callout
+  - **Free**: grey "This is you" button, red limitation markers
 
 ## Testing
 
@@ -79,16 +92,19 @@ TapesApp
 
 ## QA Considerations
 
-- Verify Sign in with Apple flow completes and persists across app launches
-- Verify skip bypasses auth and enters the app
-- Verify free trial limits tape creation to 3
-- Verify paywall appears after 3-day trial expires
-- Verify subscription purchase unlocks unlimited tapes
-- Verify restore purchases works
-- Verify transaction listener handles renewals and revocations
+- Verify paywall displays correct prices for both monthly and annual billing
+- Verify billing toggle switches prices on all cards
+- Verify Plus purchase grants Plus access level
+- Verify Together purchase grants Together access level
+- Verify tier resolution prioritises Together over Plus if both are active
+- Verify restore purchases works across tiers
+- Verify free card correctly reflects current user's state
+- Verify account settings shows correct tier name (Free / Plus / Together)
+- Verify transaction listener handles renewals and revocations across all product IDs
 
 ## Known Limitations
 
 - Sign in with Apple requires the capability enabled in Apple Developer portal (pending account approval)
 - On-device entitlement checking only; server-side validation to be added later
 - Privacy Policy and Terms of Use URLs are placeholders
+- StoreKit testing configuration needs updating with new product IDs

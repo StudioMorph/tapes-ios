@@ -13,6 +13,14 @@ struct AccountSettingsView: View {
         authManager.userID != nil
     }
 
+    private var tierDisplayName: String {
+        switch entitlementManager.accessLevel {
+        case .free:     return "Free"
+        case .plus:     return "Plus"
+        case .together: return "Together"
+        }
+    }
+
     var body: some View {
         NavigationView {
             Form {
@@ -69,7 +77,7 @@ struct AccountSettingsView: View {
                     Text("Plan")
                         .foregroundColor(Tokens.Colors.primaryText)
                     Spacer()
-                    Text(entitlementManager.isPremium ? "Premium" : "Free")
+                    Text(tierDisplayName)
                         .foregroundColor(Tokens.Colors.secondaryText)
                 }
 

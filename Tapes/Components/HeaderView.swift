@@ -6,13 +6,15 @@ struct TapesLogo: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var height: CGFloat = 28
+    var suffix: String?
+    var forceDark: Bool = false
 
     private var iconSize: CGFloat { height }
     private var fontSize: CGFloat { height * 1.2 }
     private var dotSize: CGFloat { height * 0.33 }
     private var cornerRadius: CGFloat { height * 0.3 }
     private var foregroundColor: Color {
-        colorScheme == .dark ? .white : Color(red: 0.15, green: 0.17, blue: 0.24)
+        (forceDark || colorScheme == .dark) ? .white : Color(red: 0.15, green: 0.17, blue: 0.24)
     }
 
     var body: some View {
@@ -27,10 +29,18 @@ struct TapesLogo: View {
                     .frame(width: dotSize, height: dotSize)
             }
 
-            Text("TAPES")
-                .font(.system(size: fontSize, weight: .heavy, design: .default))
-                .foregroundStyle(foregroundColor)
-                .tracking(height * 0.02)
+            HStack(spacing: 0) {
+                Text("TAPES")
+                    .font(.system(size: fontSize, weight: .heavy, design: .default))
+                    .foregroundStyle(foregroundColor)
+                    .tracking(height * 0.02)
+
+                if let suffix {
+                    Text(suffix)
+                        .font(.system(size: fontSize, weight: .light, design: .default))
+                        .foregroundStyle(foregroundColor)
+                }
+            }
         }
     }
 }

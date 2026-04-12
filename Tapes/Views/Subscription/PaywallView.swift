@@ -1,10 +1,3 @@
-//
-//  PaywallView.swift
-//  Tapes
-//
-//  Created by AI Assistant on 26/01/2026.
-//
-
 import SwiftUI
 import StoreKit
 
@@ -12,23 +5,42 @@ struct PaywallView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @Environment(\.dismiss) private var dismiss
 
+    @State private var billingCycle: SubscriptionManager.BillingCycle = .monthly
+
     private var subManager: SubscriptionManager { entitlementManager.subscriptionManager }
-    private var trialManager: TrialManager { entitlementManager.trialManager }
+
+    private let cardRadius: CGFloat = 28
 
     var body: some View {
-        ZStack {
-            backgroundGradient
-
+        NavigationView {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.l) {
-                    headerSection
-                    featuresSection
-                    pricingSection
-                    actionButtons
-                    footerLinks
+                    billingToggle
+                        .padding(.top, Tokens.Spacing.m)
+
+                    VStack(spacing: Tokens.Spacing.s) {
+                        plusCard
+                        togetherCard
+                        freeCard
+                    }
                 }
                 .padding(.horizontal, Tokens.Spacing.m)
-                .padding(.vertical, Tokens.Spacing.xl)
+                .padding(.bottom, Tokens.Spacing.m)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    TapesLogo(height: 20, forceDark: true)
+                }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Tokens.Colors.primaryText)
+                    }
+                }
             }
         }
         .alert("Error", isPresented: alertBinding) {
@@ -38,214 +50,260 @@ struct PaywallView: View {
         }
     }
 
-    // MARK: - Background
+    // MARK: - Billing Toggle
 
-    private var backgroundGradient: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.05, green: 0.05, blue: 0.15),
-                Color(red: 0.1, green: 0.02, blue: 0.08)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-    }
-
-    // MARK: - Header
-
-    private var headerSection: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            Image(systemName: "film.stack")
-                .font(.system(size: 56))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Tokens.Colors.systemRed, .orange],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .padding(.bottom, Tokens.Spacing.s)
-
-            Text("Tapes Premium")
-                .font(.largeTitle.bold())
-                .foregroundColor(.white)
-
-            Text("Unlimited creativity, no limits.")
-                .font(.title3)
-                .foregroundColor(.white.opacity(0.7))
+    private var billingToggle: some View {
+        Picker("Billing", selection: $billingCycle) {
+            Text("Monthly").tag(SubscriptionManager.BillingCycle.monthly)
+            Text("Annually -30%").tag(SubscriptionManager.BillingCycle.annually)
         }
-        .padding(.top, Tokens.Spacing.xl)
+        .pickerStyle(.segmented)
     }
 
-    // MARK: - Features
+    // MARK: - Plus Card
 
-    private var featuresSection: some View {
+    private var plusCard: some View {
         VStack(spacing: Tokens.Spacing.m) {
-            featureRow(icon: "film.stack.fill", title: "Unlimited Tapes", subtitle: "Create as many tapes as you want")
-            featureRow(icon: "sparkles", title: "Premium Features", subtitle: "Access to all current and future features")
-            featureRow(icon: "arrow.triangle.2.circlepath", title: "Priority Updates", subtitle: "Be the first to get new features")
-        }
-        .padding(Tokens.Spacing.l)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Tokens.Radius.card))
-    }
+            VStack(spacing: Tokens.Spacing.m) {
+                tierHeader(suffix: "Plus", tier: .plus)
 
-    private func featureRow(icon: String, title: String, subtitle: String) -> some View {
-        HStack(spacing: Tokens.Spacing.m) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(Tokens.Colors.systemRed)
-                .frame(width: 36, height: 36)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.6))
+                HStack(alignment: .top, spacing: Tokens.Spacing.m) {
+                    featureColumn([
+                        .included("Unlimited TAPES"),
+                        .included("Unlimited share TAPES"),
+                        .included("No watermarks")
+                    ])
+                    featureColumn([
+                        .included("12k music library"),
+                        .included("AI mood music"),
+                        .included("1 collab TAPE /month")
+                    ])
+                }
             }
 
-            Spacer()
-        }
-    }
-
-    // MARK: - Pricing
-
-    private var pricingSection: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            if let product = subManager.monthlyProduct {
-                pricingCard(product: product)
-            } else {
-                fallbackPricingCard
+            tierButton(
+                label: "Upgrade to",
+                suffix: "Plus",
+                style: .primary
+            ) {
+                Task { await subManager.purchase(tier: .plus, cycle: billingCycle) }
             }
         }
+        .padding(Tokens.Spacing.m)
+        .background(Tokens.Colors.tertiaryBackground, in: RoundedRectangle(cornerRadius: cardRadius))
     }
 
-    private var fallbackPricingCard: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            Text("Start for just £0.99")
-                .font(.title2.bold())
-                .foregroundColor(.white)
+    // MARK: - Together Card
 
-            Text("First 7 days · Then £2.99/month")
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.7))
-
-            Text("Cancel anytime")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.5))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(Tokens.Spacing.l)
-        .background(
-            RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                .fill(
-                    LinearGradient(
-                        colors: [Tokens.Colors.systemRed.opacity(0.3), Tokens.Colors.systemRed.opacity(0.1)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                        .stroke(Tokens.Colors.systemRed.opacity(0.5), lineWidth: 1)
-                )
-        )
-    }
-
-    private func pricingCard(product: Product) -> some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            if let intro = product.subscription?.introductoryOffer {
-                Text("Start for just \(intro.displayPrice)")
-                    .font(.title2.bold())
-                    .foregroundColor(.white)
-
-                Text("First 7 days · Then \(product.displayPrice)/month")
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.7))
-            } else {
-                Text("\(product.displayPrice)/month")
-                    .font(.title2.bold())
-                    .foregroundColor(.white)
-            }
-
-            Text("Cancel anytime")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.5))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(Tokens.Spacing.l)
-        .background(
-            RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                .fill(
-                    LinearGradient(
-                        colors: [Tokens.Colors.systemRed.opacity(0.3), Tokens.Colors.systemRed.opacity(0.1)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Tokens.Radius.card)
-                        .stroke(Tokens.Colors.systemRed.opacity(0.5), lineWidth: 1)
-                )
-        )
-    }
-
-    // MARK: - Action Buttons
-
-    private var actionButtons: some View {
+    private var togetherCard: some View {
         VStack(spacing: Tokens.Spacing.m) {
-            Button {
-                Task { await subManager.purchase() }
-            } label: {
-                Group {
-                    if subManager.isLoading {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Text("Subscribe Now")
-                            .font(.headline)
+            tierHeader(suffix: "Together", tier: .together)
+
+            VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+                HStack(alignment: .top, spacing: Tokens.Spacing.m) {
+                    featureColumn([.included("Everything in Plus")])
+                    featureColumn([.included("AI prompt music")])
+                }
+
+                HStack(alignment: .top, spacing: Tokens.Spacing.xs) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Tokens.Colors.systemBlue)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Unlimited collaborative TAPES")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(Tokens.Colors.primaryText)
+
+                        (Text("Get your family, friends, to build ")
+                            + Text("TAPES").bold()
+                            + Text(" together with you"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Tokens.Colors.secondaryText)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .background(Tokens.Colors.systemRed, in: Capsule())
-                .foregroundColor(.white)
             }
-            .disabled(subManager.isLoading || subManager.monthlyProduct == nil)
 
-            if trialManager.isTrialActive {
-                Button {
-                    dismiss()
-                } label: {
-                    Text("Continue Free Trial (\(trialManager.daysRemaining) days left)")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(.white.opacity(0.7))
+            tierButton(
+                label: "Upgrade",
+                suffix: "Together",
+                style: .accent
+            ) {
+                Task { await subManager.purchase(tier: .together, cycle: billingCycle) }
+            }
+        }
+        .padding(Tokens.Spacing.m)
+        .background(Tokens.Colors.tertiaryBackground, in: RoundedRectangle(cornerRadius: cardRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: cardRadius)
+                .strokeBorder(Tokens.Colors.systemBlue, lineWidth: 4)
+        )
+    }
+
+    // MARK: - Free Card
+
+    private var freeCard: some View {
+        VStack(spacing: Tokens.Spacing.m) {
+            VStack(spacing: Tokens.Spacing.m) {
+                HStack {
+                    TapesLogo(height: 16, forceDark: true)
+                    Spacer()
+                    Text("Free")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Tokens.Colors.primaryText)
                 }
+
+                HStack(alignment: .top, spacing: Tokens.Spacing.m) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        freeFeatureText("3 tapes/month")
+                        freeFeatureText("1 shared tape")
+                        freeFeatureText("Music library")
+                    }
+
+                    featureColumn([
+                        .limitation("Watermark export"),
+                        .excluded("No AI mood music"),
+                        .excluded("0 Collaboration Tapes")
+                    ])
+                }
+            }
+
+            Text("This is you")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(Tokens.Colors.primaryText)
+                .frame(maxWidth: .infinity)
+                .frame(height: Tokens.HitTarget.minimum)
+                .background(Tokens.Colors.primaryText.opacity(0.1), in: Capsule())
+        }
+        .padding(Tokens.Spacing.m)
+        .background(Tokens.Colors.tertiaryBackground, in: RoundedRectangle(cornerRadius: cardRadius))
+    }
+
+    // MARK: - Shared Components
+
+    private func tierHeader(suffix: String, tier: SubscriptionManager.Tier) -> some View {
+        HStack {
+            TapesLogo(height: suffix == "Together" ? 20 : 16, suffix: suffix, forceDark: true)
+            Spacer()
+            priceLabel(for: tier)
+        }
+    }
+
+    private func priceLabel(for tier: SubscriptionManager.Tier) -> some View {
+        Group {
+            if let product = subManager.product(for: tier, cycle: billingCycle) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(product.displayPrice)
+                        .font(.system(size: 20, weight: .semibold))
+                    Text(billingCycle == .monthly ? "/mo" : "/yr")
+                        .font(.system(size: 12))
+                }
+                .foregroundStyle(Tokens.Colors.primaryText)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(tier == .plus
+                         ? (billingCycle == .monthly ? "£2,99" : "£24,99")
+                         : (billingCycle == .monthly ? "£4,99" : "£41,99"))
+                        .font(.system(size: 20, weight: .semibold))
+                    Text(billingCycle == .monthly ? "/mo" : "/yr")
+                        .font(.system(size: 12))
+                }
+                .foregroundStyle(Tokens.Colors.primaryText)
             }
         }
     }
 
-    // MARK: - Footer
+    private enum FeatureItem {
+        case included(String)
+        case limitation(String)
+        case excluded(String)
+    }
 
-    private var footerLinks: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            Button("Restore Purchases") {
-                Task { await subManager.restore() }
+    private func featureColumn(_ items: [FeatureItem]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                featureRow(item)
             }
-            .font(.caption)
-            .foregroundColor(.white.opacity(0.5))
-
-            HStack(spacing: Tokens.Spacing.m) {
-                Link("Privacy Policy", destination: URL(string: "https://tapes.app/privacy")!)
-                Text("·").foregroundColor(.white.opacity(0.3))
-                Link("Terms of Use", destination: URL(string: "https://tapes.app/terms")!)
-            }
-            .font(.caption2)
-            .foregroundColor(.white.opacity(0.4))
         }
-        .padding(.top, Tokens.Spacing.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func featureRow(_ item: FeatureItem) -> some View {
+        HStack(spacing: 4) {
+            switch item {
+            case .included(let text):
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Tokens.Colors.systemBlue)
+                Text(text)
+                    .foregroundStyle(Tokens.Colors.primaryText)
+
+            case .limitation(let text):
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Tokens.Colors.systemRed)
+                Text(text)
+                    .foregroundStyle(Tokens.Colors.primaryText)
+
+            case .excluded(let text):
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Tokens.Colors.systemRed)
+                Text(text)
+                    .foregroundStyle(Tokens.Colors.primaryText)
+            }
+        }
+        .font(.system(size: 14))
+        .frame(height: 26)
+    }
+
+    private func freeFeatureText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 14))
+            .foregroundStyle(Tokens.Colors.primaryText)
+            .frame(height: 26)
+    }
+
+    private enum TierButtonStyle {
+        case primary, accent
+    }
+
+    private func tierButton(
+        label: String,
+        suffix: String,
+        style: TierButtonStyle,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Group {
+                if subManager.isLoading {
+                    ProgressView()
+                        .tint(style == .primary ? Tokens.Colors.systemBlue : .white)
+                } else {
+                    HStack(spacing: 0) {
+                        Text("\(label) ")
+                            .font(.system(size: 16, weight: .medium))
+
+                        Text("TAPES")
+                            .font(.system(size: 16, weight: .heavy))
+
+                        Text(suffix)
+                            .font(.system(size: 16, weight: .light))
+                    }
+                    .foregroundStyle(style == .primary ? Tokens.Colors.systemBlue : Color.white)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: Tokens.HitTarget.minimum)
+            .background(
+                style == .primary
+                    ? AnyShapeStyle(Color.white)
+                    : AnyShapeStyle(Tokens.Colors.systemBlue),
+                in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(subManager.isLoading)
     }
 
     // MARK: - Alert Binding
