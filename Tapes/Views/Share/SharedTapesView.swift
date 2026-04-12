@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 struct SharedTapesView: View {
     @EnvironmentObject private var authManager: AuthManager
@@ -51,6 +52,13 @@ struct SharedTapesView: View {
             .task {
                 await loadSharedTapes()
             }
+            .onChange(of: authManager.isSignedIn) { _, signedIn in
+                if signedIn {
+                    Task { await loadSharedTapes() }
+                } else {
+                    sharedTapes = []
+                }
+            }
             .refreshable {
                 await loadSharedTapes()
             }
@@ -94,6 +102,15 @@ struct SharedTapesView: View {
                 .foregroundStyle(Tokens.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Tokens.Spacing.xxl)
+
+            SignInWithAppleButton(.signIn) { request in
+                request.requestedScopes = [.fullName, .email]
+            } onCompletion: { result in
+                authManager.handleAuthorization(result)
+            }
+            .frame(height: Tokens.HitTarget.recommended)
+            .clipShape(Capsule())
+            .padding(.horizontal, Tokens.Spacing.xxl)
 
             Spacer()
         }

@@ -203,10 +203,6 @@ struct ShareFlowView: View {
 
     private var shareButton: some View {
         Button {
-            if tape.isEmpty {
-                errorMessage = "Add some clips to your tape before sharing."
-                return
-            }
             Task { await shareTape() }
         } label: {
             HStack(spacing: Tokens.Spacing.s) {

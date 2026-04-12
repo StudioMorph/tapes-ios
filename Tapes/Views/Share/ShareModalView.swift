@@ -188,14 +188,10 @@ struct ShareModalView: View {
         do {
             let fileURL = try TapeFileGenerator.generateLocalTapeFile(tape: tape)
             await MainActor.run {
-                let ac = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let root = windowScene.windows.first?.rootViewController {
-                    root.present(ac, animated: true)
-                }
+                ActivityPresenter.present(activityItems: [fileURL])
             }
         } catch {
-            // Silently fail — the option row will re-enable
+            // Generation failed — row re-enables; no sheet
         }
     }
 }

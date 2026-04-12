@@ -186,20 +186,26 @@ struct TapeCardView: View {
                 HStack(spacing: 16) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
-                        .onTapGesture { guard !isEmptyTape else { return }; onShare() }
+                        .foregroundColor(isTapeActionsDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .accessibilityLabel("Share")
+                        .accessibilityHint(isTapeActionsDisabled ? "Add clips to enable sharing" : "")
+                        .onTapGesture { guard !isTapeActionsDisabled else { return }; onShare() }
                         .id("share-\(tapeID)")
 
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
-                        .onTapGesture { guard !isEmptyTape else { return }; onSettings() }
+                        .foregroundColor(isTapeActionsDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .accessibilityLabel("Tape settings")
+                        .accessibilityHint(isTapeActionsDisabled ? "Add clips first" : "")
+                        .onTapGesture { guard !isTapeActionsDisabled else { return }; onSettings() }
                         .id("settings-\(tapeID)")
                     
                     Image(systemName: "play.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(isEmptyTape ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
-                        .onTapGesture { guard !isEmptyTape else { return }; onPlay() }
+                        .foregroundColor(isTapeActionsDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .accessibilityLabel("Play")
+                        .accessibilityHint(isTapeActionsDisabled ? "Add clips to play" : "")
+                        .onTapGesture { guard !isTapeActionsDisabled else { return }; onPlay() }
                         .id("play-\(tapeID)")
                 }
             }
@@ -732,6 +738,11 @@ struct TapeCardView: View {
 
     private var isEmptyTape: Bool {
         tape.clips.isEmpty && !tape.hasReceivedFirstContent
+    }
+
+    /// Share, settings, and play require at least one non-placeholder clip.
+    private var isTapeActionsDisabled: Bool {
+        tape.removingPlaceholders().isEmpty
     }
 
     private var isAtFreeLimit: Bool {
