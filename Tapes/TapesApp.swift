@@ -42,11 +42,32 @@ struct TapesApp: App {
     }
 
     private func handleDeepLink(_ url: URL) {
+        if url.pathExtension == "tape" {
+            handleTapeFile(url)
+            return
+        }
+
         guard url.scheme == "tapes",
               url.host == "t",
               let shareId = url.pathComponents.last,
               !shareId.isEmpty else { return }
 
         navigationCoordinator.handleShareLink(shareId: shareId, api: apiClient)
+    }
+
+    private func handleTapeFile(_ url: URL) {
+        guard url.startAccessingSecurityScopedResource() else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let manifest = try decoder.decode(TapeManifest.self, from: data)
+
+            navigationCoordinator.navigateToSharedTape(tapeId: manifest.tapeId)
+        } catch {
+            // File couldn't be parsed — ignore silently
+        }
     }
 }

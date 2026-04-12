@@ -7,12 +7,14 @@ struct ShareModalView: View {
 
     @State private var showingShareFlow = false
     @State private var showingExport = false
+    @State private var isGeneratingTapeFile = false
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.l) {
                     shareSection
+                    tapeFileSection
                     exportSection
                     saveToDeviceSection
                 }
@@ -71,6 +73,24 @@ struct ShareModalView: View {
                     )
                 }
             }
+        }
+    }
+
+    // MARK: - .tape File
+
+    private var tapeFileSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
+            SectionHeader(title: "Send as File")
+
+            shareOptionRow(
+                icon: "doc.zipper",
+                title: "Share .tape File",
+                subtitle: "Send via AirDrop, iMessage, email, or any app",
+                disabled: isGeneratingTapeFile,
+                action: {
+                    Task { await generateAndShareTapeFile() }
+                }
+            )
         }
     }
 
@@ -158,6 +178,25 @@ struct ShareModalView: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+    }
+    // MARK: - .tape File Generation
+
+    private func generateAndShareTapeFile() async {
+        isGeneratingTapeFile = true
+        defer { isGeneratingTapeFile = false }
+
+        do {
+            let fileURL = try TapeFileGenerator.generateLocalTapeFile(tape: tape)
+            await MainActor.run {
+                let ac = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let root = windowScene.windows.first?.rootViewController {
+                    root.present(ac, animated: true)
+                }
+            }
+        } catch {
+            // Silently fail — the option row will re-enable
+        }
     }
 }
 
