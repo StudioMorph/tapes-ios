@@ -86,7 +86,7 @@ Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 4 — Cloud Housekeeping
+## Phase 4 — Cloud Housekeeping ✅ COMPLETE
 
 ### Backend (all backend)
 1. Hourly expiry cron — delete R2 assets past 7 days
@@ -105,7 +105,7 @@ Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 5 — Notifications
+## Phase 5 — Notifications ✅ COMPLETE
 
 ### Backend
 1. Batched notification cron — collect activity per tape per user, fire every 3 hours
@@ -137,7 +137,7 @@ Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 7 — Save to Device
+## Phase 7 — Save to Device ✅ COMPLETE
 
 ### iOS (all iOS, no backend)
 1. Save to Device option in share modal (visible when fully cached)
@@ -254,3 +254,39 @@ Phase 8  ████████      Polish
   - [x] Contributor names on clip rows
 - [x] `CloudDownloadManager.downloadNewClips()` — incremental download of new clips
 - [x] `ManifestClip.contributorName` field added
+
+## Phase 4 Progress — ✅ Complete
+
+### Backend
+- [x] Sync warning cron sends APNs to tape owners when clips expire within 48h
+- [x] Notification batch cron aggregates recent activity, sends push to participants
+- [x] Fixed `getSharedTapes` column name (`u.name` not `u.display_name`)
+- [x] Fixed `validateTape` permissions: all collaborators can contribute to collaborative tapes
+
+### iOS
+- [x] Expiry warning badge on `SharedTapeCard` — red icon + bold text when <48h
+- [x] Expired clip indicator — dimmed row with "Expired" label and xmark icon
+- [x] Delete tape (owner only) — danger zone section, confirmation alert, R2 cleanup + dismiss
+- [x] Save to Device — save all downloaded clips to Photos library (videos, images)
+- [x] `TAPE_EXPIRY_WARNING` notification category with "Send Sync Push" action
+- [x] `PushNotificationManager` handles `tape_id` directly for expiry notifications
+- [x] `NavigationCoordinator.navigateToSharedTape()` for direct tape navigation
+
+## Phase 5 Progress — ✅ Complete
+
+### Backend
+- [x] Notification batch handler aggregates clip additions per tape every 3 hours
+- [x] Immediate triggers: invite, share, sync push, clip upload, expiry warning
+- [x] All push notifications include correct category identifiers
+
+### iOS
+- [x] Three notification categories registered: TAPE_SHARE, TAPE_INVITE, TAPE_EXPIRY_WARNING
+- [x] Tap notification → navigate to correct shared tape
+- [x] Foreground notifications display banner + badge + sound
+
+## Phase 7 Progress — ✅ Complete
+
+### iOS
+- [x] Save to Device in `SharedTapeDetailView` — visible when all clips downloaded
+- [x] Uses `PHPhotoLibrary.performChanges` to save videos and images
+- [x] Authorization check with graceful denial handling
