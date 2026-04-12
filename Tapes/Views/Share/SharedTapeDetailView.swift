@@ -484,7 +484,7 @@ struct SharedTapeDetailView: View {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(Tokens.Colors.tertiaryText)
             } else {
-                clipStateIndicator(state)
+                clipStateIndicator(state, clipId: clip.clipId)
             }
         }
         .padding(.vertical, Tokens.Spacing.s)
@@ -507,7 +507,7 @@ struct SharedTapeDetailView: View {
     }
 
     @ViewBuilder
-    private func clipStateIndicator(_ state: CloudDownloadManager.DownloadState?) -> some View {
+    private func clipStateIndicator(_ state: CloudDownloadManager.DownloadState?, clipId: String? = nil) -> some View {
         switch state {
         case .downloading(let progress):
             ProgressView(value: progress)
@@ -517,9 +517,15 @@ struct SharedTapeDetailView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
         case .failed(let msg):
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(Tokens.Colors.systemRed)
-                .help(msg)
+            Button {
+                if let id = clipId {
+                    downloadManager?.retry(clipId: id)
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .foregroundStyle(Tokens.Colors.systemRed)
+            }
+            .help(msg)
         default:
             Image(systemName: "arrow.down.circle")
                 .foregroundStyle(Tokens.Colors.tertiaryText)

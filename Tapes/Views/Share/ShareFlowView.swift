@@ -203,6 +203,10 @@ struct ShareFlowView: View {
 
     private var shareButton: some View {
         Button {
+            if tape.isEmpty {
+                errorMessage = "Add some clips to your tape before sharing."
+                return
+            }
             Task { await shareTape() }
         } label: {
             HStack(spacing: Tokens.Spacing.s) {
@@ -336,16 +340,23 @@ struct ShareFlowView: View {
                 tapeSettings: tapeSettings
             )
 
-            // Invite collaborators
+            var failedInvites: [String] = []
             for email in invitedEmails {
-                try await api.inviteCollaborator(
-                    tapeId: tape.id.uuidString.lowercased(),
-                    email: email
-                )
+                do {
+                    try await api.inviteCollaborator(
+                        tapeId: tape.id.uuidString.lowercased(),
+                        email: email
+                    )
+                } catch {
+                    failedInvites.append(email)
+                }
             }
 
-            // Upload clips
-            // TODO: Queue clip uploads via CloudUploadManager
+            if !failedInvites.isEmpty {
+                await MainActor.run {
+                    errorMessage = "Tape shared, but invites failed for: \(failedInvites.joined(separator: ", "))"
+                }
+            }
 
             await MainActor.run {
                 shareResult = ShareResult(

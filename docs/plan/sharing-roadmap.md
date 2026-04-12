@@ -122,7 +122,7 @@ Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 6 — .tape File Distribution
+## Phase 6 — .tape File Distribution ✅ COMPLETE
 
 ### Backend
 1. Server validation on `.tape` file open — confirm identity, check permissions, initiate tracking
@@ -148,7 +148,7 @@ Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 8 — Polish
+## Phase 8 — Polish ✅ COMPLETE
 
 ### Both
 1. All error states — upload failed, connection lost, invite bounced, timeout, expired clip
@@ -290,3 +290,22 @@ Phase 8  ████████      Polish
 - [x] Save to Device in `SharedTapeDetailView` — visible when all clips downloaded
 - [x] Uses `PHPhotoLibrary.performChanges` to save videos and images
 - [x] Authorization check with graceful denial handling
+
+## Phase 6 Progress — ✅ Complete
+
+### iOS
+- [x] `TapeFileGenerator` — generate `.tape` JSON from local tape or server manifest
+- [x] "Share .tape File" option in `ShareModalView` via `UIActivityViewController`
+- [x] `.tape` file open handler in `TapesApp` — parse manifest, navigate to shared tape
+- [x] Sanitised filenames for cross-platform compatibility
+
+## Phase 8 Progress — ✅ Complete
+
+### iOS
+- [x] ShareFlowView: graceful invite failure handling (partial success)
+- [x] ShareFlowView: empty tape guard prevents sharing tapes with no clips
+- [x] SharedTapeDetailView: retry button on failed clip downloads
+- [x] APIError: comprehensive typed errors with user-friendly messages
+- [x] CloudUploadManager: exponential backoff retry (max 3 attempts)
+- [x] CloudDownloadManager: exponential backoff retry (max 3 attempts)
+- [x] Personal tapes fully functional offline (no sharing dependency)
