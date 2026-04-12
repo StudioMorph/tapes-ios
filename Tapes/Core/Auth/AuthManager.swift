@@ -47,7 +47,7 @@ final class AuthManager: ObservableObject {
     }
 
     var hasServerSession: Bool {
-        apiClient?.isAuthenticated ?? false
+        serverUserId != nil
     }
 
     private func restoreSession() {

@@ -196,6 +196,7 @@ struct AmbientTutorialCarousel: View {
         tapes: .constant(Tape.sampleTapes),
         editingTapeID: nil,
         draftTitle: .constant(""),
+        onShare: { _ in },
         onSettings: { _ in },
         onPlay: { _ in },
         onThumbnailDelete: { _, _ in },

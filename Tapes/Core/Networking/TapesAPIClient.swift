@@ -315,6 +315,12 @@ actor TapesAPIClient {
         try await postEmpty(path: "/tapes/\(tapeId)/sync-push")
     }
 
+    // MARK: - Shared Tapes
+
+    func getSharedTapes() async throws -> [SharedTapeItem] {
+        try await get(path: "/tapes/shared")
+    }
+
     // MARK: - Device Token
 
     func updateDeviceToken(_ token: String) async throws {

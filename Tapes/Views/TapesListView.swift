@@ -13,11 +13,6 @@ struct TapesListView: View {
     @State private var showingDeleteSuccessToast = false
     @State private var dropTargets: [DropTargetInfo] = []
     @State private var hoveredTarget: DropTargetInfo? = nil
-    @Binding var showOnboarding: Bool
-    @AppStorage("tapes_hot_tips_remaining") private var hotTipsRemaining = 5
-    @State private var showHotTips = false
-    @State private var hotTipsJiggling = false
-    @State private var showingAccountSettings = false
     @State private var showInlineTitle = false
     @State private var showingShareModal = false
     @State private var tapeToShare: Tape?
@@ -124,19 +119,7 @@ struct TapesListView: View {
                             }
                         }
                     }
-
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showingAccountSettings = true
-                        } label: {
-                            Image(systemName: "person")
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                    }
                 }
-            }
-            .sheet(isPresented: $showingAccountSettings) {
-                AccountSettingsView(onHotTips: { showOnboarding = true })
             }
         }
         .environmentObject(importCoordinator)
@@ -160,69 +143,6 @@ struct TapesListView: View {
                 .ignoresSafeArea(.all, edges: .all)
         }
         .overlay(exportOverlay)
-        // MARK: - Floating Hot Tips button (deactivated — kept for future use)
-        .overlay {
-            if false, hotTipsJiggling {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation { hotTipsJiggling = false }
-                    }
-            }
-        }
-        .overlay(alignment: .bottomLeading) {
-            if false, hotTipsRemaining > 0 {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "lightbulb.max")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.blue)
-                        .frame(width: 48, height: 48)
-                        .background(Tokens.Colors.secondaryBackground, in: Circle())
-                        .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 3)
-                        .contentShape(Circle())
-                        .onTapGesture {
-                            if hotTipsJiggling {
-                                withAnimation { hotTipsJiggling = false }
-                            } else {
-                                showOnboarding = true
-                            }
-                        }
-                        .onLongPressGesture(minimumDuration: 0.5) {
-                            withAnimation { hotTipsJiggling = true }
-                        }
-                        .rotationEffect(hotTipsJiggling ? .degrees(3) : .degrees(0))
-                        .animation(
-                            hotTipsJiggling
-                                ? .easeInOut(duration: 0.12).repeatForever(autoreverses: true)
-                                : .default,
-                            value: hotTipsJiggling
-                        )
-
-                    if hotTipsJiggling {
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                hotTipsRemaining = 0
-                                hotTipsJiggling = false
-                            }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 20, height: 20)
-                                .background(.red, in: Circle())
-                        }
-                        .offset(x: 4, y: -4)
-                        .transition(.scale.combined(with: .opacity))
-                    }
-                }
-                .padding(.leading, Tokens.Spacing.l)
-                .padding(.bottom, Tokens.Spacing.l)
-                .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .onAppear {
-            // Hot tips visit tracking deactivated — kept for future use
-        }
     }
 
     // MARK: - Floating Clip Overlay
@@ -485,13 +405,13 @@ private struct DeleteSuccessToast: View {
 }
 
 #Preview("Dark Mode") {
-    TapesListView(showOnboarding: .constant(false))
+    TapesListView()
         .environmentObject(TapesStore())
         .preferredColorScheme(.dark)
 }
 
 #Preview("Light Mode") {
-    TapesListView(showOnboarding: .constant(false))
+    TapesListView()
         .environmentObject(TapesStore())
         .preferredColorScheme(.light)
 }

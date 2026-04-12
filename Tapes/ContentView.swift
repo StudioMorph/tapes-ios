@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var showOnboarding = false
 
     var body: some View {
-        TapesListView(showOnboarding: $showOnboarding)
+        MainTabView(showOnboarding: $showOnboarding)
             .onAppear {
                 entitlementManager.refresh()
                 if !onboardingCompleted {
@@ -37,5 +37,6 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environmentObject(TapesStore())
+        .environmentObject(AuthManager())
         .environmentObject(EntitlementManager())
 }

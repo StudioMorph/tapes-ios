@@ -137,8 +137,8 @@ final class CloudUploadManager: ObservableObject {
             guard let idx = activeTasks.firstIndex(where: { $0.clipId == clipId }) else { return }
 
             if activeTasks[idx].attempt < maxRetries {
-                let delay = pow(2.0, Double(activeTasks[idx].attempt))
-                log.info("Retrying clip \(task.clipId) in \(delay)s (attempt \(activeTasks[idx].attempt + 1)/\(self.maxRetries))")
+                let delay = pow(2.0, Double(self.activeTasks[idx].attempt))
+                log.info("Retrying clip \(task.clipId) in \(delay)s (attempt \(self.activeTasks[idx].attempt + 1)/\(self.maxRetries))")
 
                 try? await Task.sleep(for: .seconds(delay))
                 await executeUpload(clipId: clipId)
