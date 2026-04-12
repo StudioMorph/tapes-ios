@@ -31,6 +31,11 @@ final class NavigationCoordinator: ObservableObject {
         }
     }
 
+    func navigateToSharedTape(tapeId: String) {
+        pendingSharedTapeId = tapeId
+        selectedTab = .shared
+    }
+
     func clearPendingTape() {
         pendingSharedTapeId = nil
     }

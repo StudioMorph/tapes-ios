@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Photos
 import os
 
 struct SharedTapeDetailView: View {
@@ -21,6 +22,10 @@ struct SharedTapeDetailView: View {
     @State private var isUploading = false
     @State private var syncPushResult: String?
     @State private var isSyncPushing = false
+    @State private var showingDeleteConfirm = false
+    @State private var isDeleting = false
+    @State private var isSavingToDevice = false
+    @State private var saveToDeviceResult: String?
 
     private var hasAnyCompleted: Bool {
         downloadManager?.activeTasks.contains { if case .completed = $0.state { return true }; return false } ?? false
@@ -92,6 +97,14 @@ struct SharedTapeDetailView: View {
                 Task { await handleContribution(newItems) }
             }
         }
+        .alert("Delete Tape", isPresented: $showingDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                Task { await deleteTape() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete the tape and all its clips for everyone. This cannot be undone.")
+        }
     }
 
     // MARK: - Validating
@@ -161,6 +174,14 @@ struct SharedTapeDetailView: View {
                 }
 
                 clipListSection(manifest)
+
+                if let dm = downloadManager, dm.isComplete {
+                    saveToDeviceSection
+                }
+
+                if validation?.role == "owner" {
+                    deleteSection
+                }
             }
             .padding(.horizontal, Tokens.Spacing.l)
             .padding(.top, Tokens.Spacing.m)
@@ -425,22 +446,29 @@ struct SharedTapeDetailView: View {
 
     private func clipRow(_ clip: ManifestClip) -> some View {
         let state = downloadManager?.activeTasks.first(where: { $0.clipId == clip.clipId })?.state
+        let isExpired = clip.cloudUrl == nil && state == nil
 
         return HStack(spacing: Tokens.Spacing.m) {
             clipTypeIcon(clip.type)
                 .font(.system(size: 16))
-                .foregroundStyle(Tokens.Colors.secondaryText)
+                .foregroundStyle(isExpired ? Tokens.Colors.tertiaryText : Tokens.Colors.secondaryText)
                 .frame(width: 28)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Clip \(clip.orderIndex)")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .foregroundStyle(isExpired ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
 
                 HStack(spacing: Tokens.Spacing.xs) {
-                    Text(formatDuration(clip.durationMs))
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Colors.tertiaryText)
+                    if isExpired {
+                        Text("Expired")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Tokens.Colors.systemRed)
+                    } else {
+                        Text(formatDuration(clip.durationMs))
+                            .font(Tokens.Typography.caption)
+                            .foregroundStyle(Tokens.Colors.tertiaryText)
+                    }
 
                     if let contributor = clip.contributorName {
                         Text("· \(contributor)")
@@ -452,11 +480,17 @@ struct SharedTapeDetailView: View {
 
             Spacer()
 
-            clipStateIndicator(state)
+            if isExpired {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(Tokens.Colors.tertiaryText)
+            } else {
+                clipStateIndicator(state)
+            }
         }
         .padding(.vertical, Tokens.Spacing.s)
         .padding(.horizontal, Tokens.Spacing.m)
         .background(Tokens.Colors.secondaryBackground)
+        .opacity(isExpired ? 0.6 : 1.0)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
     }
 
@@ -489,6 +523,93 @@ struct SharedTapeDetailView: View {
         default:
             Image(systemName: "arrow.down.circle")
                 .foregroundStyle(Tokens.Colors.tertiaryText)
+        }
+    }
+
+    // MARK: - Save to Device
+
+    private var saveToDeviceSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+            Button {
+                Task { await saveClipsToPhotos() }
+            } label: {
+                HStack(spacing: Tokens.Spacing.m) {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isSavingToDevice ? Tokens.Colors.tertiaryText : Tokens.Colors.systemBlue)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Save to Device")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Tokens.Colors.primaryText)
+                        Text("Save all clips to your Photos library")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Tokens.Colors.secondaryText)
+                    }
+
+                    Spacer()
+
+                    if isSavingToDevice {
+                        ProgressView()
+                            .tint(Tokens.Colors.secondaryText)
+                    }
+                }
+                .padding(Tokens.Spacing.m)
+                .background(Tokens.Colors.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
+            }
+            .buttonStyle(.plain)
+            .disabled(isSavingToDevice)
+
+            if let result = saveToDeviceResult {
+                Text(result)
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                    .padding(.leading, Tokens.Spacing.xs)
+            }
+        }
+    }
+
+    // MARK: - Delete Section
+
+    private var deleteSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+            Text("Danger Zone")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Tokens.Colors.systemRed)
+                .textCase(.uppercase)
+                .padding(.leading, Tokens.Spacing.xs)
+
+            Button {
+                showingDeleteConfirm = true
+            } label: {
+                HStack(spacing: Tokens.Spacing.m) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isDeleting ? Tokens.Colors.tertiaryText : Tokens.Colors.systemRed)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Delete Tape")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Tokens.Colors.primaryText)
+                        Text("Permanently remove this tape and all its content")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Tokens.Colors.secondaryText)
+                    }
+
+                    Spacer()
+
+                    if isDeleting {
+                        ProgressView()
+                            .tint(Tokens.Colors.secondaryText)
+                    }
+                }
+                .padding(Tokens.Spacing.m)
+                .background(Tokens.Colors.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
+            }
+            .buttonStyle(.plain)
+            .disabled(isDeleting)
         }
     }
 
@@ -582,6 +703,64 @@ struct SharedTapeDetailView: View {
 
         try? await Task.sleep(for: .seconds(2))
         await refreshManifest()
+    }
+
+    // MARK: - Save to Photos
+
+    private func saveClipsToPhotos() async {
+        guard let dm = downloadManager, let manifest = manifest else { return }
+
+        isSavingToDevice = true
+        saveToDeviceResult = nil
+        var saved = 0
+
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else {
+            saveToDeviceResult = "Photos access denied."
+            isSavingToDevice = false
+            return
+        }
+
+        for clip in manifest.clips {
+            guard let localURL = dm.localURL(for: clip.clipId) else { continue }
+
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    if clip.type == "video" || clip.type == "live_photo" {
+                        PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: localURL)
+                    } else {
+                        if let data = try? Data(contentsOf: localURL),
+                           let image = UIImage(data: data) {
+                            PHAssetChangeRequest.creationRequestForAsset(from: image)
+                        }
+                    }
+                }
+                saved += 1
+            } catch {
+                log.error("Failed to save clip \(clip.clipId): \(error.localizedDescription)")
+            }
+        }
+
+        saveToDeviceResult = "Saved \(saved) clip\(saved == 1 ? "" : "s") to Photos."
+        isSavingToDevice = false
+    }
+
+    // MARK: - Delete Tape
+
+    private func deleteTape() async {
+        guard let api = authManager.apiClient else { return }
+
+        isDeleting = true
+
+        do {
+            try await api.deleteTape(tapeId: tapeId)
+            CloudDownloadManager.clearCache(for: tapeId)
+            dismiss()
+        } catch {
+            log.error("Failed to delete tape: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+            isDeleting = false
+        }
     }
 
     // MARK: - Sync Push

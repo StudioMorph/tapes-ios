@@ -220,13 +220,14 @@ private struct SharedTapeCard: View {
             }
 
             if let expiresAt = item.expiresAt {
+                let isUrgent = expiresAt.timeIntervalSinceNow < 48 * 60 * 60
                 HStack(spacing: 4) {
-                    Image(systemName: "clock")
+                    Image(systemName: isUrgent ? "exclamationmark.circle.fill" : "clock")
                         .font(.system(size: 11))
                     Text("Expires \(expiresAt, style: .relative)")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12, weight: isUrgent ? .semibold : .regular))
                 }
-                .foregroundStyle(Tokens.Colors.tertiaryText)
+                .foregroundStyle(isUrgent ? Tokens.Colors.systemRed : Tokens.Colors.tertiaryText)
             }
         }
         .padding(Tokens.Spacing.m)

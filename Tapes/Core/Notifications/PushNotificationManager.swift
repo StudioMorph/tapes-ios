@@ -80,27 +80,53 @@ final class PushNotificationManager: NSObject, ObservableObject {
             options: []
         )
 
-        UNUserNotificationCenter.current().setNotificationCategories([shareCategory, inviteCategory])
+        let syncAction = UNNotificationAction(
+            identifier: "SYNC_PUSH",
+            title: "Send Sync Push",
+            options: [.foreground]
+        )
+
+        let expiryCategory = UNNotificationCategory(
+            identifier: "TAPE_EXPIRY_WARNING",
+            actions: [viewAction, syncAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([
+            shareCategory, inviteCategory, expiryCategory
+        ])
     }
 
     // MARK: - Payload Handling
 
     private func handleNotificationPayload(_ userInfo: [AnyHashable: Any]) {
-        guard let shareId = userInfo["share_id"] as? String else {
-            log.warning("Push notification missing share_id")
+        guard let nav = navigationCoordinator else {
+            log.warning("Navigation coordinator not available")
             return
         }
 
-        log.info("Handling push for share: \(shareId)")
-
-        guard let api = apiClient, let nav = navigationCoordinator else {
-            log.warning("API client or nav coordinator not available")
+        if let tapeId = userInfo["tape_id"] as? String, !tapeId.isEmpty {
+            log.info("Handling push for tape: \(tapeId)")
+            Task { @MainActor in
+                nav.navigateToSharedTape(tapeId: tapeId)
+            }
             return
         }
 
-        Task { @MainActor in
-            nav.handleShareLink(shareId: shareId, api: api)
+        if let shareId = userInfo["share_id"] as? String, !shareId.isEmpty {
+            log.info("Handling push for share: \(shareId)")
+            guard let api = apiClient else {
+                log.warning("API client not available")
+                return
+            }
+            Task { @MainActor in
+                nav.handleShareLink(shareId: shareId, api: api)
+            }
+            return
         }
+
+        log.warning("Push notification missing both tape_id and share_id")
     }
 }
 
