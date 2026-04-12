@@ -10,5 +10,9 @@
 	<true/>
 	<key>aps-environment</key>
 	<string>development</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:tapes-api.hi-7d5.workers.dev</string>
+	</array>
 </dict>
 </plist>

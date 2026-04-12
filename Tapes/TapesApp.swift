@@ -1,5 +1,6 @@
 import SwiftUI
 import BackgroundTasks
+import Foundation
 
 @main
 struct TapesApp: App {
@@ -30,7 +31,11 @@ struct TapesApp: App {
                 .environmentObject(navigationCoordinator)
                 .preferredColorScheme(appearanceMode.colorScheme)
                 .onOpenURL { url in
-                    handleDeepLink(url)
+                    handleIncomingURL(url)
+                }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
+                    guard let url = userActivity.webpageURL else { return }
+                    handleIncomingURL(url)
                 }
                 .task {
                     authManager.apiClient = apiClient
@@ -41,18 +46,31 @@ struct TapesApp: App {
         }
     }
 
-    private func handleDeepLink(_ url: URL) {
+    private func handleIncomingURL(_ url: URL) {
         if url.pathExtension == "tape" {
             handleTapeFile(url)
             return
         }
 
-        guard url.scheme == "tapes",
-              url.host == "t",
-              let shareId = url.pathComponents.last,
-              !shareId.isEmpty else { return }
+        if let shareId = Self.shareId(from: url) {
+            navigationCoordinator.handleShareLink(shareId: shareId, api: apiClient)
+        }
+    }
 
-        navigationCoordinator.handleShareLink(shareId: shareId, api: apiClient)
+    /// `tapes://t/{id}` or `https://…/t/{id}` (Universal Link).
+    private static func shareId(from url: URL) -> String? {
+        if url.scheme?.lowercased() == "tapes", url.host == "t" {
+            let p = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return p.isEmpty ? nil : p
+        }
+        if url.scheme == "http" || url.scheme == "https" {
+            let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let parts = path.split(separator: "/").map(String.init)
+            guard parts.count == 2, parts[0] == "t" else { return nil }
+            let id = parts[1]
+            return id.isEmpty ? nil : id
+        }
+        return nil
     }
 
     private func handleTapeFile(_ url: URL) {

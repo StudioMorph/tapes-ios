@@ -5,8 +5,9 @@ actor TapesAPIClient {
 
     // MARK: - Configuration
 
+    /// Must match the host used for `PUBLIC_SHARE_BASE` / Universal Links (see `docs/features/UniversalLinks.md`).
     #if DEBUG
-    private let baseURL = URL(string: "https://api-dev.tapes.app")!
+    private let baseURL = URL(string: "https://tapes-api.hi-7d5.workers.dev")!
     #else
     private let baseURL = URL(string: "https://api.tapes.app")!
     #endif
