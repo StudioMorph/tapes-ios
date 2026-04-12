@@ -2,10 +2,12 @@ import SwiftUI
 
 struct SharedTapesView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var navigationCoordinator: NavigationCoordinator
 
     @State private var filter: SharedFilter = .viewOnly
     @State private var sharedTapes: [SharedTapeItem] = []
     @State private var isLoading = false
+    @State private var selectedTapeId: String?
 
     enum SharedFilter: String, CaseIterable {
         case viewOnly = "View Only"
@@ -38,11 +40,26 @@ struct SharedTapesView: View {
             .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
             .navigationTitle("Shared")
             .navigationBarTitleDisplayMode(.large)
+            .navigationDestination(isPresented: Binding(
+                get: { selectedTapeId != nil },
+                set: { if !$0 { selectedTapeId = nil } }
+            )) {
+                if let tapeId = selectedTapeId {
+                    SharedTapeDetailView(tapeId: tapeId)
+                }
+            }
             .task {
                 await loadSharedTapes()
             }
             .refreshable {
                 await loadSharedTapes()
+            }
+            .onChange(of: navigationCoordinator.pendingSharedTapeId) { _, newId in
+                if let tapeId = newId {
+                    selectedTapeId = tapeId
+                    navigationCoordinator.clearPendingTape()
+                    Task { await loadSharedTapes() }
+                }
             }
         }
     }
@@ -129,7 +146,12 @@ struct SharedTapesView: View {
         ScrollView {
             LazyVStack(spacing: Tokens.Spacing.m) {
                 ForEach(filteredTapes) { item in
-                    SharedTapeCard(item: item)
+                    Button {
+                        selectedTapeId = item.tapeId
+                    } label: {
+                        SharedTapeCard(item: item)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, Tokens.Spacing.m)
@@ -217,4 +239,5 @@ private struct SharedTapeCard: View {
     SharedTapesView()
         .environmentObject(AuthManager())
         .environmentObject(EntitlementManager())
+        .environmentObject(NavigationCoordinator())
 }

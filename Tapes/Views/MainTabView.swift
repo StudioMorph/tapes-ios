@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @Binding var showOnboarding: Bool
-    @State private var selectedTab: AppTab = .myTapes
+    @EnvironmentObject private var navigationCoordinator: NavigationCoordinator
 
     enum AppTab: Hashable {
         case myTapes
@@ -11,7 +11,7 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $navigationCoordinator.selectedTab) {
             Tab("My Tapes", systemImage: "film.stack", value: AppTab.myTapes) {
                 TapesListView()
             }
@@ -33,4 +33,5 @@ struct MainTabView: View {
         .environmentObject(TapesStore())
         .environmentObject(AuthManager())
         .environmentObject(EntitlementManager())
+        .environmentObject(NavigationCoordinator())
 }

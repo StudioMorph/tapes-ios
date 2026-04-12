@@ -315,6 +315,47 @@ actor TapesAPIClient {
         try await postEmpty(path: "/tapes/\(tapeId)/sync-push")
     }
 
+    // MARK: - Validate
+
+    struct TapeValidation: Decodable {
+        let tapeId: String
+        let title: String
+        let mode: String
+        let status: String
+        let role: String
+        let clipCount: Int
+        let pendingDownloads: Int
+        let expiresAt: String?
+        let permissions: ValidationPermissions
+
+        enum CodingKeys: String, CodingKey {
+            case tapeId = "tape_id"
+            case title, mode, status, role
+            case clipCount = "clip_count"
+            case pendingDownloads = "pending_downloads"
+            case expiresAt = "expires_at"
+            case permissions
+        }
+    }
+
+    struct ValidationPermissions: Decodable {
+        let canContribute: Bool
+        let canExport: Bool
+        let canSaveToDevice: Bool
+        let canInvite: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case canContribute = "can_contribute"
+            case canExport = "can_export"
+            case canSaveToDevice = "can_save_to_device"
+            case canInvite = "can_invite"
+        }
+    }
+
+    func validateTape(tapeId: String) async throws -> TapeValidation {
+        try await get(path: "/tapes/\(tapeId)/validate")
+    }
+
     // MARK: - Shared Tapes
 
     func getSharedTapes() async throws -> [SharedTapeItem] {
