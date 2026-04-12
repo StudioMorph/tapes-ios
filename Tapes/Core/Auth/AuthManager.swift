@@ -7,6 +7,7 @@
 
 import AuthenticationServices
 import SwiftUI
+import os
 
 @MainActor
 final class AuthManager: ObservableObject {
@@ -14,16 +15,24 @@ final class AuthManager: ObservableObject {
     private static let userIDKey = "tapes_apple_user_id"
     private static let userNameKey = "tapes_apple_user_name"
     private static let userEmailKey = "tapes_apple_user_email"
+    private static let serverUserIDKey = "tapes_server_user_id"
+
+    private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Auth")
 
     // MARK: - Published State
 
     @Published private(set) var userName: String?
     @Published private(set) var userEmail: String?
+    @Published private(set) var serverUserId: String?
+    @Published private(set) var isAuthenticatingWithServer = false
     @Published var authError: String?
+
+    var apiClient: TapesAPIClient?
 
     // MARK: - Lifecycle
 
     init() {
+        serverUserId = UserDefaults.standard.string(forKey: Self.serverUserIDKey)
         restoreSession()
     }
 
@@ -31,6 +40,14 @@ final class AuthManager: ObservableObject {
 
     var userID: String? {
         UserDefaults.standard.string(forKey: Self.userIDKey)
+    }
+
+    var isSignedIn: Bool {
+        userID != nil
+    }
+
+    var hasServerSession: Bool {
+        apiClient?.isAuthenticated ?? false
     }
 
     private func restoreSession() {
@@ -86,6 +103,18 @@ final class AuthManager: ObservableObject {
 
             authError = nil
 
+            // Exchange Apple identity token for server access token
+            if let identityToken = credential.identityToken, let api = apiClient {
+                Task {
+                    await exchangeTokenWithServer(
+                        identityToken: identityToken,
+                        fullName: userName,
+                        email: userEmail,
+                        api: api
+                    )
+                }
+            }
+
         case .failure(let error):
             guard let asError = error as? ASAuthorizationError else {
                 authError = error.localizedDescription
@@ -100,11 +129,38 @@ final class AuthManager: ObservableObject {
         }
     }
 
+    // MARK: - Server Token Exchange
+
+    private func exchangeTokenWithServer(identityToken: Data, fullName: String?,
+                                          email: String?, api: TapesAPIClient) async {
+        isAuthenticatingWithServer = true
+        defer { isAuthenticatingWithServer = false }
+
+        do {
+            let response = try await api.authenticateWithApple(
+                identityToken: identityToken,
+                fullName: fullName,
+                email: email
+            )
+            serverUserId = response.user.userId
+            UserDefaults.standard.set(response.user.userId, forKey: Self.serverUserIDKey)
+            log.info("Server auth successful, user: \(response.user.userId)")
+        } catch {
+            log.error("Server auth failed: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Sign Out
 
     func signOut() {
         UserDefaults.standard.removeObject(forKey: Self.userIDKey)
+        UserDefaults.standard.removeObject(forKey: Self.serverUserIDKey)
         userName = nil
         userEmail = nil
+        serverUserId = nil
+
+        if let api = apiClient {
+            Task { await api.clearToken() }
+        }
     }
 }

@@ -10,13 +10,11 @@ The work splits into two tracks that run in parallel where possible:
 - **Backend** — Cloudflare Workers API + D1 database + R2 storage (new repo: `tapes-api`)
 - **iOS** — New views, networking layer, local caching, deep links (existing repo: `tapes-ios`)
 
-Each phase gets its own feature branch. We merge to `main` at each milestone.
+Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 1 — Foundation
-
-**Branch:** `feature/share-foundation`
+## Phase 1 — Foundation ✅
 
 ### Backend (tapes-api)
 1. Scaffold Cloudflare Workers project with Wrangler
@@ -44,8 +42,6 @@ Each phase gets its own feature branch. We merge to `main` at each milestone.
 
 ## Phase 2 — View Only Share
 
-**Branch:** `feature/share-view-only`
-
 ### Backend
 1. `POST /tapes/:id/share` — create view-only share, set expiry, generate share link
 2. `POST /tapes/:id/invite` — invite by email, create collaborator record with status `invited`
@@ -70,8 +66,6 @@ Each phase gets its own feature branch. We merge to `main` at each milestone.
 
 ## Phase 3 — Collaborative Tapes
 
-**Branch:** `feature/share-collaborative`
-
 ### Backend
 1. `POST /tapes/:id/collaborate` — create collaborative share
 2. `POST /tapes/:id/clips` (contributor) — upload clip, update manifest, create tracking records, resolve ordering
@@ -94,8 +88,6 @@ Each phase gets its own feature branch. We merge to `main` at each milestone.
 
 ## Phase 4 — Cloud Housekeeping
 
-**Branch:** `feature/share-housekeeping`
-
 ### Backend (all backend)
 1. Hourly expiry cron — delete R2 assets past 7 days
 2. Full download detection — delete immediately when all participants synced (built in Phase 2, hardened here)
@@ -115,8 +107,6 @@ Each phase gets its own feature branch. We merge to `main` at each milestone.
 
 ## Phase 5 — Notifications
 
-**Branch:** `feature/share-notifications`
-
 ### Backend
 1. Batched notification cron — collect activity per tape per user, fire every 3 hours
 2. Immediate notification triggers — invite, share, Sync Push, tape deleted
@@ -134,8 +124,6 @@ Each phase gets its own feature branch. We merge to `main` at each milestone.
 
 ## Phase 6 — .tape File Distribution
 
-**Branch:** `feature/tape-file`
-
 ### Backend
 1. Server validation on `.tape` file open — confirm identity, check permissions, initiate tracking
 
@@ -151,8 +139,6 @@ Each phase gets its own feature branch. We merge to `main` at each milestone.
 
 ## Phase 7 — Save to Device
 
-**Branch:** `feature/save-to-device`
-
 ### iOS (all iOS, no backend)
 1. Save to Device option in share modal (visible when fully cached)
 2. Reuse existing album creation logic
@@ -163,8 +149,6 @@ Each phase gets its own feature branch. We merge to `main` at each milestone.
 ---
 
 ## Phase 8 — Polish
-
-**Branch:** `feature/share-polish`
 
 ### Both
 1. All error states — upload failed, connection lost, invite bounced, timeout, expired clip
@@ -204,12 +188,27 @@ Phase 8  ████████      Polish
 
 ---
 
-## What's Needed to Start Phase 1
+## Phase 1 Progress
 
 - [x] Cloudflare account authenticated
 - [x] Wrangler CLI installed
-- [ ] Create `tapes-api` repo (GitHub)
-- [ ] Scaffold Workers project with Wrangler
-- [ ] Create R2 bucket
-- [ ] Create D1 database
-- [ ] Define API contract (endpoint shapes + request/response types)
+- [x] Scaffold Workers project with Wrangler
+- [x] Create D1 database (`tapes-db`, region WEUR)
+- [ ] Create R2 bucket (requires enabling R2 in Cloudflare Dashboard)
+- [x] Define API contract (`docs/plan/API_CONTRACT_V1.md`)
+- [x] Build D1 schema (6 tables, indexes, migrations applied locally)
+- [x] Build all Workers API endpoints (auth, tapes, clips, collaborators, manifest, share, sync)
+- [x] Build scheduled handlers (expiry, sync warning, orphan cleanup, notification batch)
+- [x] Build iOS `TapesAPIClient` networking layer (actor, Keychain token storage)
+- [x] Build iOS `CloudUploadManager` (background upload with retry)
+- [x] Build iOS `TapeManifest` Codable model
+- [x] Build iOS `KeychainHelper` for secure token storage
+- [x] Build iOS `APIError` typed error handling
+- [x] Update `AuthManager` with server token exchange
+- [x] Register `tapes://` URL scheme in Info.plist
+- [x] Register `.tape` UTI with file type association
+- [x] Add push notification entitlement + background mode
+- [x] Wire up deep link handler in `TapesApp`
+- [ ] Create `tapes-api` repo on GitHub
+- [ ] Deploy to Cloudflare (dev environment)
+- [ ] End-to-end test: upload → record → manifest
