@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import os
 
 struct SharedTapeDetailView: View {
@@ -9,13 +10,33 @@ struct SharedTapeDetailView: View {
     @State private var validation: TapesAPIClient.TapeValidation?
     @State private var manifest: TapeManifest?
     @State private var downloadManager: CloudDownloadManager?
+    @State private var uploadManager: CloudUploadManager?
     @State private var isValidating = true
     @State private var errorMessage: String?
     @State private var showingPlayer = false
     @State private var playableTape: Tape?
+    @State private var showingCollaborators = false
+    @State private var showingPhotoPicker = false
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var isUploading = false
+    @State private var syncPushResult: String?
+    @State private var isSyncPushing = false
 
     private var hasAnyCompleted: Bool {
         downloadManager?.activeTasks.contains { if case .completed = $0.state { return true }; return false } ?? false
+    }
+
+    private var isCollaborative: Bool {
+        validation?.mode == "collaborative"
+    }
+
+    private var canContribute: Bool {
+        validation?.permissions.canContribute ?? false
+    }
+
+    private var isOwnerOrAdmin: Bool {
+        let role = validation?.role ?? ""
+        return role == "owner" || role == "co-admin"
     }
 
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "SharedDetail")
@@ -33,13 +54,43 @@ struct SharedTapeDetailView: View {
         .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
         .navigationTitle(validation?.title ?? "Shared Tape")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            if isCollaborative {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingCollaborators = true
+                    } label: {
+                        Image(systemName: "person.2")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Tokens.Colors.systemBlue)
+                    }
+                }
+            }
+        }
         .task {
             await validateAndLoad()
+        }
+        .refreshable {
+            await refreshManifest()
         }
         .fullScreenCover(item: $playableTape) { tape in
             TapePlayerView(tape: tape, onDismiss: {
                 playableTape = nil
             })
+        }
+        .sheet(isPresented: $showingCollaborators) {
+            CollaboratorsView(tapeId: tapeId, isOwner: validation?.role == "owner")
+        }
+        .photosPicker(
+            isPresented: $showingPhotoPicker,
+            selection: $selectedPhotos,
+            maxSelectionCount: 20,
+            matching: .any(of: [.videos, .images, .livePhotos])
+        )
+        .onChange(of: selectedPhotos) { _, newItems in
+            if !newItems.isEmpty {
+                Task { await handleContribution(newItems) }
+            }
         }
     }
 
@@ -94,7 +145,21 @@ struct SharedTapeDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
                 tapeHeader(manifest)
+
+                if canContribute {
+                    contributeSection
+                }
+
+                if let um = uploadManager, !um.activeTasks.isEmpty {
+                    uploadProgressSection(um)
+                }
+
                 downloadProgressSection
+
+                if isOwnerOrAdmin {
+                    adminSection
+                }
+
                 clipListSection(manifest)
             }
             .padding(.horizontal, Tokens.Spacing.l)
@@ -155,6 +220,155 @@ struct SharedTapeDetailView: View {
         .padding(Tokens.Spacing.m)
         .background(Tokens.Colors.secondaryBackground)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+    }
+
+    // MARK: - Contribute Section
+
+    private var contributeSection: some View {
+        Button {
+            showingPhotoPicker = true
+        } label: {
+            HStack(spacing: Tokens.Spacing.m) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(Tokens.Colors.systemBlue)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Add Clips")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Tokens.Colors.primaryText)
+                    Text("Contribute photos and videos to this tape")
+                        .font(Tokens.Typography.caption)
+                        .foregroundStyle(Tokens.Colors.secondaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Tokens.Colors.tertiaryText)
+            }
+            .padding(Tokens.Spacing.m)
+            .background(Tokens.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Upload Progress
+
+    private func uploadProgressSection(_ um: CloudUploadManager) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+            HStack {
+                Text("Uploading clips...")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                Spacer()
+                Text("\(Int(um.totalProgress * 100))%")
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+            }
+
+            ProgressView(value: um.totalProgress)
+                .tint(Tokens.Colors.systemBlue)
+
+            ForEach(um.activeTasks) { task in
+                HStack(spacing: Tokens.Spacing.s) {
+                    clipTypeIcon(task.clipType)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Tokens.Colors.secondaryText)
+                        .frame(width: 20)
+
+                    Text("Clip")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Tokens.Colors.secondaryText)
+
+                    Spacer()
+
+                    uploadStateLabel(task.state)
+                }
+            }
+        }
+        .padding(Tokens.Spacing.m)
+        .background(Tokens.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+    }
+
+    @ViewBuilder
+    private func uploadStateLabel(_ state: CloudUploadManager.UploadState) -> some View {
+        switch state {
+        case .idle:
+            Text("Waiting")
+                .font(.system(size: 12))
+                .foregroundStyle(Tokens.Colors.tertiaryText)
+        case .uploading(let p):
+            Text("\(Int(p * 100))%")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(Tokens.Colors.systemBlue)
+        case .confirming:
+            Text("Confirming")
+                .font(.system(size: 12))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+        case .completed:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .font(.system(size: 14))
+        case .failed(let msg):
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(Tokens.Colors.systemRed)
+                .font(.system(size: 14))
+                .help(msg)
+        }
+    }
+
+    // MARK: - Admin Section
+
+    private var adminSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+            Text("Admin")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+                .textCase(.uppercase)
+                .padding(.leading, Tokens.Spacing.xs)
+
+            Button {
+                Task { await triggerSyncPush() }
+            } label: {
+                HStack(spacing: Tokens.Spacing.m) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isSyncPushing ? Tokens.Colors.tertiaryText : Tokens.Colors.systemBlue)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Sync Push")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Tokens.Colors.primaryText)
+                        Text("Notify participants to download pending clips")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Tokens.Colors.secondaryText)
+                    }
+
+                    Spacer()
+
+                    if isSyncPushing {
+                        ProgressView()
+                            .tint(Tokens.Colors.secondaryText)
+                    }
+                }
+                .padding(Tokens.Spacing.m)
+                .background(Tokens.Colors.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
+            }
+            .buttonStyle(.plain)
+            .disabled(isSyncPushing)
+
+            if let result = syncPushResult {
+                Text(result)
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                    .padding(.leading, Tokens.Spacing.xs)
+            }
+        }
     }
 
     // MARK: - Download Progress
@@ -223,9 +437,17 @@ struct SharedTapeDetailView: View {
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Tokens.Colors.primaryText)
 
-                Text(formatDuration(clip.durationMs))
-                    .font(Tokens.Typography.caption)
-                    .foregroundStyle(Tokens.Colors.tertiaryText)
+                HStack(spacing: Tokens.Spacing.xs) {
+                    Text(formatDuration(clip.durationMs))
+                        .font(Tokens.Typography.caption)
+                        .foregroundStyle(Tokens.Colors.tertiaryText)
+
+                    if let contributor = clip.contributorName {
+                        Text("· \(contributor)")
+                            .font(Tokens.Typography.caption)
+                            .foregroundStyle(Tokens.Colors.tertiaryText)
+                    }
+                }
             }
 
             Spacer()
@@ -302,11 +524,86 @@ struct SharedTapeDetailView: View {
             downloadManager = dm
             dm.downloadTape(tapeId: tapeId, manifest: m)
 
+            if v.permissions.canContribute {
+                uploadManager = CloudUploadManager(api: api)
+            }
+
             isValidating = false
         } catch {
             log.error("Failed to load shared tape \(tapeId): \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             isValidating = false
+        }
+    }
+
+    private func refreshManifest() async {
+        guard let api = authManager.apiClient else { return }
+
+        do {
+            let m = try await api.getManifest(tapeId: tapeId)
+            manifest = m
+
+            downloadManager?.downloadNewClips(tapeId: tapeId, clips: m.clips)
+        } catch {
+            log.error("Failed to refresh manifest: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Contribution
+
+    private func handleContribution(_ items: [PhotosPickerItem]) async {
+        guard let api = authManager.apiClient,
+              let um = uploadManager else { return }
+
+        for item in items {
+            do {
+                let clipId = UUID().uuidString.lowercased()
+
+                if let videoData = try await item.loadTransferable(type: Data.self) {
+                    let tempDir = FileManager.default.temporaryDirectory
+                    let fileURL = tempDir.appendingPathComponent("\(clipId).mp4")
+                    try videoData.write(to: fileURL)
+
+                    um.upload(
+                        tapeId: tapeId,
+                        clipId: clipId,
+                        fileURL: fileURL,
+                        thumbnailData: nil,
+                        clipType: "video",
+                        durationMs: 5000
+                    )
+                }
+            } catch {
+                log.error("Failed to process contribution: \(error.localizedDescription)")
+            }
+        }
+
+        selectedPhotos = []
+
+        try? await Task.sleep(for: .seconds(2))
+        await refreshManifest()
+    }
+
+    // MARK: - Sync Push
+
+    private func triggerSyncPush() async {
+        guard let api = authManager.apiClient else { return }
+
+        isSyncPushing = true
+        syncPushResult = nil
+
+        do {
+            let result = try await api.syncPush(tapeId: tapeId)
+            await MainActor.run {
+                syncPushResult = "Notified \(result.notifiedCount) participant\(result.notifiedCount == 1 ? "" : "s")."
+                isSyncPushing = false
+            }
+        } catch {
+            log.error("Sync push failed: \(error.localizedDescription)")
+            await MainActor.run {
+                syncPushResult = error.localizedDescription
+                isSyncPushing = false
+            }
         }
     }
 }

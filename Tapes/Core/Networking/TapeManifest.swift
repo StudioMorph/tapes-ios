@@ -50,6 +50,7 @@ struct ManifestClip: Codable, Identifiable {
     let cloudUrl: String?
     let thumbnailUrl: String?
     let contributorId: String?
+    let contributorName: String?
     let recordedAt: String?
     let durationMs: Int
     let trimStartMs: Int?
@@ -68,6 +69,7 @@ struct ManifestClip: Codable, Identifiable {
         case cloudUrl = "cloud_url"
         case thumbnailUrl = "thumbnail_url"
         case contributorId = "contributor_id"
+        case contributorName = "contributor_name"
         case recordedAt = "recorded_at"
         case durationMs = "duration_ms"
         case trimStartMs = "trim_start_ms"

@@ -77,6 +77,23 @@ final class CloudDownloadManager: ObservableObject {
         Task { await executeDownload(clipId: clipId) }
     }
 
+    func downloadNewClips(tapeId: String, clips: [ManifestClip]) {
+        let existingIds = Set(activeTasks.map(\.clipId))
+        for clip in clips {
+            guard let cloudUrl = clip.cloudUrl, !existingIds.contains(clip.clipId) else { continue }
+            let task = DownloadTask(
+                id: clip.clipId,
+                tapeId: tapeId,
+                clipId: clip.clipId,
+                cloudUrl: cloudUrl,
+                thumbnailUrl: clip.thumbnailUrl,
+                clipType: clip.type
+            )
+            activeTasks.append(task)
+            Task { await executeDownload(clipId: task.clipId) }
+        }
+    }
+
     // MARK: - Cancel All
 
     func cancelAll() {

@@ -64,7 +64,7 @@ Single `feature/sharing` branch, merged to `main` at meaningful milestones.
 
 ---
 
-## Phase 3 — Collaborative Tapes
+## Phase 3 — Collaborative Tapes ✅ COMPLETE
 
 ### Backend
 1. `POST /tapes/:id/collaborate` — create collaborative share
@@ -234,3 +234,23 @@ Phase 8  ████████      Polish
 - [x] `AppDelegate` — device token callbacks
 - [x] Streaming playback — play button after first clip, builds partial tape
 - [x] Native `TabView` with Liquid Glass (iOS 26) — My Tapes / Shared / Account
+
+## Phase 3 Progress — ✅ Complete
+
+### Backend
+- [x] Push notifications wired into `syncPush` — notifies unsynced participants
+- [x] Push notifications wired into `confirmUpload` — notifies all participants when new clip added
+- [x] Manifest now includes `contributor_name` per clip (JOIN with users table)
+- [x] API deployed to `tapes-api.hi-7d5.workers.dev`
+
+### iOS
+- [x] `CollaboratorsView` — full collaborator management (invite, promote, demote, revoke)
+- [x] Enhanced `SharedTapeDetailView` with collaborative controls:
+  - [x] Contribute button (PhotosPicker for adding clips)
+  - [x] Upload progress section per clip
+  - [x] Admin section with Sync Push
+  - [x] Collaborator management toolbar button
+  - [x] Pull-to-refresh for manifest sync
+  - [x] Contributor names on clip rows
+- [x] `CloudDownloadManager.downloadNewClips()` — incremental download of new clips
+- [x] `ManifestClip.contributorName` field added
