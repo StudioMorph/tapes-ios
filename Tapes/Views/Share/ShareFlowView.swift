@@ -371,8 +371,8 @@ struct ShareFlowView: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Tokens.Colors.primaryText)
 
-            VStack(spacing: 0) {
-                // Email input row
+            VStack(spacing: Tokens.Spacing.m) {
+                // Email input row — inner inset field
                 HStack(spacing: Tokens.Spacing.s) {
                     Image(systemName: "envelope")
                         .font(.system(size: 16))
@@ -396,12 +396,11 @@ struct ShareFlowView: View {
                     .disabled(inviteEmail.isEmpty)
                 }
                 .padding(Tokens.Spacing.m)
+                .background(Tokens.Colors.primaryBackground.opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
 
                 // Pending batch rows
                 ForEach(pendingInvites, id: \.self) { email in
-                    Divider()
-                        .padding(.horizontal, Tokens.Spacing.m)
-
                     HStack(spacing: Tokens.Spacing.s) {
                         Text(email)
                             .font(.system(size: 15))
@@ -417,8 +416,7 @@ struct ShareFlowView: View {
                                 .foregroundStyle(Tokens.Colors.tertiaryText)
                         }
                     }
-                    .padding(.horizontal, Tokens.Spacing.m)
-                    .padding(.vertical, Tokens.Spacing.s)
+                    .padding(.horizontal, Tokens.Spacing.xs)
                 }
 
                 // Send Invites button
@@ -437,15 +435,13 @@ struct ShareFlowView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(pendingInvites.isEmpty ? Color.clear : Tokens.Colors.systemBlue)
+                    .background(pendingInvites.isEmpty ? Tokens.Colors.primaryBackground.opacity(0.6) : Tokens.Colors.systemBlue)
                     .foregroundStyle(pendingInvites.isEmpty ? Tokens.Colors.tertiaryText : .white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .disabled(pendingInvites.isEmpty || isSendingInvites)
-                .padding(.horizontal, Tokens.Spacing.m)
-                .padding(.bottom, Tokens.Spacing.m)
-                .padding(.top, Tokens.Spacing.s)
             }
+            .padding(Tokens.Spacing.m)
             .background(Tokens.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
         }
