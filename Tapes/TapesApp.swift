@@ -17,6 +17,7 @@ struct TapesApp: App {
         cleanupTempImports()
         if #available(iOS 26, *) {
             ExportCoordinator.registerBackgroundExportHandler()
+            ShareUploadCoordinator.registerBackgroundUploadHandler()
         }
     }
 

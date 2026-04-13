@@ -1,18 +1,15 @@
 import SwiftUI
-import Photos
-import AVFoundation
 
 struct ShareFlowView: View {
     let tape: Tape
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
 
     @State private var selectedMode: ShareMode = .viewing
     @State private var inviteEmail = ""
     @State private var pendingInvites: [String] = []
     @State private var isSendingInvites = false
-    @State private var isSharing = false
-    @State private var sharingStatus = ""
     @State private var errorMessage: String?
 
     // Server state
@@ -22,12 +19,9 @@ struct ShareFlowView: View {
     @State private var openAccess = true
     @State private var clipsOnServer = false
     @State private var collaborators: [TapesAPIClient.CollaboratorInfo] = []
-    @State private var failedClipIndices: Set<Int> = []
-    @State private var pendingCreateResponse: TapesAPIClient.CreateTapeResponse?
 
     // Alerts
     @State private var personToRevoke: TapesAPIClient.CollaboratorInfo?
-    @State private var showUploadFailedAlert = false
 
     enum ShareMode: String, CaseIterable {
         case viewing = "Viewing"
@@ -64,7 +58,6 @@ struct ShareFlowView: View {
 
     private var sendInvitesLabel: String {
         if !isSendingInvites { return "Send invites" }
-        if isSharing { return sharingStatus.isEmpty ? "Preparing…" : sharingStatus }
         return "Sending…"
     }
 
@@ -135,17 +128,6 @@ struct ShareFlowView: View {
                 if let person = personToRevoke {
                     Text("Remove \(person.displayName)'s access to this tape?")
                 }
-            }
-            .alert("Upload Failed", isPresented: $showUploadFailedAlert) {
-                Button("Retry") {
-                    Task { await shareTape() }
-                }
-                Button("Cancel", role: .cancel) {
-                    failedClipIndices.removeAll()
-                    pendingCreateResponse = nil
-                }
-            } message: {
-                Text("\(failedClipIndices.count) clip(s) failed to upload. Would you like to retry?")
             }
             .task { await loadShareState() }
         }
@@ -290,18 +272,12 @@ struct ShareFlowView: View {
                     .padding(.bottom, Tokens.Spacing.m)
                     .padding(.top, Tokens.Spacing.s)
                 } else if openAccess {
-                    // Generate Link button (no link yet, open access ON)
                     Button {
-                        Task { await shareTape() }
+                        startBackgroundShare(invites: [])
                     } label: {
                         HStack(spacing: Tokens.Spacing.s) {
-                            if isSharing {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Image(systemName: "link.badge.plus")
-                            }
-                            Text(isSharing ? sharingStatus : "Generate Link")
+                            Image(systemName: "link.badge.plus")
+                            Text("Generate Link")
                                 .font(.system(size: 15, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity)
@@ -310,7 +286,7 @@ struct ShareFlowView: View {
                         .foregroundStyle(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .disabled(isSharing)
+                    .disabled(uploadCoordinator.isUploading)
                     .padding(.horizontal, Tokens.Spacing.m)
                     .padding(.bottom, Tokens.Spacing.m)
                     .padding(.top, Tokens.Spacing.xs)
@@ -589,14 +565,15 @@ struct ShareFlowView: View {
         let tapeId = tape.id.uuidString.lowercased()
         let accessMode = selectedMode == .viewing ? "view" : "collaborate"
 
+        // If clips need uploading, delegate to the background coordinator
+        if activeShareId == nil {
+            startBackgroundShare(invites: pendingInvites)
+            return
+        }
+
+        // Clips already on server — send invites inline
         isSendingInvites = true
         defer { isSendingInvites = false }
-
-        // If tape hasn't been shared yet, upload clips first
-        if activeShareId == nil {
-            await shareTape()
-            if activeShareId == nil { return }
-        }
 
         var failedEmails: [String] = []
 
@@ -609,15 +586,38 @@ struct ShareFlowView: View {
         }
 
         if let collabs = try? await api.listCollaborators(tapeId: tapeId) {
-            await MainActor.run { collaborators = collabs }
+            collaborators = collabs
         }
 
-        await MainActor.run {
-            pendingInvites = failedEmails
-            if !failedEmails.isEmpty {
-                errorMessage = "Failed to invite: \(failedEmails.joined(separator: ", "))"
-            }
+        pendingInvites = failedEmails
+        if !failedEmails.isEmpty {
+            errorMessage = "Failed to invite: \(failedEmails.joined(separator: ", "))"
         }
+    }
+
+    // MARK: - Background Share (delegates to coordinator)
+
+    private func startBackgroundShare(invites: [String]) {
+        guard let api = authManager.apiClient else {
+            errorMessage = "Not connected. Please sign in from the Account tab."
+            return
+        }
+
+        guard authManager.hasServerSession else {
+            errorMessage = "Your session hasn't been set up. Please sign out and sign in again from the Account tab."
+            return
+        }
+
+        let mode: ShareUploadCoordinator.ShareMode = selectedMode == .viewing ? .viewing : .collaborating
+
+        uploadCoordinator.startShare(
+            tape: tape,
+            mode: mode,
+            inviteEmails: invites,
+            api: api
+        )
+
+        dismiss()
     }
 
     // MARK: - Revoke Person
@@ -662,269 +662,10 @@ struct ShareFlowView: View {
         topController.present(ac, animated: true)
     }
 
-    // MARK: - Share Tape
-
-    private func shareTape() async {
-        guard let api = authManager.apiClient else {
-            errorMessage = "Not connected. Please sign out and sign in again from the Account tab."
-            return
-        }
-
-        guard authManager.hasServerSession else {
-            errorMessage = "Your session hasn't been set up. Please sign out and sign in again from the Account tab."
-            return
-        }
-
-        isSharing = true
-        errorMessage = nil
-        defer { isSharing = false }
-
-        let tapeId = tape.id.uuidString.lowercased()
-        let apiMode = selectedMode == .viewing ? "view_only" : "collaborative"
-
-        do {
-            let response: TapesAPIClient.CreateTapeResponse
-            if let cached = pendingCreateResponse {
-                response = cached
-            } else {
-                sharingStatus = "Creating tape…"
-                let tapeSettings: [String: Any] = [
-                    "default_audio_level": 1.0,
-                    "transition": [
-                        "type": tape.transition.rawValue,
-                        "duration_ms": Int(tape.transitionDuration * 1000)
-                    ] as [String: Any],
-                    "merge_settings": [
-                        "orientation": tape.exportOrientation.rawValue,
-                        "background_blur": tape.blurExportBackground
-                    ] as [String: Any]
-                ]
-
-                response = try await api.createTape(
-                    tapeId: tapeId,
-                    title: tape.title,
-                    mode: apiMode,
-                    expiresAt: nil,
-                    tapeSettings: tapeSettings
-                )
-                await MainActor.run { pendingCreateResponse = response }
-            }
-
-            let skipUpload = response.clipsUploaded == true
-
-            if !skipUpload {
-                let realClips = tape.clips.filter { !$0.isPlaceholder }
-                let clipsToUpload: [(index: Int, clip: Clip)]
-
-                if failedClipIndices.isEmpty {
-                    clipsToUpload = realClips.enumerated().map { ($0.offset, $0.element) }
-                } else {
-                    clipsToUpload = failedClipIndices.sorted().compactMap { idx in
-                        guard idx < realClips.count else { return nil }
-                        return (idx, realClips[idx])
-                    }
-                }
-
-                var newFailures: Set<Int> = []
-
-                for (index, clip) in clipsToUpload {
-                    await MainActor.run {
-                        sharingStatus = "Uploading clip \(index + 1) of \(realClips.count)…"
-                    }
-
-                    do {
-                        try await uploadClip(clip, tapeId: tapeId, api: api)
-                    } catch {
-                        newFailures.insert(index)
-                    }
-                }
-
-                await MainActor.run { failedClipIndices = newFailures }
-
-                if !newFailures.isEmpty {
-                    await MainActor.run { showUploadFailedAlert = true }
-                    return
-                }
-            }
-
-            await MainActor.run {
-                if selectedMode == .viewing {
-                    viewShareId = response.shareId
-                } else {
-                    collabShareId = response.shareId
-                }
-                clipsOnServer = true
-                pendingCreateResponse = nil
-            }
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    // MARK: - Clip Upload
-
-    private func uploadClip(_ clip: Clip, tapeId: String, api: TapesAPIClient) async throws {
-        let clipId = clip.id.uuidString.lowercased()
-        let clipType = clip.clipType == .video ? "video" : "photo"
-        let durationMs = Int(clip.duration * 1000)
-
-        let createResponse = try await api.createClip(
-            tapeId: tapeId,
-            clipId: clipId,
-            type: clipType,
-            durationMs: durationMs,
-            trimStartMs: clip.trimStart > 0 ? Int(clip.trimStart * 1000) : nil,
-            trimEndMs: clip.trimEnd > 0 ? Int(clip.trimEnd * 1000) : nil,
-            audioLevel: clip.volume
-        )
-
-        let fileData = try await resolveClipData(clip)
-
-        try await uploadToR2(
-            url: createResponse.uploadUrl,
-            data: fileData,
-            contentType: clip.clipType == .video ? "video/mp4" : "image/jpeg"
-        )
-
-        if let thumbData = clip.thumbnail {
-            try await uploadToR2(
-                url: createResponse.thumbnailUploadUrl,
-                data: thumbData,
-                contentType: "image/jpeg"
-            )
-        }
-
-        let baseUploadUrl = createResponse.uploadUrl.components(separatedBy: "?").first ?? createResponse.uploadUrl
-        let baseThumbUrl = createResponse.thumbnailUploadUrl.components(separatedBy: "?").first ?? createResponse.thumbnailUploadUrl
-        let _ = try await api.confirmUpload(
-            tapeId: tapeId,
-            clipId: clipId,
-            cloudUrl: baseUploadUrl,
-            thumbnailUrl: baseThumbUrl
-        )
-    }
-
-    private func resolveClipData(_ clip: Clip) async throws -> Data {
-        if let url = clip.localURL {
-            return try Data(contentsOf: url)
-        }
-
-        if clip.clipType == .image, let imageData = clip.resolvedImageData {
-            return imageData
-        }
-
-        if let assetId = clip.assetLocalId {
-            return try await exportPHAssetData(identifier: assetId, isVideo: clip.clipType == .video)
-        }
-
-        throw APIError.validation("Clip has no media to upload.")
-    }
-
-    private func exportPHAssetData(identifier: String, isVideo: Bool) async throws -> Data {
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
-        guard let phAsset = fetchResult.firstObject else {
-            throw APIError.validation("Photo library asset not found.")
-        }
-
-        if isVideo {
-            return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
-                let options = PHVideoRequestOptions()
-                options.deliveryMode = .highQualityFormat
-                options.isNetworkAccessAllowed = true
-                options.version = .current
-                PHImageManager.default().requestExportSession(
-                    forVideo: phAsset,
-                    options: options,
-                    exportPreset: AVAssetExportPresetPassthrough
-                ) { session, _ in
-                    guard let session else {
-                        cont.resume(throwing: APIError.validation("Could not export video."))
-                        return
-                    }
-
-                    let tempDir = FileManager.default.temporaryDirectory
-                    let tempURL = tempDir.appendingPathComponent(UUID().uuidString + ".mp4")
-                    session.outputURL = tempURL
-                    session.outputFileType = .mp4
-                    session.exportAsynchronously {
-                        switch session.status {
-                        case .completed:
-                            do {
-                                let data = try Data(contentsOf: tempURL)
-                                try? FileManager.default.removeItem(at: tempURL)
-                                cont.resume(returning: data)
-                            } catch {
-                                cont.resume(throwing: error)
-                            }
-                        default:
-                            let msg = session.error?.localizedDescription ?? "Export failed."
-                            cont.resume(throwing: APIError.validation(msg))
-                        }
-                    }
-                }
-            }
-        } else {
-            return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
-                let options = PHImageRequestOptions()
-                options.deliveryMode = .highQualityFormat
-                options.isNetworkAccessAllowed = true
-                options.isSynchronous = false
-                PHImageManager.default().requestImageDataAndOrientation(for: phAsset, options: options) { data, _, _, _ in
-                    if let data {
-                        cont.resume(returning: data)
-                    } else {
-                        cont.resume(throwing: APIError.validation("Could not access image data."))
-                    }
-                }
-            }
-        }
-    }
-
-    private static let uploadSession: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 300
-        config.timeoutIntervalForResource = 600
-        return URLSession(configuration: config)
-    }()
-
-    private func uploadToR2(url: String, data: Data, contentType: String, maxRetries: Int = 3) async throws {
-        guard let uploadURL = URL(string: url) else {
-            throw APIError.validation("Invalid upload URL.")
-        }
-
-        var lastError: Error = APIError.server("Upload failed.")
-
-        for attempt in 0..<maxRetries {
-            if attempt > 0 {
-                let delay = pow(2.0, Double(attempt))
-                try await Task.sleep(for: .seconds(delay))
-            }
-
-            do {
-                var request = URLRequest(url: uploadURL)
-                request.httpMethod = "PUT"
-                request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-                request.setValue("\(data.count)", forHTTPHeaderField: "Content-Length")
-
-                let (_, response) = try await Self.uploadSession.upload(for: request, from: data)
-                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                    let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    lastError = APIError.server("Upload failed (HTTP \(code)).")
-                    continue
-                }
-                return
-            } catch {
-                lastError = error
-            }
-        }
-
-        throw lastError
-    }
 }
 
 #Preview {
     ShareFlowView(tape: Tape.sampleTapes[1])
         .environmentObject(AuthManager())
+        .environmentObject(ShareUploadCoordinator())
 }

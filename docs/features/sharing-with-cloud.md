@@ -113,13 +113,24 @@ Even heavy users ($0.50–0.75/month infra cost) remain profitable at 80%+ margi
 - Notification mechanism: APNs direct, or via a share link in Messages?
 - How to handle the sender deleting their account — expire all shared tapes, or keep them alive for a grace period?
 
+## Background Upload Architecture
+
+Sharing uploads run in the background via `ShareUploadCoordinator`, mirroring the export pattern from `ExportCoordinator`. Key design decisions:
+
+- **`ShareUploadCoordinator`** (`Tapes/Core/Networking/ShareUploadCoordinator.swift`): `@MainActor ObservableObject` owned by `TapesListView` as a `@StateObject`. Manages the full upload-then-invite lifecycle.
+- **Background task support**: Uses `BGContinuedProcessingTask` (iOS 26+) for extended background time, with `UIApplication.beginBackgroundTask` as fallback for older iOS.
+- **Modal dismissal**: When `ShareFlowView` initiates a share requiring clip uploads, it delegates to the coordinator and immediately dismisses. The user can navigate freely while uploads continue.
+- **Progress overlay**: `ShareUploadProgressDialog` (GlassAlertCard) displays on `TapesListView` with clip progress, ETA, and cancel option. When dismissed, a small blue progress ring appears in the toolbar.
+- **Completion**: On success, the coordinator sends invites, then shows a completion dialog (or local notification if backgrounded) with sound/haptic feedback.
+- **Error handling**: Upload failures are surfaced via a native alert with retry/cancel options.
+- **BG task identifier**: `StudioMorph.Tapes.upload` (registered in `Info.plist` and `TapesApp.init`).
+
 ## Related Files
 
-- `Tapes/Core/Music/MubertAPIClient.swift` — existing API client pattern to follow.
-- `Tapes/Export/ExportCoordinator.swift` — background task + progress UI pattern.
+- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator.
+- `Tapes/Views/Share/ShareUploadOverlay.swift` — progress, completion, and error dialogs.
+- `Tapes/Views/Share/ShareFlowView.swift` — share configuration UI, delegates to coordinator.
+- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing.
+- `Tapes/Export/ExportCoordinator.swift` — sister pattern for background exports.
 - `Tapes/Core/Auth/AuthManager.swift` — Sign in with Apple, needed for share identity.
-- `Tapes/Platform/Photos/TapeAlbumServicing` — existing album association logic.
-
-## Priority
-
-Future feature. Not planned for MVP. Document exists to preserve the architectural discussion and cost analysis for when development begins.
+- `Tapes/Core/Networking/TapesAPIClient.swift` — API client for all backend calls.

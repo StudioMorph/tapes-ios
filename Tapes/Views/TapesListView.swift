@@ -5,6 +5,7 @@ struct TapesListView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
+    @StateObject private var shareUploadCoordinator = ShareUploadCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @State private var tapeToPreview: Tape?
@@ -85,6 +86,7 @@ struct TapesListView: View {
             }
             .onChange(of: scenePhase) { _, newPhase in
                 exportCoordinator.handleScenePhaseChange(newPhase)
+                shareUploadCoordinator.handleScenePhaseChange(newPhase)
             }
             .toolbar {
                 if tapesStore.jigglingTapeID != nil {
@@ -118,6 +120,24 @@ struct TapesListView: View {
                             }
                         }
                     }
+                    if shareUploadCoordinator.isUploading && !shareUploadCoordinator.showProgressDialog {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                shareUploadCoordinator.showProgressDialogAgain()
+                            } label: {
+                                ZStack {
+                                    CircularProgressRing(
+                                        progress: shareUploadCoordinator.progress,
+                                        lineWidth: 2.5,
+                                        size: 22,
+                                        ringColor: .blue
+                                    )
+                                    Image(systemName: "arrow.up")
+                                        .font(.system(size: 11, weight: .semibold))
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -127,6 +147,7 @@ struct TapesListView: View {
         }
         .sheet(item: $tapeToShare) { tape in
             ShareModalView(tape: tape)
+                .environmentObject(shareUploadCoordinator)
         }
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {
@@ -283,6 +304,15 @@ struct TapesListView: View {
             }
             if exportCoordinator.exportError != nil {
                 ExportErrorAlert(coordinator: exportCoordinator)
+            }
+            if shareUploadCoordinator.showProgressDialog {
+                ShareUploadProgressDialog(coordinator: shareUploadCoordinator)
+            }
+            if shareUploadCoordinator.showCompletionDialog {
+                ShareUploadCompletionDialog(coordinator: shareUploadCoordinator)
+            }
+            if shareUploadCoordinator.uploadError != nil {
+                ShareUploadErrorAlert(coordinator: shareUploadCoordinator)
             }
             if showingDeleteSuccessToast {
                 DeleteSuccessToast(isVisible: $showingDeleteSuccessToast)
