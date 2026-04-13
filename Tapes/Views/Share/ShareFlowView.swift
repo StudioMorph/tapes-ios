@@ -175,10 +175,15 @@ struct ShareFlowView: View {
         shareLinkSection(url: viewShareUrl)
 
         if !openAccess {
-            inviteSection(
-                people: viewCollaborators,
-                statusLabel: { $0.status == "invited" ? "Pending" : "Viewing" }
-            )
+            inviteComposeSection
+
+            if !viewCollaborators.isEmpty {
+                peopleSectionView(
+                    title: "Viewing",
+                    people: viewCollaborators,
+                    statusLabel: { $0.status == "invited" ? "Pending" : "Viewing" }
+                )
+            }
         }
 
         shareOrRetryButton
@@ -192,10 +197,15 @@ struct ShareFlowView: View {
             collabLinkCard(url: url)
         }
 
-        inviteSection(
-            people: collabCollaborators,
-            statusLabel: { $0.status == "invited" ? "Pending" : "Joined" }
-        )
+        inviteComposeSection
+
+        if !collabCollaborators.isEmpty {
+            peopleSectionView(
+                title: "Collaborating",
+                people: collabCollaborators,
+                statusLabel: { $0.status == "invited" ? "Pending" : "Joined" }
+            )
+        }
 
         shareOrRetryButton
     }
@@ -357,12 +367,9 @@ struct ShareFlowView: View {
         }
     }
 
-    // MARK: - Invite Section (email field + people list + send button)
+    // MARK: - Invite Compose Section
 
-    private func inviteSection(
-        people: [TapesAPIClient.CollaboratorInfo],
-        statusLabel: @escaping (TapesAPIClient.CollaboratorInfo) -> String
-    ) -> some View {
+    private var inviteComposeSection: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
             Text("Invite people")
                 .font(.system(size: 17, weight: .bold))
@@ -395,7 +402,7 @@ struct ShareFlowView: View {
             .background(Tokens.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
 
-            // Pending invites (not yet sent)
+            // Pending batch (not yet sent)
             ForEach(pendingInvites, id: \.self) { email in
                 HStack(spacing: Tokens.Spacing.s) {
                     Text(email)
@@ -415,53 +422,89 @@ struct ShareFlowView: View {
                 .padding(.horizontal, Tokens.Spacing.xs)
             }
 
-            // Already-invited people from server
-            ForEach(people) { person in
-                HStack(spacing: Tokens.Spacing.s) {
-                    Text(person.email)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Tokens.Colors.primaryText)
-
-                    Spacer()
-
-                    Circle()
-                        .fill(statusLabel(person) == "Pending" ? Color.orange : Color.green)
-                        .frame(width: 10, height: 10)
-
-                    Button {
-                        personToRevoke = person
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(Tokens.Colors.tertiaryText)
-                    }
-                }
-                .padding(.horizontal, Tokens.Spacing.xs)
-            }
-
             // Send Invites button
-            if !pendingInvites.isEmpty {
-                Button {
-                    Task { await sendInvites() }
-                } label: {
-                    HStack(spacing: Tokens.Spacing.s) {
-                        if isSendingInvites {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                        }
-                        Text(isSendingInvites ? "Sending…" : "Send Invites")
-                            .font(.system(size: 15, weight: .semibold))
+            Button {
+                Task { await sendInvites() }
+            } label: {
+                HStack(spacing: Tokens.Spacing.s) {
+                    if isSendingInvites {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "paperplane.fill")
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Tokens.Colors.systemBlue)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Text(isSendingInvites ? "Sending…" : "Send invites")
+                        .font(.system(size: 15, weight: .semibold))
                 }
-                .disabled(isSendingInvites)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(pendingInvites.isEmpty ? Tokens.Colors.secondaryBackground : Tokens.Colors.systemBlue)
+                .foregroundStyle(pendingInvites.isEmpty ? Tokens.Colors.tertiaryText : .white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .disabled(pendingInvites.isEmpty || isSendingInvites)
+        }
+    }
+
+    // MARK: - People Section (confirmed invitees with status badges)
+
+    private func peopleSectionView(
+        title: String,
+        people: [TapesAPIClient.CollaboratorInfo],
+        statusLabel: @escaping (TapesAPIClient.CollaboratorInfo) -> String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
+            Text(title)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Tokens.Colors.primaryText)
+
+            VStack(spacing: 0) {
+                ForEach(people) { person in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(person.displayName)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(Tokens.Colors.primaryText)
+
+                            if person.name != nil {
+                                Text(person.email)
+                                    .font(Tokens.Typography.caption)
+                                    .foregroundStyle(Tokens.Colors.tertiaryText)
+                            }
+                        }
+
+                        Spacer()
+
+                        let label = statusLabel(person)
+                        let color: Color = label == "Pending" ? .orange : .green
+
+                        Text(label)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(color)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(color.opacity(0.15))
+                            .clipShape(Capsule())
+
+                        Button {
+                            personToRevoke = person
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.red.opacity(0.7))
+                        }
+                    }
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.vertical, Tokens.Spacing.s)
+
+                    if person.id != people.last?.id {
+                        Divider()
+                            .padding(.leading, Tokens.Spacing.m)
+                    }
+                }
+            }
+            .background(Tokens.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
         }
     }
 
