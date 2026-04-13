@@ -62,6 +62,16 @@ struct ShareFlowView: View {
         selectedMode == .viewing ? viewCollaborators : collabCollaborators
     }
 
+    private var sendInvitesLabel: String {
+        if !isSendingInvites { return "Send invites" }
+        if isSharing { return sharingStatus.isEmpty ? "Preparing…" : sharingStatus }
+        return "Sending…"
+    }
+
+    private var sendInvitesButtonActive: Bool {
+        isSendingInvites || !pendingInvites.isEmpty
+    }
+
     var body: some View {
         NavigationView {
             Group {
@@ -430,13 +440,13 @@ struct ShareFlowView: View {
                         } else {
                             Image(systemName: "paperplane.fill")
                         }
-                        Text(isSendingInvites ? "Sending…" : "Send invites")
+                        Text(sendInvitesLabel)
                             .font(.system(size: 15, weight: .semibold))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(pendingInvites.isEmpty ? Tokens.Colors.primaryBackground.opacity(0.6) : Tokens.Colors.systemBlue)
-                    .foregroundStyle(pendingInvites.isEmpty ? Tokens.Colors.tertiaryText : .white)
+                    .background(sendInvitesButtonActive ? Tokens.Colors.systemBlue : Tokens.Colors.primaryBackground.opacity(0.6))
+                    .foregroundStyle(sendInvitesButtonActive ? .white : Tokens.Colors.tertiaryText)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .disabled(pendingInvites.isEmpty || isSendingInvites)
@@ -571,19 +581,22 @@ struct ShareFlowView: View {
     }
 
     private func sendInvites() async {
-        guard let api = authManager.apiClient else { return }
+        guard let api = authManager.apiClient else {
+            errorMessage = "Not connected. Please sign in from the Account tab."
+            return
+        }
+
         let tapeId = tape.id.uuidString.lowercased()
         let accessMode = selectedMode == .viewing ? "view" : "collaborate"
+
+        isSendingInvites = true
+        defer { isSendingInvites = false }
 
         // If tape hasn't been shared yet, upload clips first
         if activeShareId == nil {
             await shareTape()
-            // If upload failed, shareTape already shows alert — bail out
             if activeShareId == nil { return }
         }
-
-        isSendingInvites = true
-        defer { isSendingInvites = false }
 
         var failedEmails: [String] = []
 

@@ -180,7 +180,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             try? await api.confirmDownload(tapeId: tapeId, clipId: manifestClip.clipId)
         }
 
-        let clipType: ClipType = manifestClip.type == "image" ? .image : .video
+        let clipType: ClipType = (manifestClip.type == "photo" || manifestClip.type == "image") ? .image : .video
         var imageData: Data?
         if clipType == .image {
             imageData = try? Data(contentsOf: cachedURL)
