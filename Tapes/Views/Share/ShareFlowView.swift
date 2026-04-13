@@ -25,8 +25,9 @@ struct ShareFlowView: View {
     @State private var failedClipIndices: Set<Int> = []
     @State private var pendingCreateResponse: TapesAPIClient.CreateTapeResponse?
 
-    // Revoke confirmation
+    // Alerts
     @State private var personToRevoke: TapesAPIClient.CollaboratorInfo?
+    @State private var showUploadFailedAlert = false
 
     enum ShareMode: String, CaseIterable {
         case viewing = "Viewing"
@@ -72,10 +73,6 @@ struct ShareFlowView: View {
                     ScrollView {
                         VStack(spacing: Tokens.Spacing.l) {
                             modeSection
-
-                            if !failedClipIndices.isEmpty {
-                                uploadFailedView
-                            }
 
                             if selectedMode == .viewing {
                                 viewingContent
@@ -128,6 +125,17 @@ struct ShareFlowView: View {
                 if let person = personToRevoke {
                     Text("Remove \(person.displayName)'s access to this tape?")
                 }
+            }
+            .alert("Upload Failed", isPresented: $showUploadFailedAlert) {
+                Button("Retry") {
+                    Task { await shareTape() }
+                }
+                Button("Cancel", role: .cancel) {
+                    failedClipIndices.removeAll()
+                    pendingCreateResponse = nil
+                }
+            } message: {
+                Text("\(failedClipIndices.count) clip(s) failed to upload. Would you like to retry?")
             }
             .task { await loadShareState() }
         }
@@ -457,33 +465,11 @@ struct ShareFlowView: View {
         }
     }
 
-    // MARK: - Share / Retry Button
+    // MARK: - Share Button
 
     @ViewBuilder
     private var shareOrRetryButton: some View {
-        if !failedClipIndices.isEmpty {
-            Button {
-                Task { await shareTape() }
-            } label: {
-                HStack(spacing: Tokens.Spacing.s) {
-                    if isSharing {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    Text(isSharing ? sharingStatus : "Retry Upload")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Tokens.Colors.systemBlue)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .disabled(isSharing)
-            .padding(.top, Tokens.Spacing.s)
-        } else if activeShareId == nil && !(selectedMode == .viewing && openAccess) {
+        if activeShareId == nil && !(selectedMode == .viewing && openAccess) {
             Button {
                 Task { await shareTape() }
             } label: {
@@ -506,26 +492,6 @@ struct ShareFlowView: View {
             .disabled(isSharing)
             .padding(.top, Tokens.Spacing.s)
         }
-    }
-
-    // MARK: - Upload Failed
-
-    private var uploadFailedView: some View {
-        VStack(spacing: Tokens.Spacing.s) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(.orange)
-
-            Text("\(failedClipIndices.count) clip(s) failed to upload")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(Tokens.Colors.primaryText)
-
-            Text("Tap Retry Upload to try again. Only failed clips will be re-uploaded.")
-                .font(Tokens.Typography.caption)
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-        }
-        .padding(Tokens.Spacing.l)
     }
 
     // MARK: - Load State from Server
@@ -747,6 +713,7 @@ struct ShareFlowView: View {
                 await MainActor.run { failedClipIndices = newFailures }
 
                 if !newFailures.isEmpty {
+                    await MainActor.run { showUploadFailedAlert = true }
                     return
                 }
             }
