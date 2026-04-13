@@ -9,6 +9,24 @@ struct SharedTapesView: View {
     @StateObject private var importCoordinator = MediaImportCoordinator()
 
     @State private var tapeToPreview: Tape?
+    @State private var selectedSegment: SharedSegment = .viewOnly
+
+    enum SharedSegment: String, CaseIterable {
+        case viewOnly = "View Only"
+        case collaborating = "Collaborating"
+    }
+
+    private var filteredTapes: [Tape] {
+        tapesStore.sharedTapes.filter { tape in
+            guard let mode = tape.shareInfo?.mode else { return selectedSegment == .viewOnly }
+            switch selectedSegment {
+            case .viewOnly:
+                return mode == "view_only"
+            case .collaborating:
+                return mode == "collaborative"
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -18,10 +36,23 @@ struct SharedTapesView: View {
 
                 if !authManager.isSignedIn {
                     signInPrompt
-                } else if tapesStore.sharedTapes.isEmpty {
-                    emptyState
                 } else {
-                    sharedTapeList
+                    VStack(spacing: 0) {
+                        Picker("", selection: $selectedSegment) {
+                            ForEach(SharedSegment.allCases, id: \.self) { segment in
+                                Text(segment.rawValue).tag(segment)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, Tokens.Spacing.m)
+                        .padding(.top, Tokens.Spacing.s)
+
+                        if filteredTapes.isEmpty {
+                            emptyState
+                        } else {
+                            sharedTapeList
+                        }
+                    }
                 }
 
                 SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
@@ -79,7 +110,7 @@ struct SharedTapesView: View {
 
             ScrollView {
                 LazyVStack(spacing: Tokens.Spacing.m) {
-                    ForEach(tapesStore.sharedTapes) { tape in
+                    ForEach(filteredTapes) { tape in
                         if let binding = tapesStore.bindingForTape(id: tape.id) {
                             TapeCardView(
                                 tape: binding,
