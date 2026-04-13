@@ -185,8 +185,6 @@ struct ShareFlowView: View {
                 )
             }
         }
-
-        shareOrRetryButton
     }
 
     // MARK: - Collaborating Content
@@ -206,8 +204,6 @@ struct ShareFlowView: View {
                 statusLabel: { $0.status == "invited" ? "Pending" : "Joined" }
             )
         }
-
-        shareOrRetryButton
     }
 
     // MARK: - Share Link Section (Viewing — unified card)
@@ -508,35 +504,6 @@ struct ShareFlowView: View {
         }
     }
 
-    // MARK: - Share Button
-
-    @ViewBuilder
-    private var shareOrRetryButton: some View {
-        if activeShareId == nil && !(selectedMode == .viewing && openAccess) {
-            Button {
-                Task { await shareTape() }
-            } label: {
-                HStack(spacing: Tokens.Spacing.s) {
-                    if isSharing {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "paperplane.fill")
-                    }
-                    Text(isSharing ? sharingStatus : "Share Tape")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Tokens.Colors.systemBlue)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .disabled(isSharing)
-            .padding(.top, Tokens.Spacing.s)
-        }
-    }
-
     // MARK: - Load State from Server
 
     private func loadShareState() async {
@@ -603,9 +570,11 @@ struct ShareFlowView: View {
         let tapeId = tape.id.uuidString.lowercased()
         let accessMode = selectedMode == .viewing ? "view" : "collaborate"
 
+        // If tape hasn't been shared yet, upload clips first
         if activeShareId == nil {
-            errorMessage = "Please share the tape first before inviting people."
-            return
+            await shareTape()
+            // If upload failed, shareTape already shows alert — bail out
+            if activeShareId == nil { return }
         }
 
         isSendingInvites = true
@@ -621,7 +590,6 @@ struct ShareFlowView: View {
             }
         }
 
-        // Refresh collaborators from server
         if let collabs = try? await api.listCollaborators(tapeId: tapeId) {
             await MainActor.run { collaborators = collabs }
         }
