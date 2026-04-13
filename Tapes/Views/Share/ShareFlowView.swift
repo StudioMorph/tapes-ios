@@ -771,7 +771,7 @@ struct ShareFlowView: View {
 
     private func uploadClip(_ clip: Clip, tapeId: String, api: TapesAPIClient) async throws {
         let clipId = clip.id.uuidString.lowercased()
-        let clipType = clip.clipType == .video ? "video" : "image"
+        let clipType = clip.clipType == .video ? "video" : "photo"
         let durationMs = Int(clip.duration * 1000)
 
         let createResponse = try await api.createClip(
