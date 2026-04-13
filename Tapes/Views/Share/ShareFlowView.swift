@@ -9,6 +9,8 @@ struct ShareFlowView: View {
 
     @State private var selectedMode: ShareMode = .viewing
     @State private var inviteEmail = ""
+    @State private var pendingInvites: [String] = []
+    @State private var isSendingInvites = false
     @State private var isSharing = false
     @State private var sharingStatus = ""
     @State private var errorMessage: String?
@@ -162,27 +164,16 @@ struct ShareFlowView: View {
 
     @ViewBuilder
     private var viewingContent: some View {
-        if clipsOnServer, let url = viewShareUrl {
-            linkCard(url: url)
-        }
-
-        openAccessToggle
+        shareLinkSection(url: viewShareUrl)
 
         if !openAccess {
-            if !viewCollaborators.isEmpty {
-                peopleSectionView(
-                    title: "Viewing Access",
-                    people: viewCollaborators,
-                    statusLabel: { $0.status == "invited" ? "Pending" : "Viewing" }
-                )
-            }
-
-            inviteSection
-        } else if !clipsOnServer {
-            generateLinkButton
+            inviteSection(
+                people: viewCollaborators,
+                statusLabel: { $0.status == "invited" ? "Pending" : "Viewing" }
+            )
         }
 
-        shareButton
+        shareOrRetryButton
     }
 
     // MARK: - Collaborating Content
@@ -190,55 +181,136 @@ struct ShareFlowView: View {
     @ViewBuilder
     private var collaboratingContent: some View {
         if let url = activeShareUrl {
-            linkCard(url: url)
+            collabLinkCard(url: url)
         }
 
-        if !collabCollaborators.isEmpty {
-            peopleSectionView(
-                title: "Collaborators",
-                people: collabCollaborators,
-                statusLabel: { $0.status == "invited" ? "Pending" : "Joined" }
-            )
-        }
+        inviteSection(
+            people: collabCollaborators,
+            statusLabel: { $0.status == "invited" ? "Pending" : "Joined" }
+        )
 
-        inviteSection
-        shareButton
+        shareOrRetryButton
     }
 
-    // MARK: - Open Access Toggle
+    // MARK: - Share Link Section (Viewing — unified card)
 
-    private var openAccessToggle: some View {
-        Toggle(isOn: $openAccess) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Everyone with the link can view")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Tokens.Colors.primaryText)
-                Text("Anyone who opens this link will be able to view and rebuild this tape")
-                    .font(Tokens.Typography.caption)
-                    .foregroundStyle(Tokens.Colors.secondaryText)
-            }
-        }
-        .tint(Tokens.Colors.systemBlue)
-        .padding(Tokens.Spacing.m)
-        .background(Tokens.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
-        .onChange(of: openAccess) { _, newValue in
-            Task { await syncOpenAccess(newValue) }
-        }
-    }
-
-    // MARK: - Link Card
-
-    private func linkCard(url: String) -> some View {
+    private func shareLinkSection(url: String?) -> some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            Text("Share Link")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .textCase(.uppercase)
-                .padding(.leading, Tokens.Spacing.xs)
+            Text("Share link")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Tokens.Colors.primaryText)
+
+            VStack(spacing: 0) {
+                // Toggle row
+                Toggle(isOn: $openAccess) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Everyone with the link can view")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Tokens.Colors.primaryText)
+                        Text("Anyone who opens this link will be able to view and rebuild this tape")
+                            .font(Tokens.Typography.caption)
+                            .foregroundStyle(Tokens.Colors.secondaryText)
+                    }
+                }
+                .tint(Tokens.Colors.systemBlue)
+                .padding(Tokens.Spacing.m)
+                .onChange(of: openAccess) { _, newValue in
+                    Task { await syncOpenAccess(newValue) }
+                }
+
+                if let url {
+                    Divider()
+                        .padding(.horizontal, Tokens.Spacing.m)
+
+                    // URL row
+                    HStack(spacing: Tokens.Spacing.s) {
+                        Image(systemName: "link")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Tokens.Colors.secondaryText)
+
+                        Text(url)
+                            .font(.system(size: 14, design: .monospaced))
+                            .foregroundStyle(Tokens.Colors.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Spacer()
+
+                        Button {
+                            UIPasteboard.general.string = url
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 16))
+                                .foregroundStyle(Tokens.Colors.systemBlue)
+                        }
+                    }
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.vertical, Tokens.Spacing.s)
+
+                    // Share Link button
+                    Button {
+                        shareLink(url)
+                    } label: {
+                        HStack(spacing: Tokens.Spacing.s) {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Share Link")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Tokens.Colors.systemBlue)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.bottom, Tokens.Spacing.m)
+                    .padding(.top, Tokens.Spacing.s)
+                } else if openAccess {
+                    // Generate Link button (no link yet, open access ON)
+                    Button {
+                        Task { await shareTape() }
+                    } label: {
+                        HStack(spacing: Tokens.Spacing.s) {
+                            if isSharing {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "link.badge.plus")
+                            }
+                            Text(isSharing ? sharingStatus : "Generate Link")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Tokens.Colors.systemBlue)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .disabled(isSharing)
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.bottom, Tokens.Spacing.m)
+                    .padding(.top, Tokens.Spacing.xs)
+                }
+            }
+            .background(Tokens.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+        }
+    }
+
+    // MARK: - Collab Link Card
+
+    private func collabLinkCard(url: String) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
+            Text("Share link")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Tokens.Colors.primaryText)
 
             VStack(spacing: Tokens.Spacing.m) {
-                HStack {
+                HStack(spacing: Tokens.Spacing.s) {
+                    Image(systemName: "link")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Tokens.Colors.secondaryText)
+
                     Text(url)
                         .font(.system(size: 14, design: .monospaced))
                         .foregroundStyle(Tokens.Colors.primaryText)
@@ -277,120 +349,33 @@ struct ShareFlowView: View {
         }
     }
 
-    // MARK: - Generate Link Button
+    // MARK: - Invite Section (email field + people list + send button)
 
-    private var generateLinkButton: some View {
-        Button {
-            Task { await shareTape() }
-        } label: {
-            HStack(spacing: Tokens.Spacing.s) {
-                if isSharing {
-                    ProgressView()
-                        .tint(.white)
-                } else {
-                    Image(systemName: "link.badge.plus")
-                }
-                Text(isSharing ? sharingStatus : "Generate Link")
-                    .font(.system(size: 17, weight: .semibold))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(Tokens.Colors.systemBlue)
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .disabled(isSharing)
-    }
-
-    // MARK: - People Section
-
-    private func peopleSectionView(
-        title: String,
+    private func inviteSection(
         people: [TapesAPIClient.CollaboratorInfo],
         statusLabel: @escaping (TapesAPIClient.CollaboratorInfo) -> String
     ) -> some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .textCase(.uppercase)
-                .padding(.leading, Tokens.Spacing.xs)
+            Text("Invite people")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Tokens.Colors.primaryText)
 
-            VStack(spacing: 0) {
-                ForEach(people) { person in
-                    HStack {
-                        Image(systemName: "person.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(Tokens.Colors.secondaryText)
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(person.displayName)
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(Tokens.Colors.primaryText)
-
-                            if person.name != nil {
-                                Text(person.email)
-                                    .font(Tokens.Typography.caption)
-                                    .foregroundStyle(Tokens.Colors.tertiaryText)
-                            }
-                        }
-
-                        Spacer()
-
-                        let label = statusLabel(person)
-                        let color: Color = label == "Pending" ? .orange : .green
-
-                        Text(label)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(color.opacity(0.15))
-                            .clipShape(Capsule())
-
-                        Button {
-                            personToRevoke = person
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundStyle(Tokens.Colors.tertiaryText)
-                        }
-                    }
-                    .padding(.horizontal, Tokens.Spacing.m)
-                    .padding(.vertical, Tokens.Spacing.s)
-
-                    if person.id != people.last?.id {
-                        Divider()
-                            .padding(.leading, 52)
-                    }
-                }
-            }
-            .background(Tokens.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
-        }
-    }
-
-    // MARK: - Invite
-
-    private var inviteSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            Text("Invite People")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .textCase(.uppercase)
-                .padding(.leading, Tokens.Spacing.xs)
-
+            // Email input
             HStack(spacing: Tokens.Spacing.s) {
-                TextField("Email address", text: $inviteEmail)
+                Image(systemName: "envelope")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+
+                TextField("Email Address", text: $inviteEmail)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
                     .font(.system(size: 16))
                     .foregroundStyle(Tokens.Colors.primaryText)
-                    .onSubmit { Task { await invitePerson() } }
+                    .onSubmit { addPendingInvite() }
 
                 Button {
-                    Task { await invitePerson() }
+                    addPendingInvite()
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 24))
@@ -401,39 +386,125 @@ struct ShareFlowView: View {
             .padding(Tokens.Spacing.m)
             .background(Tokens.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+
+            // Pending invites (not yet sent)
+            ForEach(pendingInvites, id: \.self) { email in
+                HStack(spacing: Tokens.Spacing.s) {
+                    Text(email)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Tokens.Colors.primaryText)
+
+                    Spacer()
+
+                    Button {
+                        pendingInvites.removeAll { $0 == email }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(Tokens.Colors.tertiaryText)
+                    }
+                }
+                .padding(.horizontal, Tokens.Spacing.xs)
+            }
+
+            // Already-invited people from server
+            ForEach(people) { person in
+                HStack(spacing: Tokens.Spacing.s) {
+                    Text(person.email)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Tokens.Colors.primaryText)
+
+                    Spacer()
+
+                    Circle()
+                        .fill(statusLabel(person) == "Pending" ? Color.orange : Color.green)
+                        .frame(width: 10, height: 10)
+
+                    Button {
+                        personToRevoke = person
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(Tokens.Colors.tertiaryText)
+                    }
+                }
+                .padding(.horizontal, Tokens.Spacing.xs)
+            }
+
+            // Send Invites button
+            if !pendingInvites.isEmpty {
+                Button {
+                    Task { await sendInvites() }
+                } label: {
+                    HStack(spacing: Tokens.Spacing.s) {
+                        if isSendingInvites {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                        }
+                        Text(isSendingInvites ? "Sending…" : "Send Invites")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Tokens.Colors.systemBlue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .disabled(isSendingInvites)
+            }
         }
     }
 
     // MARK: - Share / Retry Button
 
-    private var shareButton: some View {
-        Group {
-            if activeShareId == nil || !failedClipIndices.isEmpty {
-                let isGenerateLink = selectedMode == .viewing && openAccess && !clipsOnServer
-                if !isGenerateLink {
-                    Button {
-                        Task { await shareTape() }
-                    } label: {
-                        HStack(spacing: Tokens.Spacing.s) {
-                            if isSharing {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Image(systemName: failedClipIndices.isEmpty ? "paperplane.fill" : "arrow.clockwise")
-                            }
-                            Text(isSharing ? sharingStatus : (failedClipIndices.isEmpty ? "Share Tape" : "Retry Upload"))
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Tokens.Colors.systemBlue)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+    @ViewBuilder
+    private var shareOrRetryButton: some View {
+        if !failedClipIndices.isEmpty {
+            Button {
+                Task { await shareTape() }
+            } label: {
+                HStack(spacing: Tokens.Spacing.s) {
+                    if isSharing {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
                     }
-                    .disabled(isSharing)
-                    .padding(.top, Tokens.Spacing.s)
+                    Text(isSharing ? sharingStatus : "Retry Upload")
+                        .font(.system(size: 17, weight: .semibold))
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Tokens.Colors.systemBlue)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
             }
+            .disabled(isSharing)
+            .padding(.top, Tokens.Spacing.s)
+        } else if activeShareId == nil && !(selectedMode == .viewing && openAccess) {
+            Button {
+                Task { await shareTape() }
+            } label: {
+                HStack(spacing: Tokens.Spacing.s) {
+                    if isSharing {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "paperplane.fill")
+                    }
+                    Text(isSharing ? sharingStatus : "Share Tape")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Tokens.Colors.systemBlue)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .disabled(isSharing)
+            .padding(.top, Tokens.Spacing.s)
         }
     }
 
@@ -504,13 +575,22 @@ struct ShareFlowView: View {
         }
     }
 
-    // MARK: - Invite Person (immediate server call)
+    // MARK: - Invite Helpers
 
-    private func invitePerson() async {
+    private func addPendingInvite() {
         let trimmed = inviteEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty, trimmed.contains("@") else { return }
-        guard let api = authManager.apiClient else { return }
+        guard !pendingInvites.contains(trimmed) else {
+            inviteEmail = ""
+            return
+        }
 
+        pendingInvites.append(trimmed)
+        inviteEmail = ""
+    }
+
+    private func sendInvites() async {
+        guard let api = authManager.apiClient else { return }
         let tapeId = tape.id.uuidString.lowercased()
         let accessMode = selectedMode == .viewing ? "view" : "collaborate"
 
@@ -519,17 +599,28 @@ struct ShareFlowView: View {
             return
         }
 
-        inviteEmail = ""
+        isSendingInvites = true
+        defer { isSendingInvites = false }
 
-        do {
-            try await api.inviteCollaborator(tapeId: tapeId, email: trimmed, accessMode: accessMode)
-            let collabs = try await api.listCollaborators(tapeId: tapeId)
-            await MainActor.run {
-                collaborators = collabs
+        var failedEmails: [String] = []
+
+        for email in pendingInvites {
+            do {
+                try await api.inviteCollaborator(tapeId: tapeId, email: email, accessMode: accessMode)
+            } catch {
+                failedEmails.append(email)
             }
-        } catch {
-            await MainActor.run {
-                errorMessage = "Failed to invite \(trimmed): \(error.localizedDescription)"
+        }
+
+        // Refresh collaborators from server
+        if let collabs = try? await api.listCollaborators(tapeId: tapeId) {
+            await MainActor.run { collaborators = collabs }
+        }
+
+        await MainActor.run {
+            pendingInvites = failedEmails
+            if !failedEmails.isEmpty {
+                errorMessage = "Failed to invite: \(failedEmails.joined(separator: ", "))"
             }
         }
     }
