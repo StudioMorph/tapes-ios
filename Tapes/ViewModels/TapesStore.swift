@@ -575,6 +575,13 @@ extension TapesStore {
         autoSave()
     }
 
+    public func markClipSynced(_ clipId: UUID, inTape tapeId: UUID) {
+        guard let tapeIdx = tapes.firstIndex(where: { $0.id == tapeId }),
+              let clipIdx = tapes[tapeIdx].clips.firstIndex(where: { $0.id == clipId }) else { return }
+        tapes[tapeIdx].clips[clipIdx].isSynced = true
+        autoSave()
+    }
+
     /// Creates a new tape with specific settings
     public func createTape(
         title: String = "New Tape",

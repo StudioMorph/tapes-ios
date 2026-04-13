@@ -62,6 +62,7 @@ public struct Clip: Identifiable, Codable, Equatable {
     public var createdAt: Date
     public var updatedAt: Date
     public var isPlaceholder: Bool
+    public var isSynced: Bool
     
     private enum CodingKeys: String, CodingKey {
         case id
@@ -85,6 +86,7 @@ public struct Clip: Identifiable, Codable, Equatable {
         case createdAt
         case updatedAt
         case isPlaceholder
+        case isSynced
     }
     
     public init(
@@ -108,7 +110,8 @@ public struct Clip: Identifiable, Codable, Equatable {
         musicVolume: Double? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        isPlaceholder: Bool = false
+        isPlaceholder: Bool = false,
+        isSynced: Bool = false
     ) {
         self.id = id
         self.assetLocalId = assetLocalId
@@ -131,6 +134,7 @@ public struct Clip: Identifiable, Codable, Equatable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.isPlaceholder = isPlaceholder
+        self.isSynced = isSynced
     }
     
     public init(from decoder: Decoder) throws {
@@ -156,6 +160,7 @@ public struct Clip: Identifiable, Codable, Equatable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         isPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .isPlaceholder) ?? false
+        isSynced = try container.decodeIfPresent(Bool.self, forKey: .isSynced) ?? false
     }
     
     public func encode(to encoder: Encoder) throws {
@@ -182,6 +187,9 @@ public struct Clip: Identifiable, Codable, Equatable {
         try container.encode(updatedAt, forKey: .updatedAt)
         if isPlaceholder {
             try container.encode(true, forKey: .isPlaceholder)
+        }
+        if isSynced {
+            try container.encode(true, forKey: .isSynced)
         }
     }
     

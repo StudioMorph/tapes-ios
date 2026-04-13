@@ -3,6 +3,7 @@ import SwiftUI
 struct MainTabView: View {
     @Binding var showOnboarding: Bool
     @EnvironmentObject private var navigationCoordinator: NavigationCoordinator
+    @StateObject private var shareUploadCoordinator = ShareUploadCoordinator()
 
     enum AppTab: Hashable {
         case myTapes
@@ -25,6 +26,7 @@ struct MainTabView: View {
             }
         }
         .tint(Tokens.Colors.systemBlue)
+        .environmentObject(shareUploadCoordinator)
     }
 }
 
@@ -34,4 +36,5 @@ struct MainTabView: View {
         .environmentObject(AuthManager())
         .environmentObject(EntitlementManager())
         .environmentObject(NavigationCoordinator())
+        .environmentObject(ShareUploadCoordinator())
 }

@@ -4,15 +4,34 @@ struct ShareModalView: View {
     let tape: Tape
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
+    @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var tapesStore: TapesStore
 
     @State private var showingShareFlow = false
     @State private var showingExport = false
+
+    private var isCollaborativeShared: Bool {
+        tape.shareInfo?.mode == "collaborative"
+    }
+
+    private var unsyncedClips: [Clip] {
+        tape.clips.filter { !$0.isPlaceholder && !$0.isSynced }
+    }
+
+    private var hasContributions: Bool {
+        !unsyncedClips.isEmpty
+    }
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.l) {
-                    shareSection
+                    if isCollaborativeShared {
+                        contributeSection
+                    }
+                    if !isCollaborativeShared {
+                        shareSection
+                    }
                     exportSection
                     saveToDeviceSection
                 }
@@ -43,6 +62,40 @@ struct ShareModalView: View {
                 showingShareFlow = false
                 dismiss()
             }
+        }
+    }
+
+    // MARK: - Contribute
+
+    private var contributeSection: some View {
+        VStack(spacing: Tokens.Spacing.m) {
+            Button {
+                guard let api = authManager.apiClient else { return }
+                uploadCoordinator.contributeClips(tape: tape, api: api) { syncedIds in
+                    for clipId in syncedIds {
+                        tapesStore.markClipSynced(clipId, inTape: tape.id)
+                    }
+                }
+            } label: {
+                HStack(spacing: Tokens.Spacing.s) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 22, weight: .medium))
+                    Text("Contribute Your Changes")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(hasContributions ? Tokens.Colors.systemBlue : Tokens.Colors.secondaryBackground)
+                .foregroundStyle(hasContributions ? .white : Tokens.Colors.tertiaryText)
+                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+            }
+            .disabled(!hasContributions)
+
+            Text("When you contribute, everyone collaborating on this tape gets your clips.")
+                .font(Tokens.Typography.caption)
+                .foregroundStyle(Tokens.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Tokens.Spacing.m)
         }
     }
 

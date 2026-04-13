@@ -195,7 +195,8 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             thumbnail: thumbData,
             trimStart: Double(manifestClip.trimStartMs ?? 0) / 1000.0,
             trimEnd: Double(manifestClip.trimEndMs ?? 0) / 1000.0,
-            volume: manifestClip.audioLevel
+            volume: manifestClip.audioLevel,
+            isSynced: true
         )
     }
 

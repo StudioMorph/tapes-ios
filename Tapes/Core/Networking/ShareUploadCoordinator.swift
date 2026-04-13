@@ -256,6 +256,94 @@ public class ShareUploadCoordinator: ObservableObject {
         startShare(tape: tape, mode: mode, inviteEmails: pendingInvites, api: api)
     }
 
+    // MARK: - Contribute (upload unsynced clips on collaborative tapes)
+
+    func contributeClips(tape: Tape, api: TapesAPIClient, markSynced: @escaping ([UUID]) -> Void) {
+        guard !isUploading else { return }
+
+        let unsyncedClips = tape.clips.filter { !$0.isPlaceholder && !$0.isSynced }
+        guard !unsyncedClips.isEmpty else { return }
+
+        guard let remoteTapeId = tape.shareInfo?.remoteTapeId else { return }
+
+        isUploading = true
+        totalClips = unsyncedClips.count
+        completedClips = 0
+        failedClipIndices = []
+        statusMessage = "Contributing clips…"
+        uploadError = nil
+        showProgressDialog = true
+        showCompletionDialog = false
+        uploadStartTime = Date()
+        resultMode = .collaborating
+
+        if #available(iOS 26, *) {
+            submitContinuedProcessingTask()
+        }
+
+        uploadTask = Task { [weak self] in
+            guard let self else { return }
+
+            var syncedIds: [UUID] = []
+            var newFailures: Set<Int> = []
+
+            for (index, clip) in unsyncedClips.enumerated() {
+                guard !Task.isCancelled else { break }
+
+                self.statusMessage = "Uploading clip \(index + 1) of \(unsyncedClips.count)…"
+
+                if #available(iOS 26, *) {
+                    self.updateContinuedTaskProgress()
+                }
+
+                do {
+                    try await Self.uploadClip(clip, tapeId: remoteTapeId, api: api)
+                    self.completedClips += 1
+                    syncedIds.append(clip.id)
+                } catch {
+                    TapesLog.upload.error("Contribute clip \(index) failed: \(error.localizedDescription)")
+                    newFailures.insert(index)
+                }
+            }
+
+            self.failedClipIndices = newFailures
+
+            if !newFailures.isEmpty {
+                self.uploadError = "\(newFailures.count) clip(s) failed to upload."
+                self.finishUpload(success: false)
+                return
+            }
+
+            await MainActor.run {
+                markSynced(syncedIds)
+            }
+
+            self.finishUpload(success: true)
+
+            if UIApplication.shared.applicationState == .active {
+                self.playCompletionFeedback()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    self.showCompletionDialog = true
+                }
+            } else {
+                self.sendContributionNotification()
+                self.showCompletionDialog = true
+            }
+        }
+    }
+
+    private func sendContributionNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "Clips Contributed"
+        content.body = "Your clips have been uploaded to the shared tape."
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let id = "contribute-complete-\(UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
+    }
+
     // MARK: - Cancellation
 
     func cancelUpload() {

@@ -5,7 +5,7 @@ struct TapesListView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject var tapesStore: TapesStore
     @StateObject private var exportCoordinator = ExportCoordinator()
-    @StateObject private var shareUploadCoordinator = ShareUploadCoordinator()
+    @EnvironmentObject private var shareUploadCoordinator: ShareUploadCoordinator
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @State private var tapeToPreview: Tape?
@@ -147,7 +147,6 @@ struct TapesListView: View {
         }
         .sheet(item: $tapeToShare) { tape in
             ShareModalView(tape: tape)
-                .environmentObject(shareUploadCoordinator)
         }
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {

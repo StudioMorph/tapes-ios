@@ -9,6 +9,7 @@ struct SharedTapesView: View {
     @StateObject private var importCoordinator = MediaImportCoordinator()
 
     @State private var tapeToPreview: Tape?
+    @State private var tapeToShare: Tape?
     @State private var selectedSegment: SharedSegment = .viewOnly
 
     enum SharedSegment: String, CaseIterable {
@@ -93,6 +94,9 @@ struct SharedTapesView: View {
             }
         }
         .environmentObject(importCoordinator)
+        .sheet(item: $tapeToShare) { tape in
+            ShareModalView(tape: tape)
+        }
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             if let selectedTape = tapesStore.selectedTape {
                 TapeSettingsView(
@@ -128,12 +132,14 @@ struct SharedTapesView: View {
                 LazyVStack(spacing: Tokens.Spacing.m) {
                     ForEach(filteredTapes) { tape in
                         if let binding = tapesStore.bindingForTape(id: tape.id) {
+                            let isCollaborative = tape.shareInfo?.mode == "collaborative"
                             TapeCardView(
                                 tape: binding,
                                 tapeID: tape.id,
                                 tapeWidth: contentWidth,
                                 isLandscape: false,
-                                isShareDisabled: true,
+                                isShareDisabled: !isCollaborative,
+                                onShare: { tapeToShare = tape },
                                 onSettings: { tapesStore.selectTape(tape) },
                                 onPlay: { tapeToPreview = tape },
                                 onThumbnailDelete: { _ in },
