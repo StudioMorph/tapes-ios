@@ -371,74 +371,83 @@ struct ShareFlowView: View {
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Tokens.Colors.primaryText)
 
-            // Email input
-            HStack(spacing: Tokens.Spacing.s) {
-                Image(systemName: "envelope")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Tokens.Colors.secondaryText)
-
-                TextField("Email Address", text: $inviteEmail)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    .font(.system(size: 16))
-                    .foregroundStyle(Tokens.Colors.primaryText)
-                    .onSubmit { addPendingInvite() }
-
-                Button {
-                    addPendingInvite()
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(inviteEmail.isEmpty ? Tokens.Colors.tertiaryText : Tokens.Colors.systemBlue)
-                }
-                .disabled(inviteEmail.isEmpty)
-            }
-            .padding(Tokens.Spacing.m)
-            .background(Tokens.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
-
-            // Pending batch (not yet sent)
-            ForEach(pendingInvites, id: \.self) { email in
+            VStack(spacing: 0) {
+                // Email input row
                 HStack(spacing: Tokens.Spacing.s) {
-                    Text(email)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Tokens.Colors.primaryText)
+                    Image(systemName: "envelope")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Tokens.Colors.secondaryText)
 
-                    Spacer()
+                    TextField("Email Address", text: $inviteEmail)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .autocapitalization(.none)
+                        .font(.system(size: 16))
+                        .foregroundStyle(Tokens.Colors.primaryText)
+                        .onSubmit { addPendingInvite() }
 
                     Button {
-                        pendingInvites.removeAll { $0 == email }
+                        addPendingInvite()
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(Tokens.Colors.tertiaryText)
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(inviteEmail.isEmpty ? Tokens.Colors.tertiaryText : Tokens.Colors.systemBlue)
                     }
+                    .disabled(inviteEmail.isEmpty)
                 }
-                .padding(.horizontal, Tokens.Spacing.xs)
-            }
+                .padding(Tokens.Spacing.m)
 
-            // Send Invites button
-            Button {
-                Task { await sendInvites() }
-            } label: {
-                HStack(spacing: Tokens.Spacing.s) {
-                    if isSendingInvites {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "paperplane.fill")
+                // Pending batch rows
+                ForEach(pendingInvites, id: \.self) { email in
+                    Divider()
+                        .padding(.horizontal, Tokens.Spacing.m)
+
+                    HStack(spacing: Tokens.Spacing.s) {
+                        Text(email)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Tokens.Colors.primaryText)
+
+                        Spacer()
+
+                        Button {
+                            pendingInvites.removeAll { $0 == email }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(Tokens.Colors.tertiaryText)
+                        }
                     }
-                    Text(isSendingInvites ? "Sending…" : "Send invites")
-                        .font(.system(size: 15, weight: .semibold))
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.vertical, Tokens.Spacing.s)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(pendingInvites.isEmpty ? Tokens.Colors.secondaryBackground : Tokens.Colors.systemBlue)
-                .foregroundStyle(pendingInvites.isEmpty ? Tokens.Colors.tertiaryText : .white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                // Send Invites button
+                Button {
+                    Task { await sendInvites() }
+                } label: {
+                    HStack(spacing: Tokens.Spacing.s) {
+                        if isSendingInvites {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                        }
+                        Text(isSendingInvites ? "Sending…" : "Send invites")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(pendingInvites.isEmpty ? Color.clear : Tokens.Colors.systemBlue)
+                    .foregroundStyle(pendingInvites.isEmpty ? Tokens.Colors.tertiaryText : .white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .disabled(pendingInvites.isEmpty || isSendingInvites)
+                .padding(.horizontal, Tokens.Spacing.m)
+                .padding(.bottom, Tokens.Spacing.m)
+                .padding(.top, Tokens.Spacing.s)
             }
-            .disabled(pendingInvites.isEmpty || isSendingInvites)
+            .background(Tokens.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
         }
     }
 
