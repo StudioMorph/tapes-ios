@@ -3,7 +3,6 @@ import SwiftUI
 struct ShareModalView: View {
     let tape: Tape
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var entitlementManager: EntitlementManager
 
     @State private var showingShareFlow = false
     @State private var showingExport = false
@@ -44,33 +43,12 @@ struct ShareModalView: View {
 
     private var shareSection: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            SectionHeader(title: "Share with Others")
-
-            VStack(spacing: Tokens.Spacing.s) {
-                shareOptionRow(
-                    icon: "eye",
-                    title: "View Only",
-                    subtitle: "Recipients can watch and AirPlay but cannot contribute",
-                    action: { showingShareFlow = true }
-                )
-
-                if entitlementManager.isTogether {
-                    shareOptionRow(
-                        icon: "person.2",
-                        title: "Collaborative",
-                        subtitle: "Recipients can add their own clips to the tape",
-                        action: { showingShareFlow = true }
-                    )
-                } else {
-                    shareOptionRow(
-                        icon: "person.2",
-                        title: "Collaborative",
-                        subtitle: "Available on Together plan",
-                        disabled: true,
-                        action: {}
-                    )
-                }
-            }
+            shareOptionRow(
+                icon: "square.and.arrow.up",
+                title: "Share This Tape",
+                subtitle: "Allow your family and friends to rebuild this tape on their devices, so they can play and edit it",
+                action: { showingShareFlow = true }
+            )
         }
     }
 
@@ -163,5 +141,4 @@ struct ShareModalView: View {
 
 #Preview {
     ShareModalView(tape: Tape.sampleTapes[1])
-        .environmentObject(EntitlementManager())
 }
