@@ -16,7 +16,7 @@ struct ShareFlowView: View {
     @State private var isLoading = true
     @State private var viewShareId: String?
     @State private var collabShareId: String?
-    @State private var openAccess = true
+    @State private var openAccess = false
     @State private var clipsOnServer = false
     @State private var collaborators: [TapesAPIClient.CollaboratorInfo] = []
 
@@ -512,7 +512,7 @@ struct ShareFlowView: View {
             await MainActor.run {
                 viewShareId = tapeInfo.shareId
                 collabShareId = tapeInfo.shareIdCollab
-                openAccess = tapeInfo.openAccess ?? true
+                openAccess = tapeInfo.openAccess ?? false
                 clipsOnServer = tapeInfo.clipCount > 0
                 collaborators = collabs
                 isLoading = false
