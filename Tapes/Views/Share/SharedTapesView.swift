@@ -93,6 +93,22 @@ struct SharedTapesView: View {
             }
         }
         .environmentObject(importCoordinator)
+        .sheet(isPresented: $tapesStore.showingSettingsSheet) {
+            if let selectedTape = tapesStore.selectedTape {
+                TapeSettingsView(
+                    tape: Binding(
+                        get: { selectedTape },
+                        set: { tapesStore.updateTape($0) }
+                    ),
+                    onDismiss: {
+                        tapesStore.showingSettingsSheet = false
+                        tapesStore.clearSelectedTape()
+                    },
+                    onTapeDeleted: {},
+                    onMergeAndSave: { _ in }
+                )
+            }
+        }
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {
                 tapeToPreview = nil
@@ -117,8 +133,8 @@ struct SharedTapesView: View {
                                 tapeID: tape.id,
                                 tapeWidth: contentWidth,
                                 isLandscape: false,
-                                onShare: {},
-                                onSettings: {},
+                                isShareDisabled: true,
+                                onSettings: { tapesStore.selectTape(tape) },
                                 onPlay: { tapeToPreview = tape },
                                 onThumbnailDelete: { _ in },
                                 onCameraCapture: { _ in },

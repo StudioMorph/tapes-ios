@@ -32,6 +32,7 @@ struct TapeCardView: View {
     let tapeID: UUID
     let tapeWidth: CGFloat
     let isLandscape: Bool
+    let isShareDisabled: Bool
     let onShare: () -> Void
     let onSettings: () -> Void
     let onPlay: () -> Void
@@ -136,6 +137,7 @@ struct TapeCardView: View {
         tapeID: UUID,
         tapeWidth: CGFloat,
         isLandscape: Bool = false,
+        isShareDisabled: Bool = false,
         onShare: @escaping () -> Void = {},
         onSettings: @escaping () -> Void,
         onPlay: @escaping () -> Void,
@@ -148,6 +150,7 @@ struct TapeCardView: View {
         self.tapeID = tapeID
         self.tapeWidth = tapeWidth
         self.isLandscape = isLandscape
+        self.isShareDisabled = isShareDisabled
         self.onShare = onShare
         self.onSettings = onSettings
         self.onPlay = onPlay
@@ -186,10 +189,10 @@ struct TapeCardView: View {
                 HStack(spacing: 16) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(isTapeActionsDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .foregroundColor(isShareIconDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
                         .accessibilityLabel("Share")
-                        .accessibilityHint(isTapeActionsDisabled ? "Add clips to enable sharing" : "")
-                        .onTapGesture { guard !isTapeActionsDisabled else { return }; onShare() }
+                        .accessibilityHint(isShareIconDisabled ? "Sharing is not available" : "")
+                        .onTapGesture { guard !isShareIconDisabled else { return }; onShare() }
                         .id("share-\(tapeID)")
 
                     Image(systemName: "slider.horizontal.3")
@@ -740,9 +743,14 @@ struct TapeCardView: View {
         tape.clips.isEmpty && !tape.hasReceivedFirstContent
     }
 
-    /// Share, settings, and play require at least one non-placeholder clip.
+    /// Settings and play require at least one non-placeholder clip.
     private var isTapeActionsDisabled: Bool {
         tape.removingPlaceholders().isEmpty
+    }
+
+    /// Share is disabled when the tape has no clips OR when explicitly flagged.
+    private var isShareIconDisabled: Bool {
+        isTapeActionsDisabled || isShareDisabled
     }
 
     private var isAtFreeLimit: Bool {
