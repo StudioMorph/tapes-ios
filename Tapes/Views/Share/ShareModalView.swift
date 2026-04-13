@@ -3,6 +3,7 @@ import SwiftUI
 struct ShareModalView: View {
     let tape: Tape
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
 
     @State private var showingShareFlow = false
     @State private var showingExport = false
@@ -36,6 +37,12 @@ struct ShareModalView: View {
         }
         .sheet(isPresented: $showingShareFlow) {
             ShareFlowView(tape: tape)
+        }
+        .onChange(of: uploadCoordinator.isUploading) { _, isUploading in
+            if isUploading {
+                showingShareFlow = false
+                dismiss()
+            }
         }
     }
 
@@ -141,4 +148,5 @@ struct ShareModalView: View {
 
 #Preview {
     ShareModalView(tape: Tape.sampleTapes[1])
+        .environmentObject(ShareUploadCoordinator())
 }

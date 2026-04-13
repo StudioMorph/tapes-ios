@@ -616,8 +616,6 @@ struct ShareFlowView: View {
             inviteEmails: invites,
             api: api
         )
-
-        dismiss()
     }
 
     // MARK: - Revoke Person
