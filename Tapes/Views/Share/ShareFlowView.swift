@@ -5,47 +5,87 @@ import AVFoundation
 struct ShareFlowView: View {
     let tape: Tape
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var entitlementManager: EntitlementManager
     @EnvironmentObject private var authManager: AuthManager
 
-    @State private var mode: ShareMode = .viewOnly
-    @State private var expiresIn7Days = true
+    @State private var selectedMode: ShareMode = .viewing
     @State private var inviteEmail = ""
-    @State private var invitedEmails: [String] = []
     @State private var isSharing = false
     @State private var sharingStatus = ""
-    @State private var shareResult: ShareResult?
     @State private var errorMessage: String?
 
+    // Server state
+    @State private var isLoading = true
+    @State private var viewShareId: String?
+    @State private var collabShareId: String?
+    @State private var openAccess = true
+    @State private var clipsOnServer = false
+    @State private var collaborators: [TapesAPIClient.CollaboratorInfo] = []
+    @State private var failedClipIndices: Set<Int> = []
+    @State private var pendingCreateResponse: TapesAPIClient.CreateTapeResponse?
+
+    // Revoke confirmation
+    @State private var personToRevoke: TapesAPIClient.CollaboratorInfo?
+
     enum ShareMode: String, CaseIterable {
-        case viewOnly = "View Only"
-        case collaborative = "Collaborative"
+        case viewing = "Viewing"
+        case collaborating = "Collaborating"
     }
 
-    struct ShareResult {
-        let shareUrl: String
-        let deepLink: String
-        let shareId: String
+    private var shareBaseUrl: String { "https://tapes-api.hi-7d5.workers.dev/t/" }
+
+    private var activeShareId: String? {
+        selectedMode == .viewing ? viewShareId : collabShareId
+    }
+
+    private var activeShareUrl: String? {
+        guard let id = activeShareId else { return nil }
+        return shareBaseUrl + id
+    }
+
+    private var viewShareUrl: String? {
+        guard let id = viewShareId else { return nil }
+        return shareBaseUrl + id
+    }
+
+    private var viewCollaborators: [TapesAPIClient.CollaboratorInfo] {
+        collaborators.filter { $0.role != "owner" && ($0.accessMode ?? "view") == "view" }
+    }
+
+    private var collabCollaborators: [TapesAPIClient.CollaboratorInfo] {
+        collaborators.filter { $0.role != "owner" && ($0.accessMode ?? "view") == "collaborate" }
+    }
+
+    private var activeCollaborators: [TapesAPIClient.CollaboratorInfo] {
+        selectedMode == .viewing ? viewCollaborators : collabCollaborators
     }
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: Tokens.Spacing.l) {
-                    if let result = shareResult {
-                        shareSuccessView(result)
-                    } else {
-                        modeSection
-                        if mode == .viewOnly {
-                            expirySection
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Tokens.Colors.primaryBackground)
+                } else {
+                    ScrollView {
+                        VStack(spacing: Tokens.Spacing.l) {
+                            modeSection
+
+                            if !failedClipIndices.isEmpty {
+                                uploadFailedView
+                            }
+
+                            if selectedMode == .viewing {
+                                viewingContent
+                            } else {
+                                collaboratingContent
+                            }
                         }
-                        inviteSection
-                        shareButton
+                        .padding(.horizontal, Tokens.Spacing.l)
+                        .padding(.top, Tokens.Spacing.l)
+                        .padding(.bottom, Tokens.Spacing.xxl)
                     }
                 }
-                .padding(.horizontal, Tokens.Spacing.l)
-                .padding(.top, Tokens.Spacing.l)
-                .padding(.bottom, Tokens.Spacing.xxl)
             }
             .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
             .navigationTitle("Share \(tape.title)")
@@ -61,7 +101,7 @@ struct ShareFlowView: View {
                     }
                 }
             }
-            .alert("Sharing Failed", isPresented: .init(
+            .alert("Error", isPresented: .init(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )) {
@@ -71,22 +111,33 @@ struct ShareFlowView: View {
                     Text(msg)
                 }
             }
+            .alert("Revoke Access", isPresented: .init(
+                get: { personToRevoke != nil },
+                set: { if !$0 { personToRevoke = nil } }
+            )) {
+                Button("Cancel", role: .cancel) { personToRevoke = nil }
+                Button("Revoke", role: .destructive) {
+                    if let person = personToRevoke {
+                        personToRevoke = nil
+                        Task { await revokePerson(person) }
+                    }
+                }
+            } message: {
+                if let person = personToRevoke {
+                    Text("Remove \(person.displayName)'s access to this tape?")
+                }
+            }
+            .task { await loadShareState() }
         }
     }
 
     // MARK: - Mode Selection
 
     private var modeSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            Text("Share Mode")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .textCase(.uppercase)
-                .padding(.leading, Tokens.Spacing.xs)
-
-            Picker("Mode", selection: $mode) {
-                ForEach(ShareMode.allCases, id: \.self) { m in
-                    Text(m.rawValue).tag(m)
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+            Picker("Mode", selection: $selectedMode) {
+                ForEach(ShareMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
@@ -99,41 +150,221 @@ struct ShareFlowView: View {
     }
 
     private var modeDescription: String {
-        switch mode {
-        case .viewOnly:
-            return "Recipients can play back and AirPlay the tape. They cannot contribute clips or re-share."
-        case .collaborative:
-            return "Recipients can add their own clips, trim, and adjust audio. You control who can invite others."
+        switch selectedMode {
+        case .viewing:
+            return "Recipients can play, AirPlay, and edit the tape on their device."
+        case .collaborating:
+            return "Recipients can add their own clips and contribute to the tape."
         }
     }
 
-    // MARK: - Expiry
+    // MARK: - Viewing Content
 
-    private var expirySection: some View {
+    @ViewBuilder
+    private var viewingContent: some View {
+        if clipsOnServer, let url = viewShareUrl {
+            linkCard(url: url)
+        }
+
+        openAccessToggle
+
+        if !openAccess {
+            if !viewCollaborators.isEmpty {
+                peopleSectionView(
+                    title: "Viewing Access",
+                    people: viewCollaborators,
+                    statusLabel: { $0.status == "invited" ? "Pending" : "Viewing" }
+                )
+            }
+
+            inviteSection
+        } else if !clipsOnServer {
+            generateLinkButton
+        }
+
+        shareButton
+    }
+
+    // MARK: - Collaborating Content
+
+    @ViewBuilder
+    private var collaboratingContent: some View {
+        if let url = activeShareUrl {
+            linkCard(url: url)
+        }
+
+        if !collabCollaborators.isEmpty {
+            peopleSectionView(
+                title: "Collaborators",
+                people: collabCollaborators,
+                statusLabel: { $0.status == "invited" ? "Pending" : "Joined" }
+            )
+        }
+
+        inviteSection
+        shareButton
+    }
+
+    // MARK: - Open Access Toggle
+
+    private var openAccessToggle: some View {
+        Toggle(isOn: $openAccess) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Everyone with the link can view")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                Text("Anyone who opens this link will be able to view and rebuild this tape")
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+            }
+        }
+        .tint(Tokens.Colors.systemBlue)
+        .padding(Tokens.Spacing.m)
+        .background(Tokens.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+        .onChange(of: openAccess) { _, newValue in
+            Task { await syncOpenAccess(newValue) }
+        }
+    }
+
+    // MARK: - Link Card
+
+    private func linkCard(url: String) -> some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            Text("Expiry")
+            Text("Share Link")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Tokens.Colors.secondaryText)
                 .textCase(.uppercase)
                 .padding(.leading, Tokens.Spacing.xs)
 
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Auto-expire after 7 days")
-                        .font(.system(size: 17, weight: .medium))
+            VStack(spacing: Tokens.Spacing.m) {
+                HStack {
+                    Text(url)
+                        .font(.system(size: 14, design: .monospaced))
                         .foregroundStyle(Tokens.Colors.primaryText)
-                    Text("Tape is removed from recipients after expiry")
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Colors.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Spacer()
+
+                    Button {
+                        UIPasteboard.general.string = url
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Tokens.Colors.systemBlue)
+                    }
                 }
 
-                Spacer()
-
-                Toggle("", isOn: $expiresIn7Days)
-                    .labelsHidden()
-                    .tint(Tokens.Colors.systemBlue)
+                Button {
+                    shareLink(url)
+                } label: {
+                    HStack(spacing: Tokens.Spacing.s) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Share Link")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Tokens.Colors.systemBlue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
             }
             .padding(Tokens.Spacing.m)
+            .background(Tokens.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+        }
+    }
+
+    // MARK: - Generate Link Button
+
+    private var generateLinkButton: some View {
+        Button {
+            Task { await shareTape() }
+        } label: {
+            HStack(spacing: Tokens.Spacing.s) {
+                if isSharing {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: "link.badge.plus")
+                }
+                Text(isSharing ? sharingStatus : "Generate Link")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Tokens.Colors.systemBlue)
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .disabled(isSharing)
+    }
+
+    // MARK: - People Section
+
+    private func peopleSectionView(
+        title: String,
+        people: [TapesAPIClient.CollaboratorInfo],
+        statusLabel: @escaping (TapesAPIClient.CollaboratorInfo) -> String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+                .textCase(.uppercase)
+                .padding(.leading, Tokens.Spacing.xs)
+
+            VStack(spacing: 0) {
+                ForEach(people) { person in
+                    HStack {
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(Tokens.Colors.secondaryText)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(person.displayName)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(Tokens.Colors.primaryText)
+
+                            if person.name != nil {
+                                Text(person.email)
+                                    .font(Tokens.Typography.caption)
+                                    .foregroundStyle(Tokens.Colors.tertiaryText)
+                            }
+                        }
+
+                        Spacer()
+
+                        let label = statusLabel(person)
+                        let color: Color = label == "Pending" ? .orange : .green
+
+                        Text(label)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(color)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(color.opacity(0.15))
+                            .clipShape(Capsule())
+
+                        Button {
+                            personToRevoke = person
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(Tokens.Colors.tertiaryText)
+                        }
+                    }
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.vertical, Tokens.Spacing.s)
+
+                    if person.id != people.last?.id {
+                        Divider()
+                            .padding(.leading, 52)
+                    }
+                }
+            }
             .background(Tokens.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
         }
@@ -156,9 +387,10 @@ struct ShareFlowView: View {
                     .autocapitalization(.none)
                     .font(.system(size: 16))
                     .foregroundStyle(Tokens.Colors.primaryText)
+                    .onSubmit { Task { await invitePerson() } }
 
                 Button {
-                    addInvite()
+                    Task { await invitePerson() }
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 24))
@@ -169,140 +401,182 @@ struct ShareFlowView: View {
             .padding(Tokens.Spacing.m)
             .background(Tokens.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
-
-            if !invitedEmails.isEmpty {
-                VStack(spacing: Tokens.Spacing.s) {
-                    ForEach(invitedEmails, id: \.self) { email in
-                        HStack {
-                            Image(systemName: "person.circle")
-                                .font(.system(size: 20))
-                                .foregroundStyle(Tokens.Colors.secondaryText)
-
-                            Text(email)
-                                .font(.system(size: 15))
-                                .foregroundStyle(Tokens.Colors.primaryText)
-
-                            Spacer()
-
-                            Button {
-                                invitedEmails.removeAll { $0 == email }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundStyle(Tokens.Colors.tertiaryText)
-                            }
-                        }
-                        .padding(.horizontal, Tokens.Spacing.m)
-                        .padding(.vertical, Tokens.Spacing.s)
-                    }
-                }
-                .background(Tokens.Colors.secondaryBackground)
-                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
-            }
         }
     }
 
-    // MARK: - Share Button
+    // MARK: - Share / Retry Button
 
     private var shareButton: some View {
-        Button {
-            Task { await shareTape() }
-        } label: {
-            HStack(spacing: Tokens.Spacing.s) {
-                if isSharing {
-                    ProgressView()
-                        .tint(.white)
-                } else {
-                    Image(systemName: "paperplane.fill")
+        Group {
+            if activeShareId == nil || !failedClipIndices.isEmpty {
+                let isGenerateLink = selectedMode == .viewing && openAccess && !clipsOnServer
+                if !isGenerateLink {
+                    Button {
+                        Task { await shareTape() }
+                    } label: {
+                        HStack(spacing: Tokens.Spacing.s) {
+                            if isSharing {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: failedClipIndices.isEmpty ? "paperplane.fill" : "arrow.clockwise")
+                            }
+                            Text(isSharing ? sharingStatus : (failedClipIndices.isEmpty ? "Share Tape" : "Retry Upload"))
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Tokens.Colors.systemBlue)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .disabled(isSharing)
+                    .padding(.top, Tokens.Spacing.s)
                 }
-                Text(isSharing ? sharingStatus : "Share Tape")
-                    .font(.system(size: 17, weight: .semibold))
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(Tokens.Colors.systemBlue)
-            .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
-        .disabled(isSharing)
-        .padding(.top, Tokens.Spacing.s)
     }
 
-    // MARK: - Success View
+    // MARK: - Upload Failed
 
-    private func shareSuccessView(_ result: ShareResult) -> some View {
-        VStack(spacing: Tokens.Spacing.l) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.green)
+    private var uploadFailedView: some View {
+        VStack(spacing: Tokens.Spacing.s) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(.orange)
 
-            Text("Tape Shared")
-                .font(.system(size: 22, weight: .bold))
+            Text("\(failedClipIndices.count) clip(s) failed to upload")
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Tokens.Colors.primaryText)
 
-            Text("Share this link with your recipients:")
-                .font(Tokens.Typography.body)
+            Text("Tap Retry Upload to try again. Only failed clips will be re-uploaded.")
+                .font(Tokens.Typography.caption)
                 .foregroundStyle(Tokens.Colors.secondaryText)
-
-            HStack {
-                Text(result.shareUrl)
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundStyle(Tokens.Colors.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Spacer()
-
-                Button {
-                    UIPasteboard.general.string = result.shareUrl
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Tokens.Colors.systemBlue)
-                }
-            }
-            .padding(Tokens.Spacing.m)
-            .background(Tokens.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
-
-            Button {
-                let items: [Any] = [result.shareUrl]
-                let ac = UIActivityViewController(activityItems: items, applicationActivities: nil)
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let root = windowScene.windows.first?.rootViewController {
-                    root.present(ac, animated: true)
-                }
-            } label: {
-                HStack(spacing: Tokens.Spacing.s) {
-                    Image(systemName: "square.and.arrow.up")
-                    Text("Share Link")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Tokens.Colors.systemBlue)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-
-            Button("Done") {
-                dismiss()
-            }
-            .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(Tokens.Colors.secondaryText)
-            .padding(.top, Tokens.Spacing.s)
+                .multilineTextAlignment(.center)
         }
-        .padding(.top, Tokens.Spacing.xl)
+        .padding(Tokens.Spacing.l)
     }
 
-    // MARK: - Actions
+    // MARK: - Load State from Server
 
-    private func addInvite() {
+    private func loadShareState() async {
+        guard let api = authManager.apiClient else {
+            isLoading = false
+            return
+        }
+
+        let tapeId = tape.id.uuidString.lowercased()
+
+        do {
+            let tapeInfo = try await api.getTape(tapeId: tapeId)
+            let collabs = try await api.listCollaborators(tapeId: tapeId)
+
+            await MainActor.run {
+                viewShareId = tapeInfo.shareId
+                collabShareId = tapeInfo.shareIdCollab
+                openAccess = tapeInfo.openAccess ?? true
+                clipsOnServer = tapeInfo.clipCount > 0
+                collaborators = collabs
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoading = false
+            }
+        }
+    }
+
+    // MARK: - Toggle Open Access
+
+    private func syncOpenAccess(_ value: Bool) async {
+        guard let api = authManager.apiClient else { return }
+        let tapeId = tape.id.uuidString.lowercased()
+
+        guard viewShareId != nil || collabShareId != nil else { return }
+
+        do {
+            _ = try await api.updateOpenAccess(tapeId: tapeId, openAccess: value)
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to update setting: \(error.localizedDescription)"
+                openAccess = !value
+            }
+        }
+    }
+
+    // MARK: - Invite Person (immediate server call)
+
+    private func invitePerson() async {
         let trimmed = inviteEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !trimmed.isEmpty, trimmed.contains("@"), !invitedEmails.contains(trimmed) else { return }
-        invitedEmails.append(trimmed)
+        guard !trimmed.isEmpty, trimmed.contains("@") else { return }
+        guard let api = authManager.apiClient else { return }
+
+        let tapeId = tape.id.uuidString.lowercased()
+        let accessMode = selectedMode == .viewing ? "view" : "collaborate"
+
+        if activeShareId == nil {
+            errorMessage = "Please share the tape first before inviting people."
+            return
+        }
+
         inviteEmail = ""
+
+        do {
+            try await api.inviteCollaborator(tapeId: tapeId, email: trimmed, accessMode: accessMode)
+            let collabs = try await api.listCollaborators(tapeId: tapeId)
+            await MainActor.run {
+                collaborators = collabs
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to invite \(trimmed): \(error.localizedDescription)"
+            }
+        }
     }
+
+    // MARK: - Revoke Person
+
+    private func revokePerson(_ person: TapesAPIClient.CollaboratorInfo) async {
+        guard let api = authManager.apiClient else { return }
+        let tapeId = tape.id.uuidString.lowercased()
+        let identifier = person.userId ?? person.email
+
+        do {
+            try await api.revokeCollaborator(tapeId: tapeId, identifier: identifier)
+            await MainActor.run {
+                collaborators.removeAll { $0.id == person.id }
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to revoke access: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    // MARK: - Share Link via UIActivityViewController
+
+    private func shareLink(_ url: String) {
+        let items: [Any] = [url]
+        let ac = UIActivityViewController(activityItems: items, applicationActivities: nil)
+
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = windowScene.windows.first?.rootViewController else { return }
+
+        var topController = root
+        while let presented = topController.presentedViewController {
+            topController = presented
+        }
+
+        if let popover = ac.popoverPresentationController {
+            popover.sourceView = topController.view
+            popover.sourceRect = CGRect(x: topController.view.bounds.midX, y: topController.view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+
+        topController.present(ac, animated: true)
+    }
+
+    // MARK: - Share Tape
 
     private func shareTape() async {
         guard let api = authManager.apiClient else {
@@ -316,90 +590,84 @@ struct ShareFlowView: View {
         }
 
         isSharing = true
-        sharingStatus = "Creating tape…"
+        errorMessage = nil
         defer { isSharing = false }
 
         let tapeId = tape.id.uuidString.lowercased()
+        let apiMode = selectedMode == .viewing ? "view_only" : "collaborative"
 
         do {
-            let apiMode = mode == .viewOnly ? "view_only" : "collaborative"
-            let expiresAt: String? = (mode == .viewOnly && expiresIn7Days)
-                ? ISO8601DateFormatter().string(from: Date().addingTimeInterval(7 * 24 * 60 * 60))
-                : nil
+            let response: TapesAPIClient.CreateTapeResponse
+            if let cached = pendingCreateResponse {
+                response = cached
+            } else {
+                sharingStatus = "Creating tape…"
+                let tapeSettings: [String: Any] = [
+                    "default_audio_level": 1.0,
+                    "transition": [
+                        "type": tape.transition.rawValue,
+                        "duration_ms": Int(tape.transitionDuration * 1000)
+                    ] as [String: Any],
+                    "merge_settings": [
+                        "orientation": tape.exportOrientation.rawValue,
+                        "background_blur": tape.blurExportBackground
+                    ] as [String: Any]
+                ]
 
-            let tapeSettings: [String: Any] = [
-                "default_audio_level": 1.0,
-                "transition": [
-                    "type": tape.transition.rawValue,
-                    "duration_ms": Int(tape.transitionDuration * 1000)
-                ] as [String: Any],
-                "merge_settings": [
-                    "orientation": tape.exportOrientation.rawValue,
-                    "background_blur": tape.blurExportBackground
-                ] as [String: Any]
-            ]
+                response = try await api.createTape(
+                    tapeId: tapeId,
+                    title: tape.title,
+                    mode: apiMode,
+                    expiresAt: nil,
+                    tapeSettings: tapeSettings
+                )
+                await MainActor.run { pendingCreateResponse = response }
+            }
 
-            let response = try await api.createTape(
-                tapeId: tapeId,
-                title: tape.title,
-                mode: apiMode,
-                expiresAt: expiresAt,
-                tapeSettings: tapeSettings
-            )
+            let skipUpload = response.clipsUploaded == true
 
-            // Upload clips to R2
-            let realClips = tape.clips.filter { !$0.isPlaceholder }
-            var uploadErrors: [String] = []
+            if !skipUpload {
+                let realClips = tape.clips.filter { !$0.isPlaceholder }
+                let clipsToUpload: [(index: Int, clip: Clip)]
 
-            for (index, clip) in realClips.enumerated() {
-                await MainActor.run {
-                    sharingStatus = "Uploading clip \(index + 1) of \(realClips.count)…"
+                if failedClipIndices.isEmpty {
+                    clipsToUpload = realClips.enumerated().map { ($0.offset, $0.element) }
+                } else {
+                    clipsToUpload = failedClipIndices.sorted().compactMap { idx in
+                        guard idx < realClips.count else { return nil }
+                        return (idx, realClips[idx])
+                    }
                 }
 
-                do {
-                    try await uploadClip(clip, tapeId: tapeId, api: api)
-                } catch {
-                    uploadErrors.append("Clip \(index + 1): \(error.localizedDescription)")
+                var newFailures: Set<Int> = []
+
+                for (index, clip) in clipsToUpload {
+                    await MainActor.run {
+                        sharingStatus = "Uploading clip \(index + 1) of \(realClips.count)…"
+                    }
+
+                    do {
+                        try await uploadClip(clip, tapeId: tapeId, api: api)
+                    } catch {
+                        newFailures.insert(index)
+                    }
                 }
-            }
 
-            // Invite collaborators
-            if !invitedEmails.isEmpty {
-                await MainActor.run { sharingStatus = "Sending invites…" }
-            }
+                await MainActor.run { failedClipIndices = newFailures }
 
-            var inviteErrors: [(email: String, reason: String)] = []
-            for email in invitedEmails {
-                do {
-                    try await api.inviteCollaborator(tapeId: tapeId, email: email)
-                } catch {
-                    inviteErrors.append((email, error.localizedDescription))
-                }
-            }
-
-            // Build warning message if partial failures
-            var warnings: [String] = []
-            if !uploadErrors.isEmpty {
-                warnings.append("\(uploadErrors.count) clip(s) failed to upload.")
-            }
-            if !inviteErrors.isEmpty {
-                let emails = inviteErrors.map(\.email).joined(separator: ", ")
-                let reason = inviteErrors.first?.reason ?? "Unknown error"
-                warnings.append("Invites failed for \(emails): \(reason)")
-            }
-
-            if !warnings.isEmpty {
-                await MainActor.run {
-                    errorMessage = "Tape shared, but: " + warnings.joined(separator: " ")
+                if !newFailures.isEmpty {
+                    return
                 }
             }
 
             await MainActor.run {
-                shareResult = ShareResult(
-                    shareUrl: response.shareUrl,
-                    deepLink: response.deepLink,
-                    shareId: response.shareId
-                )
+                if selectedMode == .viewing {
+                    viewShareId = response.shareId
+                } else {
+                    collabShareId = response.shareId
+                }
+                clipsOnServer = true
+                pendingCreateResponse = nil
             }
         } catch {
             await MainActor.run {
@@ -571,6 +839,5 @@ struct ShareFlowView: View {
 
 #Preview {
     ShareFlowView(tape: Tape.sampleTapes[1])
-        .environmentObject(EntitlementManager())
         .environmentObject(AuthManager())
 }

@@ -330,7 +330,7 @@ struct CollaboratorsView: View {
         guard let api = authManager.apiClient, let userId = collab.userId else { return }
 
         do {
-            try await api.revokeCollaborator(tapeId: tapeId, userId: userId)
+            try await api.revokeCollaborator(tapeId: tapeId, identifier: userId)
             await loadCollaborators()
         } catch {
             log.error("Failed to revoke: \(error.localizedDescription)")

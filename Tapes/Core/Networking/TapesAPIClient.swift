@@ -98,6 +98,7 @@ actor TapesAPIClient {
         let shareUrl: String
         let deepLink: String
         let createdAt: String
+        let clipsUploaded: Bool?
 
         enum CodingKeys: String, CodingKey {
             case tapeId = "tape_id"
@@ -105,6 +106,7 @@ actor TapesAPIClient {
             case shareUrl = "share_url"
             case deepLink = "deep_link"
             case createdAt = "created_at"
+            case clipsUploaded = "clips_uploaded"
         }
     }
 
@@ -127,6 +129,8 @@ actor TapesAPIClient {
         let mode: String
         let ownerId: String
         let shareId: String
+        let shareIdCollab: String?
+        let openAccess: Bool?
         let expiresAt: String?
         let createdAt: String
         let updatedAt: String
@@ -138,6 +142,8 @@ actor TapesAPIClient {
             case title, mode
             case ownerId = "owner_id"
             case shareId = "share_id"
+            case shareIdCollab = "share_id_collab"
+            case openAccess = "open_access"
             case expiresAt = "expires_at"
             case createdAt = "created_at"
             case updatedAt = "updated_at"
@@ -146,8 +152,23 @@ actor TapesAPIClient {
         }
     }
 
+    struct OpenAccessResponse: Decodable {
+        let tapeId: String
+        let openAccess: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case tapeId = "tape_id"
+            case openAccess = "open_access"
+        }
+    }
+
     func getTape(tapeId: String) async throws -> TapeInfo {
         try await get(path: "/tapes/\(tapeId)")
+    }
+
+    func updateOpenAccess(tapeId: String, openAccess: Bool) async throws -> OpenAccessResponse {
+        struct Body: Encodable { let open_access: Bool }
+        return try await put(path: "/tapes/\(tapeId)/open-access", body: Body(open_access: openAccess))
     }
 
     func deleteTape(tapeId: String) async throws {
@@ -262,17 +283,22 @@ actor TapesAPIClient {
 
     // MARK: - Collaborators
 
-    struct CollaboratorInfo: Decodable {
+    struct CollaboratorInfo: Decodable, Identifiable {
         let userId: String?
         let email: String
         let name: String?
         let role: String
         let status: String
+        let accessMode: String?
         let joinedAt: String?
+
+        var id: String { userId ?? email }
+        var displayName: String { name ?? email }
 
         enum CodingKeys: String, CodingKey {
             case userId = "user_id"
             case email, name, role, status
+            case accessMode = "access_mode"
             case joinedAt = "joined_at"
         }
     }
@@ -286,8 +312,8 @@ actor TapesAPIClient {
         return response.collaborators
     }
 
-    func inviteCollaborator(tapeId: String, email: String, role: String = "collaborator") async throws {
-        let body = ["email": email, "role": role]
+    func inviteCollaborator(tapeId: String, email: String, role: String = "collaborator", accessMode: String = "view") async throws {
+        let body = ["email": email, "role": role, "access_mode": accessMode]
         let _: CollaboratorInfo = try await post(path: "/tapes/\(tapeId)/collaborators", body: body)
     }
 
@@ -296,8 +322,9 @@ actor TapesAPIClient {
         let _: [String: String] = try await put(path: "/tapes/\(tapeId)/collaborators/\(userId)/role", body: body)
     }
 
-    func revokeCollaborator(tapeId: String, userId: String) async throws {
-        try await delete(path: "/tapes/\(tapeId)/collaborators/\(userId)")
+    func revokeCollaborator(tapeId: String, identifier: String) async throws {
+        let encoded = identifier.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? identifier
+        try await delete(path: "/tapes/\(tapeId)/collaborators/\(encoded)")
     }
 
     // MARK: - Sync

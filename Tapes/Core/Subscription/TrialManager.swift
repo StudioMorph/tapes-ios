@@ -13,7 +13,7 @@ final class TrialManager: ObservableObject {
 
     // MARK: - Constants
 
-    static let maxFreeTapes = 3
+    static let maxFreeTapes = 999 // TODO: Restore to 3 after testing
     private static let freeDays = 3
     private static let installDateKey = "tapes_install_date"
 
