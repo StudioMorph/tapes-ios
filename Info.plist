@@ -25,42 +25,5 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>Tape</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Owner</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.studiomorph.tape</string>
-			</array>
-		</dict>
-	</array>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.json</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>Tapes Tape File</string>
-			<key>UTTypeIdentifier</key>
-			<string>com.studiomorph.tape</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>tape</string>
-				</array>
-				<key>public.mime-type</key>
-				<string>application/x-tapes</string>
-			</dict>
-		</dict>
-	</array>
 </dict>
 </plist>

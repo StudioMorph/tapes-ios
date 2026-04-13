@@ -231,13 +231,46 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 
 ---
 
-## 8. Future (Post-MVP)
+## 8. Cloud Sharing (Active)
+
+### Dependencies
+
+- **Cloudflare Workers** backend at `tapes-api.hi-7d5.workers.dev`
+- **Cloudflare R2** bucket `tapes-media` for clip storage
+- **Cloudflare D1** database `tapes-db` for metadata
+- **Sign in with Apple** for user identity
+- **Universal Links** configured via `apple-app-site-association` on the share domain
+
+### Key Modules
+
+- `Tapes/Core/Auth/AuthManager.swift` — Apple ID auth + server JWT exchange
+- `Tapes/Core/Networking/TapesAPIClient.swift` — API contract (tapes, clips, collaborators, shares)
+- `Tapes/Views/Share/ShareFlowView.swift` — sender share flow (uploads clips to R2)
+- `Tapes/Views/Share/SharedTapesView.swift` — Shared tab (renders real `TapeCardView` components)
+- `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — recipient download + tape builder
+- `Tapes/Core/Navigation/NavigationCoordinator.swift` — deep link handling
+
+### Recipient Flow
+
+1. User opens share link → app resolves share ID → downloads clips from R2
+2. Progress overlay shown (identical to import from photo picker)
+3. A real `Tape` with `ShareInfo` metadata is created and persisted locally
+4. Tape appears in the "Shared" tab as a normal tape card
+
+### Configuration
+
+- Cloudflare secrets managed via `wrangler secret put` (JWT_SECRET, R2 credentials)
+- Backend deployed via `wrangler deploy` from `tapes-api/`
+- iOS entitlements: Associated Domains (`applinks:`), Push Notifications
+
+---
+
+## 9. Future (Post-MVP)
 
 - Per-clip transitions
 - Filters & text overlays
-- Cloud sync
-- Share targets
 - Full Cast integration
+- Collaborative tape editing (real-time)
 
 ---
 

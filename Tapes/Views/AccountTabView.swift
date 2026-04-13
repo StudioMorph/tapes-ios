@@ -38,6 +38,16 @@ struct AccountTabView: View {
             .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.large)
+            .alert("Sign In Issue", isPresented: .init(
+                get: { authManager.authError != nil },
+                set: { if !$0 { authManager.authError = nil } }
+            )) {
+                Button("OK") { authManager.authError = nil }
+            } message: {
+                if let msg = authManager.authError {
+                    Text(msg)
+                }
+            }
         }
     }
 

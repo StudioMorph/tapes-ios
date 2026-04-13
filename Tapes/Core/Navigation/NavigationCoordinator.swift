@@ -11,28 +11,10 @@ final class NavigationCoordinator: ObservableObject {
 
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Navigation")
 
-    func handleShareLink(shareId: String, api: TapesAPIClient) {
-        isResolvingDeepLink = true
-        deepLinkError = nil
-
-        Task {
-            do {
-                let resolution = try await api.resolveShare(shareId: shareId)
-                log.info("Resolved share \(shareId) → tape \(resolution.tapeId)")
-
-                pendingSharedTapeId = resolution.tapeId
-                selectedTab = .shared
-                isResolvingDeepLink = false
-            } catch {
-                log.error("Failed to resolve share \(shareId): \(error.localizedDescription)")
-                deepLinkError = error.localizedDescription
-                isResolvingDeepLink = false
-            }
-        }
-    }
-
-    func navigateToSharedTape(tapeId: String) {
-        pendingSharedTapeId = tapeId
+    /// Navigates to the Shared tab and triggers a download via the share ID.
+    func handleShareLink(shareId: String) {
+        log.info("Handling share link: \(shareId)")
+        pendingSharedTapeId = shareId
         selectedTab = .shared
     }
 

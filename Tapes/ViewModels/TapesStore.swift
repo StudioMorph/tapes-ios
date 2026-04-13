@@ -114,6 +114,14 @@ public class TapesStore: ObservableObject {
     @Published public var tapes: [Tape] = []
     @Published public private(set) var isLoaded = false
 
+    public var myTapes: [Tape] {
+        tapes.filter { !$0.isShared }
+    }
+
+    public var sharedTapes: [Tape] {
+        tapes.filter { $0.isShared }
+    }
+
     /// Number of tapes that have received content (excludes empty placeholder tapes).
     public var contentTapeCount: Int {
         tapes.filter { $0.hasReceivedFirstContent || !$0.clips.isEmpty }.count
@@ -543,6 +551,30 @@ public class TapesStore: ObservableObject {
 // MARK: - TapesStore Extensions
 
 extension TapesStore {
+    /// Returns a binding to a tape by ID, for use in views that need a `Binding<Tape>`.
+    public func bindingForTape(id: UUID) -> Binding<Tape>? {
+        guard let idx = tapes.firstIndex(where: { $0.id == id }) else { return nil }
+        return Binding(
+            get: { self.tapes[idx] },
+            set: { self.tapes[idx] = $0 }
+        )
+    }
+
+    /// Returns an existing shared tape for a given remote tape ID, if any.
+    public func sharedTape(forRemoteId remoteTapeId: String) -> Tape? {
+        tapes.first { $0.shareInfo?.remoteTapeId == remoteTapeId }
+    }
+
+    /// Adds or updates a shared tape in the store.
+    public func addSharedTape(_ tape: Tape) {
+        if let idx = tapes.firstIndex(where: { $0.shareInfo?.remoteTapeId == tape.shareInfo?.remoteTapeId }) {
+            tapes[idx] = tape
+        } else {
+            tapes.append(tape)
+        }
+        autoSave()
+    }
+
     /// Creates a new tape with specific settings
     public func createTape(
         title: String = "New Tape",

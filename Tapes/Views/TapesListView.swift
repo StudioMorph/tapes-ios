@@ -24,7 +24,7 @@ struct TapesListView: View {
                 
                 if !tapesStore.isLoaded {
                     Color.clear
-                } else if tapesStore.tapes.isEmpty {
+                } else if tapesStore.myTapes.isEmpty {
                     EmptyStateView()
                 } else {
                     TapesList(

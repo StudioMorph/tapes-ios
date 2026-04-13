@@ -47,13 +47,8 @@ struct TapesApp: App {
     }
 
     private func handleIncomingURL(_ url: URL) {
-        if url.pathExtension == "tape" {
-            handleTapeFile(url)
-            return
-        }
-
         if let shareId = Self.shareId(from: url) {
-            navigationCoordinator.handleShareLink(shareId: shareId, api: apiClient)
+            navigationCoordinator.handleShareLink(shareId: shareId)
         }
     }
 
@@ -71,21 +66,5 @@ struct TapesApp: App {
             return id.isEmpty ? nil : id
         }
         return nil
-    }
-
-    private func handleTapeFile(_ url: URL) {
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
-
-        do {
-            let data = try Data(contentsOf: url)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let manifest = try decoder.decode(TapeManifest.self, from: data)
-
-            navigationCoordinator.navigateToSharedTape(tapeId: manifest.tapeId)
-        } catch {
-            // File couldn't be parsed — ignore silently
-        }
     }
 }

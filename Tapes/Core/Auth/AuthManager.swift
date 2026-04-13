@@ -103,16 +103,27 @@ final class AuthManager: ObservableObject {
 
             authError = nil
 
-            // Exchange Apple identity token for server access token
-            if let identityToken = credential.identityToken, let api = apiClient {
-                Task {
-                    await exchangeTokenWithServer(
-                        identityToken: identityToken,
-                        fullName: userName,
-                        email: userEmail,
-                        api: api
-                    )
-                }
+            guard let identityToken = credential.identityToken else {
+                log.error("Apple credential missing identity token")
+                authError = "Apple sign-in didn't return a token. Please try again."
+                UserDefaults.standard.removeObject(forKey: Self.userIDKey)
+                return
+            }
+
+            guard let api = apiClient else {
+                log.error("API client not ready during sign-in")
+                authError = "App not ready. Please close and reopen, then try again."
+                UserDefaults.standard.removeObject(forKey: Self.userIDKey)
+                return
+            }
+
+            Task {
+                await exchangeTokenWithServer(
+                    identityToken: identityToken,
+                    fullName: userName,
+                    email: userEmail,
+                    api: api
+                )
             }
 
         case .failure(let error):
@@ -144,9 +155,14 @@ final class AuthManager: ObservableObject {
             )
             serverUserId = response.user.userId
             UserDefaults.standard.set(response.user.userId, forKey: Self.serverUserIDKey)
+            authError = nil
             log.info("Server auth successful, user: \(response.user.userId)")
         } catch {
             log.error("Server auth failed: \(error.localizedDescription)")
+            authError = "Sign-in couldn't reach the server. Please try again."
+            UserDefaults.standard.removeObject(forKey: Self.userIDKey)
+            userName = nil
+            userEmail = nil
         }
     }
 

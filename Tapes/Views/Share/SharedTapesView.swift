@@ -3,82 +3,106 @@ import AuthenticationServices
 
 struct SharedTapesView: View {
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var tapesStore: TapesStore
     @EnvironmentObject private var navigationCoordinator: NavigationCoordinator
+    @StateObject private var downloadCoordinator = SharedTapeDownloadCoordinator()
+    @StateObject private var importCoordinator = MediaImportCoordinator()
 
-    @State private var filter: SharedFilter = .viewOnly
-    @State private var sharedTapes: [SharedTapeItem] = []
-    @State private var isLoading = false
-    @State private var selectedTapeId: String?
-
-    enum SharedFilter: String, CaseIterable {
-        case viewOnly = "View Only"
-        case collaborative = "Collaborative"
-    }
+    @State private var tapeToPreview: Tape?
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Filter", selection: $filter) {
-                    ForEach(SharedFilter.allCases, id: \.self) { f in
-                        Text(f.rawValue).tag(f)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, Tokens.Spacing.l)
-                .padding(.top, Tokens.Spacing.m)
-                .padding(.bottom, Tokens.Spacing.m)
+            ZStack {
+                Tokens.Colors.primaryBackground
+                    .ignoresSafeArea(.all)
 
                 if !authManager.isSignedIn {
                     signInPrompt
-                } else if isLoading {
-                    loadingState
-                } else if filteredTapes.isEmpty {
+                } else if tapesStore.sharedTapes.isEmpty {
                     emptyState
                 } else {
-                    tapeList
+                    sharedTapeList
                 }
+
+                SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
             }
-            .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
             .navigationTitle("Shared")
             .navigationBarTitleDisplayMode(.large)
-            .navigationDestination(isPresented: Binding(
-                get: { selectedTapeId != nil },
-                set: { if !$0 { selectedTapeId = nil } }
+            .alert("Sign In Issue", isPresented: .init(
+                get: { authManager.authError != nil },
+                set: { if !$0 { authManager.authError = nil } }
             )) {
-                if let tapeId = selectedTapeId {
-                    SharedTapeDetailView(tapeId: tapeId)
+                Button("OK") { authManager.authError = nil }
+            } message: {
+                if let msg = authManager.authError {
+                    Text(msg)
                 }
             }
-            .task {
-                await loadSharedTapes()
-            }
-            .onChange(of: authManager.isSignedIn) { _, signedIn in
-                if signedIn {
-                    Task { await loadSharedTapes() }
-                } else {
-                    sharedTapes = []
+            .alert("Download Failed", isPresented: .init(
+                get: { downloadCoordinator.downloadError != nil },
+                set: { if !$0 { downloadCoordinator.downloadError = nil } }
+            )) {
+                Button("OK") { downloadCoordinator.downloadError = nil }
+            } message: {
+                if let msg = downloadCoordinator.downloadError {
+                    Text(msg)
                 }
-            }
-            .refreshable {
-                await loadSharedTapes()
             }
             .onChange(of: navigationCoordinator.pendingSharedTapeId) { _, newId in
-                if let tapeId = newId {
-                    selectedTapeId = tapeId
+                if let shareId = newId {
                     navigationCoordinator.clearPendingTape()
-                    Task { await loadSharedTapes() }
+                    handleIncomingShare(shareId: shareId)
+                }
+            }
+            .onAppear {
+                if let shareId = navigationCoordinator.pendingSharedTapeId {
+                    navigationCoordinator.clearPendingTape()
+                    handleIncomingShare(shareId: shareId)
                 }
             }
         }
+        .environmentObject(importCoordinator)
+        .fullScreenCover(item: $tapeToPreview) { tape in
+            TapePlayerView(tape: tape, onDismiss: {
+                tapeToPreview = nil
+            }, onSave: { updatedTape in
+                tapesStore.updateTape(updatedTape)
+            })
+        }
     }
 
-    // MARK: - Filtered Data
+    // MARK: - Shared Tape List
 
-    private var filteredTapes: [SharedTapeItem] {
-        sharedTapes.filter { item in
-            switch filter {
-            case .viewOnly: return item.mode == "view_only"
-            case .collaborative: return item.mode == "collaborative"
+    private var sharedTapeList: some View {
+        GeometryReader { geometry in
+            let contentWidth = geometry.size.width - (Tokens.Spacing.m * 2)
+
+            ScrollView {
+                LazyVStack(spacing: Tokens.Spacing.m) {
+                    ForEach(tapesStore.sharedTapes) { tape in
+                        if let binding = tapesStore.bindingForTape(id: tape.id) {
+                            TapeCardView(
+                                tape: binding,
+                                tapeID: tape.id,
+                                tapeWidth: contentWidth,
+                                isLandscape: false,
+                                onShare: {},
+                                onSettings: {},
+                                onPlay: { tapeToPreview = tape },
+                                onThumbnailDelete: { _ in },
+                                onCameraCapture: { _ in },
+                                onTitleFocusRequest: {},
+                                titleEditingConfig: nil
+                            )
+                            .background(Tokens.Colors.primaryBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+                            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                            .compositingGroup()
+                        }
+                    }
+                }
+                .padding(.horizontal, Tokens.Spacing.m)
+                .padding(.vertical, Tokens.Spacing.s)
             }
         }
     }
@@ -116,34 +140,17 @@ struct SharedTapesView: View {
         }
     }
 
-    // MARK: - Loading
-
-    private var loadingState: some View {
-        VStack {
-            Spacer()
-            ProgressView()
-                .tint(Tokens.Colors.secondaryText)
-            Text("Loading shared tapes...")
-                .font(Tokens.Typography.caption)
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .padding(.top, Tokens.Spacing.m)
-            Spacer()
-        }
-    }
-
     // MARK: - Empty State
 
     private var emptyState: some View {
         VStack(spacing: Tokens.Spacing.l) {
             Spacer()
 
-            Image(systemName: filter == .viewOnly ? "eye.slash" : "person.2.slash")
+            Image(systemName: "tray")
                 .font(.system(size: 48))
                 .foregroundStyle(Tokens.Colors.tertiaryText)
 
-            Text(filter == .viewOnly
-                 ? "No view-only tapes yet"
-                 : "No collaborative tapes yet")
+            Text("No shared tapes yet")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
 
@@ -157,104 +164,24 @@ struct SharedTapesView: View {
         }
     }
 
-    // MARK: - Tape List
+    // MARK: - Handle Incoming Share
 
-    private var tapeList: some View {
-        ScrollView {
-            LazyVStack(spacing: Tokens.Spacing.m) {
-                ForEach(filteredTapes) { item in
-                    Button {
-                        selectedTapeId = item.tapeId
-                    } label: {
-                        SharedTapeCard(item: item)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, Tokens.Spacing.m)
-            .padding(.vertical, Tokens.Spacing.s)
+    private func handleIncomingShare(shareId: String) {
+        guard let api = authManager.apiClient else {
+            downloadCoordinator.downloadError = "Please sign in first to receive shared tapes."
+            return
         }
-    }
-
-    // MARK: - Data Loading
-
-    private func loadSharedTapes() async {
-        guard authManager.isSignedIn, let api = authManager.apiClient else { return }
-        isLoading = sharedTapes.isEmpty
-
-        do {
-            let tapes = try await api.getSharedTapes()
-            await MainActor.run {
-                sharedTapes = tapes
-                isLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                isLoading = false
-            }
-        }
-    }
-}
-
-// MARK: - Shared Tape Card
-
-private struct SharedTapeCard: View {
-    let item: SharedTapeItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title)
-                        .font(Tokens.Typography.headline)
-                        .foregroundStyle(Tokens.Colors.primaryText)
-                        .lineLimit(1)
-
-                    HStack(spacing: Tokens.Spacing.s) {
-                        Text("by \(item.ownerName)")
-                            .font(Tokens.Typography.caption)
-                            .foregroundStyle(Tokens.Colors.secondaryText)
-
-                        if let clipCount = item.clipCount {
-                            Text("· \(clipCount) clips")
-                                .font(Tokens.Typography.caption)
-                                .foregroundStyle(Tokens.Colors.tertiaryText)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                if item.mode == "collaborative" {
-                    Image(systemName: "person.2.fill")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Tokens.Colors.systemBlue)
-                } else {
-                    Image(systemName: "eye.fill")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Tokens.Colors.secondaryText)
-                }
-            }
-
-            if let expiresAt = item.expiresAt {
-                let isUrgent = expiresAt.timeIntervalSinceNow < 48 * 60 * 60
-                HStack(spacing: 4) {
-                    Image(systemName: isUrgent ? "exclamationmark.circle.fill" : "clock")
-                        .font(.system(size: 11))
-                    Text("Expires \(expiresAt, style: .relative)")
-                        .font(.system(size: 12, weight: isUrgent ? .semibold : .regular))
-                }
-                .foregroundStyle(isUrgent ? Tokens.Colors.systemRed : Tokens.Colors.tertiaryText)
-            }
-        }
-        .padding(Tokens.Spacing.m)
-        .background(Tokens.Colors.secondaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+        downloadCoordinator.startDownload(
+            shareId: shareId,
+            api: api,
+            tapeStore: tapesStore
+        )
     }
 }
 
 #Preview {
     SharedTapesView()
+        .environmentObject(TapesStore())
         .environmentObject(AuthManager())
         .environmentObject(EntitlementManager())
         .environmentObject(NavigationCoordinator())

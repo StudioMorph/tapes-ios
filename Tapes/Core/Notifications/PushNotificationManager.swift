@@ -106,22 +106,18 @@ final class PushNotificationManager: NSObject, ObservableObject {
             return
         }
 
-        if let tapeId = userInfo["tape_id"] as? String, !tapeId.isEmpty {
-            log.info("Handling push for tape: \(tapeId)")
+        if let shareId = userInfo["share_id"] as? String, !shareId.isEmpty {
+            log.info("Handling push for share: \(shareId)")
             Task { @MainActor in
-                nav.navigateToSharedTape(tapeId: tapeId)
+                nav.handleShareLink(shareId: shareId)
             }
             return
         }
 
-        if let shareId = userInfo["share_id"] as? String, !shareId.isEmpty {
-            log.info("Handling push for share: \(shareId)")
-            guard let api = apiClient else {
-                log.warning("API client not available")
-                return
-            }
+        if userInfo["tape_id"] != nil {
+            log.info("Handling push with tape_id — navigating to Shared tab")
             Task { @MainActor in
-                nav.handleShareLink(shareId: shareId, api: api)
+                nav.selectedTab = .shared
             }
             return
         }

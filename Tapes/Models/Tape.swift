@@ -126,6 +126,16 @@ public struct SeamTransition: Codable, Equatable {
     }
 }
 
+// MARK: - Share Info
+
+public struct ShareInfo: Codable, Equatable {
+    public var shareId: String
+    public var ownerName: String?
+    public var mode: String
+    public var expiresAt: Date?
+    public var remoteTapeId: String
+}
+
 // MARK: - Tape Model
 
 public struct Tape: Identifiable, Codable, Equatable {
@@ -147,6 +157,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var blurExportBackground: Bool
     public var livePhotosAsVideo: Bool
     public var livePhotosMuted: Bool
+    public var shareInfo: ShareInfo?
 
     public init(
         id: UUID = UUID(),
@@ -166,7 +177,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         exportOrientation: ExportOrientation = .auto,
         blurExportBackground: Bool = true,
         livePhotosAsVideo: Bool = true,
-        livePhotosMuted: Bool = true
+        livePhotosMuted: Bool = true,
+        shareInfo: ShareInfo? = nil
     ) {
         self.id = id
         self.title = title
@@ -186,6 +198,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.blurExportBackground = blurExportBackground
         self.livePhotosAsVideo = livePhotosAsVideo
         self.livePhotosMuted = livePhotosMuted
+        self.shareInfo = shareInfo
     }
     
     // MARK: - Coding Keys
@@ -199,6 +212,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case blurExportBackground
         case livePhotosAsVideo
         case livePhotosMuted
+        case shareInfo
     }
     
     // MARK: - Custom Decoder for Backward Compatibility
@@ -225,6 +239,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         blurExportBackground = try container.decodeIfPresent(Bool.self, forKey: .blurExportBackground) ?? true
         livePhotosAsVideo = try container.decodeIfPresent(Bool.self, forKey: .livePhotosAsVideo) ?? true
         livePhotosMuted = try container.decodeIfPresent(Bool.self, forKey: .livePhotosMuted) ?? true
+        shareInfo = try container.decodeIfPresent(ShareInfo.self, forKey: .shareInfo)
     }
     
     // MARK: - Computed Properties
@@ -258,6 +273,10 @@ public struct Tape: Identifiable, Codable, Equatable {
 
     public var hasAssociatedAlbum: Bool {
         return !(albumLocalIdentifier?.isEmpty ?? true)
+    }
+
+    public var isShared: Bool {
+        shareInfo != nil
     }
     
     // MARK: - Mutating Methods
