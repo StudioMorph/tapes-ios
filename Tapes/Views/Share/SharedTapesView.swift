@@ -86,6 +86,12 @@ struct SharedTapesView: View {
                     handleIncomingShare(shareId: shareId)
                 }
             }
+            .onChange(of: downloadCoordinator.resultTape) { _, tape in
+                guard let mode = tape?.shareInfo?.mode else { return }
+                withAnimation {
+                    selectedSegment = mode == "collaborative" ? .collaborating : .viewOnly
+                }
+            }
             .onAppear {
                 if let shareId = navigationCoordinator.pendingSharedTapeId {
                     navigationCoordinator.clearPendingTape()

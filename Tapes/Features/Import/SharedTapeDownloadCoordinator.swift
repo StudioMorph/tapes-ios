@@ -11,7 +11,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
     @Published var downloadError: String?
 
     private var downloadTask: Task<Void, Never>?
-    private var resultTape: Tape?
+    @Published private(set) var resultTape: Tape?
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "SharedDownload")
 
     var processedCount: Int { completedCount + failedCount }
