@@ -60,6 +60,10 @@ struct ManifestClip: Codable, Identifiable {
     let kenBurns: ManifestKenBurns?
     let livePhotoAsVideo: Bool?
     let livePhotoSound: Bool?
+    let motionStyle: String?
+    let imageDurationMs: Int?
+    let rotateQuarterTurns: Int?
+    let overrideScaleMode: String?
 
     var id: String { clipId }
 
@@ -79,6 +83,10 @@ struct ManifestClip: Codable, Identifiable {
         case kenBurns = "ken_burns"
         case livePhotoAsVideo = "live_photo_as_video"
         case livePhotoSound = "live_photo_sound"
+        case motionStyle = "motion_style"
+        case imageDurationMs = "image_duration_ms"
+        case rotateQuarterTurns = "rotate_quarter_turns"
+        case overrideScaleMode = "override_scale_mode"
     }
 }
 

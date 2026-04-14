@@ -186,6 +186,20 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             imageData = try? Data(contentsOf: cachedURL)
         }
 
+        let motion: MotionStyle = {
+            if let raw = manifestClip.motionStyle, let style = MotionStyle(rawValue: raw) {
+                return style
+            }
+            return .kenBurns
+        }()
+
+        let scaleMode: ScaleMode? = {
+            if let raw = manifestClip.overrideScaleMode {
+                return ScaleMode(rawValue: raw)
+            }
+            return nil
+        }()
+
         return Clip(
             id: UUID(uuidString: manifestClip.clipId) ?? UUID(),
             localURL: clipType == .video ? cachedURL : nil,
@@ -193,8 +207,12 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             clipType: clipType,
             duration: Double(manifestClip.durationMs) / 1000.0,
             thumbnail: thumbData,
+            rotateQuarterTurns: manifestClip.rotateQuarterTurns ?? 0,
+            overrideScaleMode: scaleMode,
             trimStart: Double(manifestClip.trimStartMs ?? 0) / 1000.0,
             trimEnd: Double(manifestClip.trimEndMs ?? 0) / 1000.0,
+            motionStyle: motion,
+            imageDuration: manifestClip.imageDurationMs.map { Double($0) / 1000.0 } ?? 4.0,
             volume: manifestClip.audioLevel,
             isSynced: true
         )

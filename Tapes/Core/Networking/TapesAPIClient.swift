@@ -196,7 +196,9 @@ actor TapesAPIClient {
     func createClip(tapeId: String, clipId: String, type: String, durationMs: Int,
                     trimStartMs: Int? = nil, trimEndMs: Int? = nil, audioLevel: Double? = nil,
                     recordedAt: String? = nil, fileSizeBytes: Int? = nil,
-                    contentType: String? = nil) async throws -> CreateClipResponse {
+                    contentType: String? = nil,
+                    motionStyle: String? = nil, imageDurationMs: Int? = nil,
+                    rotateQuarterTurns: Int? = nil, overrideScaleMode: String? = nil) async throws -> CreateClipResponse {
         var body: [String: Any] = [
             "clip_id": clipId,
             "type": type,
@@ -208,6 +210,10 @@ actor TapesAPIClient {
         if let v = recordedAt { body["recorded_at"] = v }
         if let v = fileSizeBytes { body["file_size_bytes"] = v }
         if let v = contentType { body["content_type"] = v }
+        if let v = motionStyle { body["motion_style"] = v }
+        if let v = imageDurationMs { body["image_duration_ms"] = v }
+        if let v = rotateQuarterTurns { body["rotate_quarter_turns"] = v }
+        if let v = overrideScaleMode { body["override_scale_mode"] = v }
 
         return try await postRaw(path: "/tapes/\(tapeId)/clips", body: body)
     }

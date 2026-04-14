@@ -125,6 +125,17 @@ Sharing uploads run in the background via `ShareUploadCoordinator`, mirroring th
 - **Error handling**: Upload failures are surfaced via a native alert with retry/cancel options.
 - **BG task identifier**: `StudioMorph.Tapes.upload` (registered in `Info.plist` and `TapesApp.init`).
 
+## Clip Creative Settings
+
+When clips are uploaded (via initial share or contribution), the following creative settings are sent alongside basic metadata:
+
+- **motion_style** — animation effect for image clips (kenBurns, pan, zoomIn, zoomOut, drift, none).
+- **image_duration_ms** — display duration for image clips (only sent for photos).
+- **rotate_quarter_turns** — rotation applied to the clip (0, 1, 2, or 3 quarter turns).
+- **override_scale_mode** — explicit fit/fill mode (nil uses tape default).
+
+These settings are stored in D1 (`clips` table), included in the manifest response, and applied when recipients download and rebuild the tape. Background music and modifications to other contributors' clips are explicitly excluded from contributions.
+
 ## Related Files
 
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator.

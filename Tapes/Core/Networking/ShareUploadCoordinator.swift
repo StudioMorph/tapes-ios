@@ -423,7 +423,11 @@ public class ShareUploadCoordinator: ObservableObject {
             durationMs: durationMs,
             trimStartMs: clip.trimStart > 0 ? Int(clip.trimStart * 1000) : nil,
             trimEndMs: clip.trimEnd > 0 ? Int(clip.trimEnd * 1000) : nil,
-            audioLevel: clip.volume
+            audioLevel: clip.volume,
+            motionStyle: clip.motionStyle.rawValue,
+            imageDurationMs: clip.clipType == .image ? Int(clip.imageDuration * 1000) : nil,
+            rotateQuarterTurns: clip.rotateQuarterTurns != 0 ? clip.rotateQuarterTurns : nil,
+            overrideScaleMode: clip.overrideScaleMode?.rawValue
         )
 
         let fileData = try await resolveClipData(clip)
