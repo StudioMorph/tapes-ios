@@ -125,6 +125,28 @@ Sharing uploads run in the background via `ShareUploadCoordinator`, mirroring th
 - **Error handling**: Upload failures are surfaced via a native alert with retry/cancel options.
 - **BG task identifier**: `StudioMorph.Tapes.upload` (registered in `Info.plist` and `TapesApp.init`).
 
+## Collaborative Fork Architecture
+
+When a tape owner shares a tape as **collaborative**, the original tape in "My Tapes" stays completely untouched — no `shareInfo` is attached. Instead, a **fork** (duplicate) is created in the "Shared > Collaborating" segment:
+
+1. **Owner shares as collaborative** — `ShareUploadCoordinator` uploads clips and sends invites. On completion, `TapesListView` detects the success and calls `TapesStore.forkTapeForCollaboration()`.
+2. **Fork creation** — A new `Tape` object is created with a fresh `UUID`, copies of all clips (marked as `isSynced`), and a `ShareInfo` linking it to the server-side `remoteTapeId`.
+3. **Original stays personal** — The original tape in "My Tapes" has no `shareInfo`, so `isShared == false`. It can be edited, deleted, or shared again independently.
+4. **Fork receives contributions** — When a collaborator contributes clips, the push notification triggers `SharedTapeDownloadCoordinator.startDownload()`, which detects the existing fork via `remoteTapeId` and **merges** only new clips (deduplicating by clip ID).
+5. **No duplication on re-open** — If the user taps a share link for a tape they already have, `startDownload` skips clips that already exist locally.
+
+### Data flow
+
+```
+[My Tapes]  →  Original tape (shareInfo = nil, untouched)
+                    ↓ on collaborative share success
+[Shared > Collaborating]  →  Forked tape (shareInfo set, syncs contributions)
+```
+
+### View-only shares
+
+View-only shares do **not** create a fork. The original tape is uploaded and a link is generated, but the owner's tape remains unchanged. Recipients get their own independent copy via `SharedTapeDownloadCoordinator`.
+
 ## Clip Creative Settings
 
 When clips are uploaded (via initial share or contribution), the following creative settings are sent alongside basic metadata:
@@ -138,10 +160,14 @@ These settings are stored in D1 (`clips` table), included in the manifest respon
 
 ## Related Files
 
-- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator.
+- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and `resultRemoteTapeId` for fork.
 - `Tapes/Views/Share/ShareUploadOverlay.swift` — progress, completion, and error dialogs.
 - `Tapes/Views/Share/ShareFlowView.swift` — share configuration UI, delegates to coordinator.
-- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing.
+- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing; shows Contribute button on forked tapes.
+- `Tapes/Views/Share/SharedTapesView.swift` — Shared tab with View Only / Collaborating segments.
+- `Tapes/Views/TapesListView.swift` — observes share completion to trigger `forkTapeForCollaboration`.
+- `Tapes/ViewModels/TapesStore.swift` — `forkTapeForCollaboration()` and `mergeClipsIntoSharedTape()`.
+- `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — downloads shared tapes; merges clips into existing forks.
 - `Tapes/Export/ExportCoordinator.swift` — sister pattern for background exports.
 - `Tapes/Core/Auth/AuthManager.swift` — Sign in with Apple, needed for share identity.
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API client for all backend calls.

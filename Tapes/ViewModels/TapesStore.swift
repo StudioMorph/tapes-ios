@@ -575,6 +575,67 @@ extension TapesStore {
         autoSave()
     }
 
+    /// Creates a collaborative fork of a tape in the Shared/Collaborating segment.
+    /// The original tape in My Tapes stays untouched.
+    public func forkTapeForCollaboration(
+        _ sourceTape: Tape,
+        remoteTapeId: String,
+        shareId: String,
+        ownerName: String?
+    ) {
+        if tapes.contains(where: { $0.shareInfo?.remoteTapeId == remoteTapeId }) {
+            return
+        }
+
+        var forkedClips = sourceTape.clips.filter { !$0.isPlaceholder }
+        for i in forkedClips.indices {
+            forkedClips[i].isSynced = true
+        }
+
+        let info = ShareInfo(
+            shareId: shareId,
+            ownerName: ownerName,
+            mode: "collaborative",
+            expiresAt: nil,
+            remoteTapeId: remoteTapeId
+        )
+
+        let fork = Tape(
+            title: sourceTape.title,
+            orientation: sourceTape.orientation,
+            scaleMode: sourceTape.scaleMode,
+            transition: sourceTape.transition,
+            transitionDuration: sourceTape.transitionDuration,
+            seamTransitions: sourceTape.seamTransitions,
+            clips: forkedClips,
+            hasReceivedFirstContent: !forkedClips.isEmpty,
+            backgroundMusicMood: sourceTape.backgroundMusicMood,
+            backgroundMusicVolume: sourceTape.backgroundMusicVolume,
+            exportOrientation: sourceTape.exportOrientation,
+            blurExportBackground: sourceTape.blurExportBackground,
+            livePhotosAsVideo: sourceTape.livePhotosAsVideo,
+            livePhotosMuted: sourceTape.livePhotosMuted,
+            shareInfo: info
+        )
+
+        tapes.append(fork)
+        autoSave()
+    }
+
+    /// Merges new clips into an existing shared tape (for incoming contributions).
+    public func mergeClipsIntoSharedTape(remoteTapeId: String, newClips: [Clip]) {
+        guard let idx = tapes.firstIndex(where: { $0.shareInfo?.remoteTapeId == remoteTapeId }) else { return }
+
+        let existingIds = Set(tapes[idx].clips.map { $0.id })
+        let uniqueNewClips = newClips.filter { !existingIds.contains($0.id) }
+
+        guard !uniqueNewClips.isEmpty else { return }
+
+        tapes[idx].clips.append(contentsOf: uniqueNewClips)
+        tapes[idx].updatedAt = Date()
+        autoSave()
+    }
+
     public func markClipSynced(_ clipId: UUID, inTape tapeId: UUID) {
         guard let tapeIdx = tapes.firstIndex(where: { $0.id == tapeId }),
               let clipIdx = tapes[tapeIdx].clips.firstIndex(where: { $0.id == clipId }) else { return }

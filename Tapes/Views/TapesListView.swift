@@ -4,6 +4,7 @@ struct TapesListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject var tapesStore: TapesStore
+    @EnvironmentObject private var authManager: AuthManager
     @StateObject private var exportCoordinator = ExportCoordinator()
     @EnvironmentObject private var shareUploadCoordinator: ShareUploadCoordinator
     @StateObject private var cameraCoordinator = CameraCoordinator()
@@ -87,6 +88,20 @@ struct TapesListView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 exportCoordinator.handleScenePhaseChange(newPhase)
                 shareUploadCoordinator.handleScenePhaseChange(newPhase)
+            }
+            .onChange(of: shareUploadCoordinator.showCompletionDialog) { _, show in
+                guard show,
+                      shareUploadCoordinator.resultMode == .collaborating,
+                      let source = shareUploadCoordinator.sourceTape,
+                      let remoteId = shareUploadCoordinator.resultRemoteTapeId,
+                      let shareId = shareUploadCoordinator.resultShareId else { return }
+
+                tapesStore.forkTapeForCollaboration(
+                    source,
+                    remoteTapeId: remoteId,
+                    shareId: shareId,
+                    ownerName: authManager.userName
+                )
             }
             .toolbar {
                 if tapesStore.jigglingTapeID != nil {

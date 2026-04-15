@@ -26,6 +26,7 @@ public class ShareUploadCoordinator: ObservableObject {
     @Published var resultShareId: String?
     @Published var resultShareUrl: String?
     @Published var resultMode: ShareMode = .viewing
+    @Published var resultRemoteTapeId: String?
 
     // MARK: - Internal State
 
@@ -36,6 +37,7 @@ public class ShareUploadCoordinator: ObservableObject {
     private var pendingTapeId: String?
     private var pendingCreateResponse: TapesAPIClient.CreateTapeResponse?
     private var pendingInvites: [String] = []
+    private(set) var sourceTape: Tape?
 
     enum ShareMode: String {
         case viewing, collaborating
@@ -117,11 +119,13 @@ public class ShareUploadCoordinator: ObservableObject {
         uploadError = nil
         resultShareId = nil
         resultShareUrl = nil
+        resultRemoteTapeId = nil
         resultMode = mode
         showProgressDialog = true
         showCompletionDialog = false
         uploadStartTime = Date()
         pendingInvites = inviteEmails
+        sourceTape = tape
 
         if #available(iOS 26, *) {
             submitContinuedProcessingTask()
@@ -226,6 +230,7 @@ public class ShareUploadCoordinator: ObservableObject {
 
                 self.resultShareId = shareId
                 self.resultShareUrl = shareUrl
+                self.resultRemoteTapeId = tapeId
                 self.pendingCreateResponse = nil
                 self.pendingInvites = []
 

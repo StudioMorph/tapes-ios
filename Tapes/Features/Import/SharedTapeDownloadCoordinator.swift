@@ -47,7 +47,6 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 let manifest = try await api.getManifest(tapeId: resolution.tapeId)
 
                 let uploadedClips = manifest.clips.filter { $0.cloudUrl != nil }
-                self.totalCount = uploadedClips.count
 
                 if uploadedClips.isEmpty {
                     self.downloadError = "This tape has no clips yet."
@@ -56,10 +55,27 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 }
 
                 let tapeId = resolution.tapeId
-                var clips: [Clip] = []
                 let session = URLSession.shared
 
-                for manifestClip in uploadedClips {
+                let existingTape = tapeStore.sharedTape(forRemoteId: tapeId)
+                let existingClipIds: Set<String>
+                if let existing = existingTape {
+                    existingClipIds = Set(existing.clips.map { $0.id.uuidString.lowercased() })
+                } else {
+                    existingClipIds = []
+                }
+
+                let clipsToDownload = uploadedClips.filter { !existingClipIds.contains($0.clipId.lowercased()) }
+
+                if clipsToDownload.isEmpty && existingTape != nil {
+                    self.isDownloading = false
+                    return
+                }
+
+                self.totalCount = clipsToDownload.count
+                var clips: [Clip] = []
+
+                for manifestClip in clipsToDownload {
                     guard !Task.isCancelled else { break }
 
                     do {
@@ -78,22 +94,27 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 }
 
                 guard !Task.isCancelled, !clips.isEmpty else {
-                    if clips.isEmpty {
+                    if clips.isEmpty && existingTape == nil {
                         self.downloadError = "All clips failed to download."
                     }
                     self.isDownloading = false
                     return
                 }
 
-                let tape = Self.buildTape(
-                    from: manifest,
-                    clips: clips,
-                    shareId: shareId,
-                    ownerName: resolution.ownerName
-                )
+                if existingTape != nil {
+                    tapeStore.mergeClipsIntoSharedTape(remoteTapeId: tapeId, newClips: clips)
+                    self.resultTape = tapeStore.sharedTape(forRemoteId: tapeId)
+                } else {
+                    let tape = Self.buildTape(
+                        from: manifest,
+                        clips: clips,
+                        shareId: shareId,
+                        ownerName: resolution.ownerName
+                    )
+                    tapeStore.addSharedTape(tape)
+                    self.resultTape = tape
+                }
 
-                tapeStore.addSharedTape(tape)
-                self.resultTape = tape
                 self.isDownloading = false
 
             } catch {
