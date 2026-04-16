@@ -5,7 +5,7 @@ import AVFoundation
 
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
-    var onTap: ((CGPoint) -> Void)?
+    var onTap: ((_ devicePoint: CGPoint, _ viewPoint: CGPoint) -> Void)?
 
     func makeUIView(context: Context) -> PreviewUIView {
         let view = PreviewUIView()
@@ -22,7 +22,7 @@ struct CameraPreviewView: UIViewRepresentable {
     final class PreviewUIView: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
-        var onTap: ((CGPoint) -> Void)?
+        var onTap: ((_ devicePoint: CGPoint, _ viewPoint: CGPoint) -> Void)?
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -35,7 +35,7 @@ struct CameraPreviewView: UIViewRepresentable {
         @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
             let location = gesture.location(in: self)
             let devicePoint = previewLayer.captureDevicePointConverted(fromLayerPoint: location)
-            onTap?(devicePoint)
+            onTap?(devicePoint, location)
         }
     }
 }
@@ -50,47 +50,17 @@ struct CameraView: View {
     @State private var showFocusSquare = false
     @State private var lastThumbnail: UIImage?
     @State private var pinchBaseZoom: CGFloat = 1.0
+    @State private var showOptions = false
 
     var body: some View {
-        GeometryReader { geo in
+        GeometryReader { _ in
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                CameraPreviewView(
-                    session: capture.session,
-                    onTap: { devicePoint in
-                        capture.focus(at: devicePoint)
-                        let screenPoint = CGPoint(
-                            x: devicePoint.y * geo.size.width,
-                            y: (1 - devicePoint.x) * geo.size.height
-                        )
-                        showFocus(at: screenPoint)
-                    }
-                )
-                .ignoresSafeArea()
-                .gesture(
-                    MagnifyGesture()
-                        .onChanged { value in
-                            let newZoom = pinchBaseZoom * value.magnification
-                            capture.setZoom(newZoom)
-                        }
-                        .onEnded { value in
-                            pinchBaseZoom = capture.currentZoomFactor
-                        }
-                )
-
                 VStack(spacing: 0) {
-                    topBar
-                    Spacer()
-                    zoomBar
-                        .padding(.bottom, 16)
-                    bottomControls
-                }
-
-                focusSquareOverlay
-
-                if capture.isRecording {
-                    recordingBadge
+                    topToolbar
+                    viewfinder
+                    bottomPanel
                 }
             }
         }
@@ -108,10 +78,10 @@ struct CameraView: View {
         .statusBarHidden()
     }
 
-    // MARK: - Top Bar
+    // MARK: - Top Toolbar
 
-    private var topBar: some View {
-        HStack(spacing: 12) {
+    private var topToolbar: some View {
+        HStack(spacing: 0) {
             Button {
                 if capture.capturedCount > 0 {
                     capture.discardSession()
@@ -119,126 +89,240 @@ struct CameraView: View {
                 coordinator.isPresented = false
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .frame(width: 44, height: 44)
             }
 
             Spacer()
 
-            if capture.captureMode == .photo && capture.isLivePhotoSupported {
-                Button {
-                    capture.livePhotoEnabled.toggle()
-                } label: {
-                    Image(systemName: capture.livePhotoEnabled ? "livephoto" : "livephoto.slash")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(capture.livePhotoEnabled ? .yellow : .white)
-                        .frame(width: 36, height: 36)
-                        .background(.ultraThinMaterial, in: Circle())
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showOptions.toggle()
                 }
+            } label: {
+                Image(systemName: showOptions ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.white.opacity(0.15), in: Circle())
             }
 
-            Button {
-                capture.torchEnabled.toggle()
-            } label: {
-                Image(systemName: capture.torchEnabled ? "bolt.fill" : "bolt.slash.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(capture.torchEnabled ? .yellow : .white)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
+            Spacer()
+
+            torchIndicator
+                .frame(width: 44, height: 44)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.horizontal, 12)
+        .frame(height: 50)
+        .background(Color.black)
     }
 
-    // MARK: - Zoom Bar
-
     @ViewBuilder
-    private var zoomBar: some View {
-        if capture.currentPosition == .back && !capture.availableZoomPresets.isEmpty && !capture.isRecording {
-            HStack(spacing: 0) {
-                ForEach(capture.availableZoomPresets) { preset in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            capture.rampZoom(to: preset.factor)
-                            pinchBaseZoom = preset.factor
-                        }
-                    } label: {
-                        let isActive = isZoomPresetActive(preset)
-                        Text(preset.label)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(isActive ? .yellow : .white)
-                            .frame(width: 40, height: 40)
-                            .background(
-                                Circle()
-                                    .fill(isActive ? .white.opacity(0.25) : .clear)
-                            )
+    private var torchIndicator: some View {
+        if !showOptions {
+            Image(systemName: capture.torchEnabled ? "bolt.fill" : "bolt.slash.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(capture.torchEnabled ? .yellow : .white.opacity(0.5))
+        }
+    }
+
+    // MARK: - Viewfinder
+
+    private var viewfinder: some View {
+        ZStack {
+            CameraPreviewView(
+                session: capture.session,
+                onTap: { devicePoint, viewPoint in
+                    capture.focus(at: devicePoint)
+                    showFocus(at: viewPoint)
+                }
+            )
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let newZoom = pinchBaseZoom * value.magnification
+                        capture.setZoom(newZoom)
                     }
+                    .onEnded { _ in
+                        pinchBaseZoom = capture.currentZoomFactor
+                    }
+            )
+
+            focusSquareOverlay
+
+            if capture.isRecording {
+                VStack {
+                    recordingBadge
+                        .padding(.top, 12)
+                    Spacer()
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .background(.ultraThinMaterial, in: Capsule())
         }
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 2)
+    }
+
+    // MARK: - Bottom Panel
+
+    private var bottomPanel: some View {
+        VStack(spacing: 0) {
+            if showOptions {
+                optionsTray
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if capture.currentPosition == .back
+                && !capture.availableZoomPresets.isEmpty
+                && !capture.isRecording {
+                zoomPill
+                    .padding(.top, 14)
+            }
+
+            if !capture.isRecording {
+                modePicker
+                    .padding(.top, 14)
+            }
+
+            shutterRow
+                .padding(.top, 20)
+                .padding(.bottom, 24)
+        }
+        .padding(.bottom, 4)
+        .background(Color.black)
+    }
+
+    // MARK: - Options Tray
+
+    private var optionsTray: some View {
+        HStack(spacing: 20) {
+            optionButton(
+                icon: capture.torchEnabled ? "bolt.fill" : "bolt.slash.fill",
+                label: "Flash",
+                isActive: capture.torchEnabled
+            ) {
+                capture.toggleTorch()
+            }
+
+            if capture.captureMode == .photo && capture.isLivePhotoSupported {
+                optionButton(
+                    icon: capture.livePhotoEnabled ? "livephoto" : "livephoto.slash",
+                    label: "Live",
+                    isActive: capture.livePhotoEnabled
+                ) {
+                    capture.livePhotoEnabled.toggle()
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+    }
+
+    private func optionButton(
+        icon: String,
+        label: String,
+        isActive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundStyle(isActive ? .yellow : .white)
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .frame(width: 64, height: 60)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isActive ? Color.yellow.opacity(0.15) : Color.white.opacity(0.08))
+            )
+        }
+    }
+
+    // MARK: - Zoom Pill
+
+    private var zoomPill: some View {
+        HStack(spacing: 0) {
+            ForEach(capture.availableZoomPresets) { preset in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        capture.rampZoom(to: preset.factor)
+                        pinchBaseZoom = preset.factor
+                    }
+                } label: {
+                    let isActive = isZoomPresetActive(preset)
+                    Text(zoomLabel(for: preset, isActive: isActive))
+                        .font(.system(size: isActive ? 13 : 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(isActive ? .yellow : .white.opacity(0.6))
+                        .frame(width: 44, height: 44)
+                        .background(
+                            Circle()
+                                .fill(isActive ? Color.white.opacity(0.2) : Color.clear)
+                        )
+                }
+            }
+        }
+        .padding(.horizontal, 6)
+        .background(
+            Capsule()
+                .fill(.black.opacity(0.5))
+        )
     }
 
     private func isZoomPresetActive(_ preset: CaptureService.ZoomPreset) -> Bool {
-        abs(capture.currentZoomFactor - preset.factor) < 0.1
+        let tolerance: CGFloat = 0.15 * (preset.factor > 1 ? preset.factor : 1)
+        return abs(capture.currentZoomFactor - preset.factor) < tolerance
     }
 
-    // MARK: - Bottom Controls
-
-    private var bottomControls: some View {
-        VStack(spacing: 16) {
-            if !capture.isRecording {
-                modePicker
+    private func zoomLabel(for preset: CaptureService.ZoomPreset, isActive: Bool) -> String {
+        if isActive {
+            let display = capture.displayZoomFactor
+            if abs(display - round(display)) < 0.05 {
+                if display < 1 { return ".5" }
+                return String(format: "%.0f", display)
             }
-
-            HStack(alignment: .center) {
-                thumbnailPreview
-                    .frame(width: 48)
-
-                Spacer()
-                shutterButton
-                Spacer()
-
-                flipOrDoneButton
-                    .frame(width: 48)
-            }
-            .padding(.horizontal, 28)
+            return String(format: "%.1f", display)
         }
-        .padding(.bottom, 36)
-        .background(
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.5)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .bottom)
-        )
+        return preset.label
     }
 
     // MARK: - Mode Picker
 
     private var modePicker: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 24) {
             ForEach(CaptureService.CaptureMode.allCases, id: \.self) { mode in
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         capture.captureMode = mode
                     }
                 } label: {
-                    Text(mode.rawValue.uppercased())
+                    Text(mode.rawValue)
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(capture.captureMode == mode ? .yellow : .white.opacity(0.5))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .foregroundStyle(capture.captureMode == mode ? .yellow : .white.opacity(0.4))
                 }
             }
         }
-        .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    // MARK: - Shutter Row
+
+    private var shutterRow: some View {
+        HStack(alignment: .center) {
+            thumbnailPreview
+                .frame(width: 52, alignment: .center)
+
+            Spacer()
+
+            shutterButton
+
+            Spacer()
+
+            trailingControl
+                .frame(width: 52, alignment: .center)
+        }
+        .padding(.horizontal, 24)
     }
 
     // MARK: - Shutter Button
@@ -288,11 +372,11 @@ struct CameraView: View {
                 Image(uiImage: thumb)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 44, height: 44)
+                    .frame(width: 48, height: 48)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(.white.opacity(0.4), lineWidth: 1.5)
+                            .stroke(.white.opacity(0.35), lineWidth: 1.5)
                     )
                     .overlay(alignment: .topTrailing) {
                         if capture.capturedCount > 1 {
@@ -306,16 +390,16 @@ struct CameraView: View {
                     }
             } else {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(.white.opacity(0.1))
-                    .frame(width: 44, height: 44)
+                    .fill(.white.opacity(0.08))
+                    .frame(width: 48, height: 48)
             }
         }
     }
 
-    // MARK: - Flip / Done Button
+    // MARK: - Trailing Control (Flip / Done)
 
     @ViewBuilder
-    private var flipOrDoneButton: some View {
+    private var trailingControl: some View {
         if capture.capturedCount > 0 && !capture.isRecording {
             Button {
                 let items = capture.capturedItems
@@ -323,13 +407,13 @@ struct CameraView: View {
                 coordinator.handleMultiCapture(items)
             } label: {
                 Text("Done")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 12)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(.yellow, in: Capsule())
+                    .background(.ultraThinMaterial, in: Capsule())
             }
-        } else {
+        } else if !capture.isRecording {
             Button {
                 capture.switchCamera()
             } label: {
@@ -339,8 +423,6 @@ struct CameraView: View {
                     .frame(width: 44, height: 44)
                     .background(.ultraThinMaterial, in: Circle())
             }
-            .disabled(capture.isRecording)
-            .opacity(capture.isRecording ? 0.3 : 1)
         }
     }
 
@@ -361,7 +443,6 @@ struct CameraView: View {
         withAnimation(.easeIn(duration: 0.15)) {
             showFocusSquare = true
         }
-
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             withAnimation(.easeOut(duration: 0.3)) {
                 showFocusSquare = false
@@ -372,23 +453,18 @@ struct CameraView: View {
     // MARK: - Recording Badge
 
     private var recordingBadge: some View {
-        VStack {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(.red)
-                    .frame(width: 10, height: 10)
+        HStack(spacing: 8) {
+            Circle()
+                .fill(.red)
+                .frame(width: 10, height: 10)
 
-                Text(formattedDuration)
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
-            .padding(.top, 64)
-
-            Spacer()
+            Text(formattedDuration)
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 
     private var formattedDuration: String {
@@ -399,7 +475,7 @@ struct CameraView: View {
     }
 }
 
-// MARK: - Focus Square
+// MARK: - Focus Square Shape
 
 private struct FocusSquare: View {
     @State private var scale: CGFloat = 1.4

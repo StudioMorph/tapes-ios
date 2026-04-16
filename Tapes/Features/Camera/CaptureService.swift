@@ -11,14 +11,14 @@ final class CaptureService: NSObject, ObservableObject {
     @Published private(set) var recordingDuration: TimeInterval = 0
     @Published var torchEnabled = false
     @Published private(set) var currentPosition: AVCaptureDevice.Position = .back
-    @Published private(set) var currentZoomFactor: CGFloat = 1.0
+    @Published private(set) var currentZoomFactor: CGFloat = 2.0
     @Published var livePhotoEnabled = true
     @Published private(set) var isLivePhotoSupported = false
     @Published private(set) var capturedCount = 0
 
     enum CaptureMode: String, CaseIterable {
-        case photo = "Photo"
-        case video = "Video"
+        case video = "VIDEO"
+        case photo = "PHOTO"
     }
 
     struct ZoomPreset: Identifiable {
@@ -28,6 +28,13 @@ final class CaptureService: NSObject, ObservableObject {
     }
 
     private(set) var availableZoomPresets: [ZoomPreset] = []
+    private(set) var primarySwitchOverFactor: CGFloat = 1.0
+
+    /// User-facing zoom multiplier (0.5x, 1x, 2x, etc.)
+    var displayZoomFactor: CGFloat {
+        guard primarySwitchOverFactor > 1.0 else { return currentZoomFactor }
+        return currentZoomFactor / primarySwitchOverFactor
+    }
 
     // MARK: - Session
 
@@ -148,16 +155,28 @@ final class CaptureService: NSObject, ObservableObject {
             }
         }
 
+        let switchOvers = videoDevice.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat($0.doubleValue) }
+        let switchFactor = switchOvers.first ?? 1.0
+
+        if switchFactor > 1.0 {
+            do {
+                try videoDevice.lockForConfiguration()
+                videoDevice.videoZoomFactor = switchFactor
+                videoDevice.unlockForConfiguration()
+            } catch {}
+        }
+
         session.commitConfiguration()
 
         let presets = buildZoomPresets(for: videoDevice)
         DispatchQueue.main.async { [weak self] in
             self?.availableZoomPresets = presets
+            self?.primarySwitchOverFactor = switchFactor
+            self?.currentZoomFactor = switchFactor
             self?.isLivePhotoSupported = self?.photoOutput.isLivePhotoCaptureSupported ?? false
         }
     }
 
-    /// Prefer the virtual multi-camera device for seamless zoom across lenses.
     private func bestBackDevice() -> AVCaptureDevice? {
         let discovery = AVCaptureDevice.DiscoverySession(
             deviceTypes: [
@@ -176,20 +195,23 @@ final class CaptureService: NSObject, ObservableObject {
         AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
     }
 
+    /// Maps physical lens switchover points to user-facing zoom labels (.5x, 1x, 2x).
     private func buildZoomPresets(for device: AVCaptureDevice) -> [ZoomPreset] {
+        let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat($0.doubleValue) }
         var presets: [ZoomPreset] = []
-        let minZoom = device.minAvailableVideoZoomFactor
-        let maxZoom = device.maxAvailableVideoZoomFactor
 
-        if minZoom <= 0.5 {
-            presets.append(ZoomPreset(id: "0.5", label: ".5", factor: 0.5))
-        }
-        presets.append(ZoomPreset(id: "1", label: "1×", factor: 1.0))
-        if maxZoom >= 2.0 {
-            presets.append(ZoomPreset(id: "2", label: "2", factor: 2.0))
-        }
-        if maxZoom >= 5.0 {
-            presets.append(ZoomPreset(id: "5", label: "5", factor: 5.0))
+        if let wideSwitch = switchOvers.first {
+            presets.append(ZoomPreset(id: "0.5", label: ".5", factor: 1.0))
+            presets.append(ZoomPreset(id: "1", label: "1", factor: wideSwitch))
+            let twoX = wideSwitch * 2.0
+            if twoX <= device.maxAvailableVideoZoomFactor {
+                presets.append(ZoomPreset(id: "2", label: "2", factor: twoX))
+            }
+        } else {
+            presets.append(ZoomPreset(id: "1", label: "1", factor: 1.0))
+            if device.maxAvailableVideoZoomFactor >= 2.0 {
+                presets.append(ZoomPreset(id: "2", label: "2", factor: 2.0))
+            }
         }
 
         return presets
@@ -283,14 +305,55 @@ final class CaptureService: NSObject, ObservableObject {
 
             self.session.commitConfiguration()
 
-            let presets = newPosition == .back ? self.buildZoomPresets(for: device) : []
+            let presets: [ZoomPreset]
+            let switchFactor: CGFloat
+
+            if newPosition == .back {
+                presets = self.buildZoomPresets(for: device)
+                let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat($0.doubleValue) }
+                switchFactor = switchOvers.first ?? 1.0
+
+                if switchFactor > 1.0 {
+                    do {
+                        try device.lockForConfiguration()
+                        device.videoZoomFactor = switchFactor
+                        device.unlockForConfiguration()
+                    } catch {}
+                }
+            } else {
+                presets = []
+                switchFactor = 1.0
+            }
+
             DispatchQueue.main.async {
                 self.currentPosition = newPosition
                 self.torchEnabled = false
-                self.currentZoomFactor = 1.0
+                self.currentZoomFactor = switchFactor
+                self.primarySwitchOverFactor = switchFactor
                 self.availableZoomPresets = presets
             }
         }
+    }
+
+    // MARK: - Torch
+
+    func toggleTorch() {
+        torchEnabled.toggle()
+        if isRecording {
+            sessionQueue.async { [weak self] in
+                guard let self else { return }
+                self.setTorch(self.torchEnabled)
+            }
+        }
+    }
+
+    private func setTorch(_ on: Bool) {
+        guard let device = videoDeviceInput?.device,
+              device.hasTorch,
+              device.isTorchAvailable else { return }
+        try? device.lockForConfiguration()
+        device.torchMode = on ? .on : .off
+        device.unlockForConfiguration()
     }
 
     // MARK: - Photo Capture
@@ -361,17 +424,6 @@ final class CaptureService: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Torch
-
-    private func setTorch(_ on: Bool) {
-        guard let device = videoDeviceInput?.device,
-              device.hasTorch,
-              device.isTorchAvailable else { return }
-        try? device.lockForConfiguration()
-        device.torchMode = on ? .on : .off
-        device.unlockForConfiguration()
-    }
-
     // MARK: - Timer
 
     private func cleanupRecordingTimer() {
@@ -409,10 +461,7 @@ extension CaptureService: AVCapturePhotoCaptureDelegate {
         photoDisplayTime: CMTime,
         resolvedSettings: AVCaptureResolvedPhotoSettings,
         error: Error?
-    ) {
-        // Live Photo movie companion saved — no extra handling needed.
-        // The still image was already captured in didFinishProcessingPhoto.
-    }
+    ) {}
 }
 
 // MARK: - AVCaptureFileOutputRecordingDelegate
