@@ -73,6 +73,9 @@ final class CaptureService: NSObject, ObservableObject {
 
     private(set) var capturedItems: [PickedMedia] = []
 
+    /// Pending Live Photo stills waiting for their companion movie.
+    private var pendingLivePhotos: [Int64: (image: UIImage, data: Data)] = [:]
+
     // MARK: - Callbacks
 
     var onPhotoCaptured: ((UIImage) -> Void)?
@@ -536,12 +539,18 @@ extension CaptureService: AVCapturePhotoCaptureDelegate {
               let data = photo.fileDataRepresentation(),
               let image = UIImage(data: data) else { return }
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.capturedItems.append(.photo(image: image, assetIdentifier: nil))
-            self.capturedCount = self.capturedItems.count
-            self.onPhotoCaptured?(image)
-            self.onThumbnailUpdated?(image)
+        let isLiveCapture = photo.resolvedSettings.livePhotoMovieDimensions.width > 0
+
+        if isLiveCapture {
+            pendingLivePhotos[photo.resolvedSettings.uniqueID] = (image: image, data: data)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.capturedItems.append(.photo(image: image, assetIdentifier: nil))
+                self.capturedCount = self.capturedItems.count
+                self.onPhotoCaptured?(image)
+                self.onThumbnailUpdated?(image)
+            }
         }
     }
 
@@ -552,7 +561,35 @@ extension CaptureService: AVCapturePhotoCaptureDelegate {
         photoDisplayTime: CMTime,
         resolvedSettings: AVCaptureResolvedPhotoSettings,
         error: Error?
-    ) {}
+    ) {
+        guard error == nil else {
+            if let pending = pendingLivePhotos.removeValue(forKey: resolvedSettings.uniqueID) {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.capturedItems.append(.photo(image: pending.image, assetIdentifier: nil))
+                    self.capturedCount = self.capturedItems.count
+                    self.onThumbnailUpdated?(pending.image)
+                }
+            }
+            return
+        }
+
+        guard let pending = pendingLivePhotos.removeValue(forKey: resolvedSettings.uniqueID) else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.capturedItems.append(.photo(
+                image: pending.image,
+                assetIdentifier: nil,
+                isLivePhoto: true,
+                imageData: pending.data,
+                livePhotoMovieURL: outputFileURL
+            ))
+            self.capturedCount = self.capturedItems.count
+            self.onPhotoCaptured?(pending.image)
+            self.onThumbnailUpdated?(pending.image)
+        }
+    }
 }
 
 // MARK: - AVCaptureFileOutputRecordingDelegate

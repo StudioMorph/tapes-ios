@@ -780,7 +780,7 @@ extension TapesStore {
             case let .video(url, duration, assetIdentifier):
                 let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
                 newClips.append(clip)
-            case let .photo(image, assetIdentifier, _):
+            case let .photo(image, assetIdentifier, _, _, _):
                 if let imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
                     newClips.append(imageClip)
                 } else {
@@ -824,7 +824,7 @@ extension TapesStore {
             case let .video(url, duration, assetIdentifier):
                 let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
                 newClips.append(clip)
-            case let .photo(image, assetIdentifier, _):
+            case let .photo(image, assetIdentifier, _, _, _):
                 if let imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
                     newClips.append(imageClip)
                 }

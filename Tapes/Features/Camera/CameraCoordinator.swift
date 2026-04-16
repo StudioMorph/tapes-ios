@@ -114,19 +114,39 @@ class CameraCoordinator: NSObject, ObservableObject {
                     group.leave()
                 }
                 continue
-            case let .photo(image, assetIdentifier, _):
+            case let .photo(image, assetIdentifier, isLivePhoto, imageData, livePhotoMovieURL):
                 var placeholderId: String?
-                PHPhotoLibrary.shared().performChanges({
-                    let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
-                    placeholderId = request.placeholderForCreatedAsset?.localIdentifier
-                }) { success, error in
-                    if success {
-                        let savedItem = PickedMedia.photo(image: image, assetIdentifier: placeholderId ?? assetIdentifier)
-                        savedMedia.append(savedItem)
-                    } else {
-                        TapesLog.camera.error("Failed to save photo: \(error?.localizedDescription ?? "Unknown error")")
+
+                if isLivePhoto, let photoData = imageData, let movieURL = livePhotoMovieURL {
+                    PHPhotoLibrary.shared().performChanges({
+                        let request = PHAssetCreationRequest.forAsset()
+                        request.addResource(with: .photo, data: photoData, options: nil)
+                        let movieOptions = PHAssetResourceCreationOptions()
+                        movieOptions.shouldMoveFile = true
+                        request.addResource(with: .pairedVideo, fileURL: movieURL, options: movieOptions)
+                        placeholderId = request.placeholderForCreatedAsset?.localIdentifier
+                    }) { success, error in
+                        if success {
+                            let savedItem = PickedMedia.photo(image: image, assetIdentifier: placeholderId ?? assetIdentifier, isLivePhoto: true)
+                            savedMedia.append(savedItem)
+                        } else {
+                            TapesLog.camera.error("Failed to save Live Photo: \(error?.localizedDescription ?? "Unknown error")")
+                        }
+                        group.leave()
                     }
-                    group.leave()
+                } else {
+                    PHPhotoLibrary.shared().performChanges({
+                        let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
+                        placeholderId = request.placeholderForCreatedAsset?.localIdentifier
+                    }) { success, error in
+                        if success {
+                            let savedItem = PickedMedia.photo(image: image, assetIdentifier: placeholderId ?? assetIdentifier)
+                            savedMedia.append(savedItem)
+                        } else {
+                            TapesLog.camera.error("Failed to save photo: \(error?.localizedDescription ?? "Unknown error")")
+                        }
+                        group.leave()
+                    }
                 }
             }
         }

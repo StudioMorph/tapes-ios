@@ -15,7 +15,7 @@ enum MediaLoaderError: Error {
 
 public enum PickedMedia {
     case video(url: URL?, duration: TimeInterval, assetIdentifier: String?)
-    case photo(image: UIImage, assetIdentifier: String?, isLivePhoto: Bool = false)
+    case photo(image: UIImage, assetIdentifier: String?, isLivePhoto: Bool = false, imageData: Data? = nil, livePhotoMovieURL: URL? = nil)
 }
 
 private let log = Logger(subsystem: "com.studiomorph.tapes", category: "MediaPicker")
