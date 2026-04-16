@@ -716,7 +716,7 @@ struct CameraView: View {
                     .frame(width: 44, height: 44)
                     .background(.black.opacity(0.6), in: Circle())
             }
-            .offset(x: -4, y: 4)
+            .offset(x: 22, y: -22)
         }
     }
 
