@@ -553,16 +553,16 @@ extension CaptureService: AVCapturePhotoCaptureDelegate {
 
         let isLiveCapture = photo.resolvedSettings.livePhotoMovieDimensions.width > 0
 
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.capturedItems.append(.photo(image: image, assetIdentifier: nil))
+            self.capturedCount = self.capturedItems.count
+            self.onPhotoCaptured?(image)
+            self.onThumbnailUpdated?(image)
+        }
+
         if isLiveCapture {
             pendingLivePhotos[photo.resolvedSettings.uniqueID] = (image: image, data: data)
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.capturedItems.append(.photo(image: image, assetIdentifier: nil))
-                self.capturedCount = self.capturedItems.count
-                self.onPhotoCaptured?(image)
-                self.onThumbnailUpdated?(image)
-            }
         }
     }
 
@@ -574,32 +574,20 @@ extension CaptureService: AVCapturePhotoCaptureDelegate {
         resolvedSettings: AVCaptureResolvedPhotoSettings,
         error: Error?
     ) {
-        guard error == nil else {
-            if let pending = pendingLivePhotos.removeValue(forKey: resolvedSettings.uniqueID) {
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.capturedItems.append(.photo(image: pending.image, assetIdentifier: nil))
-                    self.capturedCount = self.capturedItems.count
-                    self.onThumbnailUpdated?(pending.image)
-                }
-            }
-            return
-        }
-
         guard let pending = pendingLivePhotos.removeValue(forKey: resolvedSettings.uniqueID) else { return }
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.capturedItems.append(.photo(
-                image: pending.image,
-                assetIdentifier: nil,
-                isLivePhoto: true,
-                imageData: pending.data,
-                livePhotoMovieURL: outputFileURL
-            ))
-            self.capturedCount = self.capturedItems.count
-            self.onPhotoCaptured?(pending.image)
-            self.onThumbnailUpdated?(pending.image)
+            let liveMedia: PickedMedia = error == nil
+                ? .photo(image: pending.image, assetIdentifier: nil, isLivePhoto: true, imageData: pending.data, livePhotoMovieURL: outputFileURL)
+                : .photo(image: pending.image, assetIdentifier: nil)
+
+            if let idx = self.capturedItems.lastIndex(where: {
+                if case let .photo(img, _, _, _, _) = $0 { return img === pending.image }
+                return false
+            }) {
+                self.capturedItems[idx] = liveMedia
+            }
         }
     }
 }
