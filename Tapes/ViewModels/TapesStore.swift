@@ -577,6 +577,7 @@ extension TapesStore {
 
     /// Creates a collaborative fork of a tape in the Shared/Collaborating segment.
     /// The original tape in My Tapes stays untouched.
+    /// A separate Photos album "[Name] - Collab" is created for the fork.
     public func forkTapeForCollaboration(
         _ sourceTape: Tape,
         remoteTapeId: String,
@@ -592,6 +593,8 @@ extension TapesStore {
             forkedClips[i].isSynced = true
         }
 
+        let collabTitle = "\(sourceTape.title) - Collab"
+
         let info = ShareInfo(
             shareId: shareId,
             ownerName: ownerName,
@@ -601,7 +604,7 @@ extension TapesStore {
         )
 
         let fork = Tape(
-            title: sourceTape.title,
+            title: collabTitle,
             orientation: sourceTape.orientation,
             scaleMode: sourceTape.scaleMode,
             transition: sourceTape.transition,
@@ -620,6 +623,10 @@ extension TapesStore {
 
         tapes.append(fork)
         autoSave()
+
+        if !forkedClips.isEmpty {
+            associateClipsWithAlbum(tapeID: fork.id, clips: forkedClips)
+        }
     }
 
     /// Merges new clips into an existing shared tape (for incoming contributions).
