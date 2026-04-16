@@ -339,11 +339,17 @@ final class CaptureService: NSObject, ObservableObject {
 
     func toggleTorch() {
         torchEnabled.toggle()
-        if isRecording {
+        if captureMode == .video {
             sessionQueue.async { [weak self] in
                 guard let self else { return }
                 self.setTorch(self.torchEnabled)
             }
+        }
+    }
+
+    func ensureTorchOff() {
+        sessionQueue.async { [weak self] in
+            self?.setTorch(false)
         }
     }
 

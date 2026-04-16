@@ -53,15 +53,112 @@ struct CameraView: View {
     @State private var showOptions = false
 
     var body: some View {
-        GeometryReader { _ in
+        NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    topToolbar
-                    viewfinder
-                    bottomPanel
+                CameraPreviewView(
+                    session: capture.session,
+                    onTap: { devicePoint, viewPoint in
+                        if showOptions {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showOptions = false
+                            }
+                            return
+                        }
+                        capture.focus(at: devicePoint)
+                        showFocus(at: viewPoint)
+                    }
+                )
+                .ignoresSafeArea()
+                .gesture(
+                    MagnifyGesture()
+                        .onChanged { value in
+                            let newZoom = pinchBaseZoom * value.magnification
+                            capture.setZoom(newZoom)
+                        }
+                        .onEnded { _ in
+                            pinchBaseZoom = capture.currentZoomFactor
+                        }
+                )
+
+                focusSquareOverlay
+
+                VStack {
+                    Spacer()
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.55)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 300)
                 }
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
+
+                VStack(spacing: 0) {
+                    Spacer()
+
+                    if showOptions {
+                        optionsPanel
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else {
+                        defaultBottomControls
+                    }
+                }
+
+                if capture.isRecording {
+                    VStack {
+                        recordingBadge
+                            .padding(.top, 80)
+                        Spacer()
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        if capture.capturedCount > 0 {
+                            capture.discardSession()
+                        }
+                        coordinator.isPresented = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 4) {
+                        Button {
+                            capture.toggleTorch()
+                        } label: {
+                            Image(systemName: flashIconName)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(capture.torchEnabled ? .yellow : .white)
+                                .frame(width: 36, height: 34)
+                        }
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showOptions.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 36, height: 34)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .background(.ultraThinMaterial, in: Capsule())
+                }
+            }
+        }
+        .onChange(of: capture.captureMode) { _, newMode in
+            if newMode == .photo {
+                capture.ensureTorchOff()
             }
         }
         .onAppear {
@@ -78,166 +175,38 @@ struct CameraView: View {
         .statusBarHidden()
     }
 
-    // MARK: - Top Toolbar
-
-    private var topToolbar: some View {
-        HStack(spacing: 0) {
-            Button {
-                if capture.capturedCount > 0 {
-                    capture.discardSession()
-                }
-                coordinator.isPresented = false
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-            }
-
-            Spacer()
-
-            Button {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    showOptions.toggle()
-                }
-            } label: {
-                Image(systemName: showOptions ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.white.opacity(0.15), in: Circle())
-            }
-
-            Spacer()
-
-            torchIndicator
-                .frame(width: 44, height: 44)
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 50)
-        .background(Color.black)
+    private var flashIconName: String {
+        capture.torchEnabled ? "bolt.fill" : "bolt.slash.fill"
     }
 
-    @ViewBuilder
-    private var torchIndicator: some View {
-        if !showOptions {
-            Image(systemName: capture.torchEnabled ? "bolt.fill" : "bolt.slash.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(capture.torchEnabled ? .yellow : .white.opacity(0.5))
-        }
-    }
+    // MARK: - Default Bottom Controls
 
-    // MARK: - Viewfinder
-
-    private var viewfinder: some View {
-        ZStack {
-            CameraPreviewView(
-                session: capture.session,
-                onTap: { devicePoint, viewPoint in
-                    capture.focus(at: devicePoint)
-                    showFocus(at: viewPoint)
-                }
-            )
-            .gesture(
-                MagnifyGesture()
-                    .onChanged { value in
-                        let newZoom = pinchBaseZoom * value.magnification
-                        capture.setZoom(newZoom)
-                    }
-                    .onEnded { _ in
-                        pinchBaseZoom = capture.currentZoomFactor
-                    }
-            )
-
-            focusSquareOverlay
-
-            if capture.isRecording {
-                VStack {
-                    recordingBadge
-                        .padding(.top, 12)
-                    Spacer()
-                }
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .padding(.horizontal, 2)
-    }
-
-    // MARK: - Bottom Panel
-
-    private var bottomPanel: some View {
+    private var defaultBottomControls: some View {
         VStack(spacing: 0) {
-            if showOptions {
-                optionsTray
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
             if capture.currentPosition == .back
                 && !capture.availableZoomPresets.isEmpty
                 && !capture.isRecording {
                 zoomPill
-                    .padding(.top, 14)
+                    .padding(.bottom, 16)
             }
 
-            if !capture.isRecording {
-                modePicker
-                    .padding(.top, 14)
-            }
-
-            shutterRow
-                .padding(.top, 20)
+            shutterButton
                 .padding(.bottom, 24)
-        }
-        .padding(.bottom, 4)
-        .background(Color.black)
-    }
 
-    // MARK: - Options Tray
-
-    private var optionsTray: some View {
-        HStack(spacing: 20) {
-            optionButton(
-                icon: capture.torchEnabled ? "bolt.fill" : "bolt.slash.fill",
-                label: "Flash",
-                isActive: capture.torchEnabled
-            ) {
-                capture.toggleTorch()
-            }
-
-            if capture.captureMode == .photo && capture.isLivePhotoSupported {
-                optionButton(
-                    icon: capture.livePhotoEnabled ? "livephoto" : "livephoto.slash",
-                    label: "Live",
-                    isActive: capture.livePhotoEnabled
-                ) {
-                    capture.livePhotoEnabled.toggle()
+            ZStack {
+                if !capture.isRecording {
+                    modePicker
                 }
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 12)
-    }
 
-    private func optionButton(
-        icon: String,
-        label: String,
-        isActive: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundStyle(isActive ? .yellow : .white)
-                Text(label)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.7))
+                HStack {
+                    thumbnailPreview
+                    Spacer()
+                    trailingControl
+                }
+                .padding(.horizontal, 20)
             }
-            .frame(width: 64, height: 60)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isActive ? Color.yellow.opacity(0.15) : Color.white.opacity(0.08))
-            )
+            .frame(height: 48)
+            .padding(.bottom, 16)
         }
     }
 
@@ -247,82 +216,35 @@ struct CameraView: View {
         HStack(spacing: 0) {
             ForEach(capture.availableZoomPresets) { preset in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(.easeInOut(duration: 0.25)) {
                         capture.rampZoom(to: preset.factor)
                         pinchBaseZoom = preset.factor
                     }
                 } label: {
                     let isActive = isZoomPresetActive(preset)
-                    Text(zoomLabel(for: preset, isActive: isActive))
-                        .font(.system(size: isActive ? 13 : 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(isActive ? .yellow : .white.opacity(0.6))
-                        .frame(width: 44, height: 44)
+                    Text(zoomLabel(for: preset))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(isActive ? .yellow : .white.opacity(0.5))
+                        .frame(width: 40, height: 40)
                         .background(
                             Circle()
-                                .fill(isActive ? Color.white.opacity(0.2) : Color.clear)
+                                .fill(isActive ? Color(white: 0.22) : Color.clear)
                         )
                 }
             }
         }
-        .padding(.horizontal, 6)
-        .background(
-            Capsule()
-                .fill(.black.opacity(0.5))
-        )
+        .padding(.horizontal, 4)
+        .background(Capsule().fill(Color.black.opacity(0.25)))
     }
 
     private func isZoomPresetActive(_ preset: CaptureService.ZoomPreset) -> Bool {
-        let tolerance: CGFloat = 0.15 * (preset.factor > 1 ? preset.factor : 1)
+        let tolerance: CGFloat = 0.2 * max(preset.factor, 1)
         return abs(capture.currentZoomFactor - preset.factor) < tolerance
     }
 
-    private func zoomLabel(for preset: CaptureService.ZoomPreset, isActive: Bool) -> String {
-        if isActive {
-            let display = capture.displayZoomFactor
-            if abs(display - round(display)) < 0.05 {
-                if display < 1 { return ".5" }
-                return String(format: "%.0f", display)
-            }
-            return String(format: "%.1f", display)
-        }
+    private func zoomLabel(for preset: CaptureService.ZoomPreset) -> String {
+        if preset.id == "1" { return "1\u{00D7}" }
         return preset.label
-    }
-
-    // MARK: - Mode Picker
-
-    private var modePicker: some View {
-        HStack(spacing: 24) {
-            ForEach(CaptureService.CaptureMode.allCases, id: \.self) { mode in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        capture.captureMode = mode
-                    }
-                } label: {
-                    Text(mode.rawValue)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(capture.captureMode == mode ? .yellow : .white.opacity(0.4))
-                }
-            }
-        }
-    }
-
-    // MARK: - Shutter Row
-
-    private var shutterRow: some View {
-        HStack(alignment: .center) {
-            thumbnailPreview
-                .frame(width: 52, alignment: .center)
-
-            Spacer()
-
-            shutterButton
-
-            Spacer()
-
-            trailingControl
-                .frame(width: 52, alignment: .center)
-        }
-        .padding(.horizontal, 24)
     }
 
     // MARK: - Shutter Button
@@ -341,30 +263,59 @@ struct CameraView: View {
             }
         } label: {
             ZStack {
-                Circle()
-                    .stroke(.white, lineWidth: 4)
-                    .frame(width: 74, height: 74)
-
                 if capture.captureMode == .photo {
                     Circle()
+                        .stroke(.white, lineWidth: 4)
+                        .frame(width: 76, height: 76)
+                    Circle()
                         .fill(.white)
-                        .frame(width: 62, height: 62)
+                        .frame(width: 64, height: 64)
                 } else {
+                    Circle()
+                        .stroke(Color(white: 0.35), lineWidth: 5)
+                        .frame(width: 76, height: 76)
                     if capture.isRecording {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(.red)
-                            .frame(width: 30, height: 30)
+                            .frame(width: 32, height: 32)
                     } else {
                         Circle()
                             .fill(.red)
-                            .frame(width: 62, height: 62)
+                            .frame(width: 64, height: 64)
                     }
                 }
             }
         }
     }
 
-    // MARK: - Thumbnail Preview
+    // MARK: - Mode Picker
+
+    private var modePicker: some View {
+        HStack(spacing: 2) {
+            ForEach(CaptureService.CaptureMode.allCases, id: \.self) { mode in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        capture.captureMode = mode
+                    }
+                } label: {
+                    Text(mode.rawValue)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(capture.captureMode == mode ? .black : .white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 8)
+                        .background {
+                            if capture.captureMode == mode {
+                                Capsule().fill(Color.yellow)
+                            }
+                        }
+                }
+            }
+        }
+        .padding(4)
+        .background(Color.black.opacity(0.25), in: Capsule())
+    }
+
+    // MARK: - Thumbnail
 
     private var thumbnailPreview: some View {
         Group {
@@ -372,11 +323,11 @@ struct CameraView: View {
                 Image(uiImage: thumb)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(.white.opacity(0.35), lineWidth: 1.5)
+                        Circle()
+                            .stroke(.white.opacity(0.3), lineWidth: 1.5)
                     )
                     .overlay(alignment: .topTrailing) {
                         if capture.capturedCount > 1 {
@@ -385,13 +336,13 @@ struct CameraView: View {
                                 .foregroundStyle(.white)
                                 .frame(width: 20, height: 20)
                                 .background(.red, in: Circle())
-                                .offset(x: 6, y: -6)
+                                .offset(x: 4, y: -4)
                         }
                     }
             } else {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(.white.opacity(0.08))
-                    .frame(width: 48, height: 48)
+                Circle()
+                    .fill(.white.opacity(0.12))
+                    .frame(width: 44, height: 44)
             }
         }
     }
@@ -407,9 +358,9 @@ struct CameraView: View {
                 coordinator.handleMultiCapture(items)
             } label: {
                 Text("Done")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.blue)
-                    .padding(.horizontal, 14)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.yellow)
+                    .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .background(.ultraThinMaterial, in: Capsule())
             }
@@ -418,10 +369,81 @@ struct CameraView: View {
                 capture.switchCamera()
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+            }
+        }
+    }
+
+    // MARK: - Options Panel
+
+    private var optionsPanel: some View {
+        VStack {
+            Spacer()
+
+            optionButtonsGrid
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal, 20)
+                .padding(.bottom, 60)
+        }
+    }
+
+    @ViewBuilder
+    private var optionButtonsGrid: some View {
+        if capture.captureMode == .photo {
+            HStack(spacing: 24) {
+                cameraOptionButton(
+                    icon: flashIconName,
+                    label: "FLASH",
+                    isActive: capture.torchEnabled
+                ) {
+                    capture.toggleTorch()
+                }
+
+                if capture.isLivePhotoSupported {
+                    cameraOptionButton(
+                        icon: capture.livePhotoEnabled ? "livephoto" : "livephoto.slash",
+                        label: "LIVE",
+                        isActive: capture.livePhotoEnabled
+                    ) {
+                        capture.livePhotoEnabled.toggle()
+                    }
+                }
+            }
+        } else {
+            HStack(spacing: 24) {
+                cameraOptionButton(
+                    icon: flashIconName,
+                    label: "FLASH",
+                    isActive: capture.torchEnabled
+                ) {
+                    capture.toggleTorch()
+                }
+            }
+        }
+    }
+
+    private func cameraOptionButton(
+        icon: String,
+        label: String,
+        isActive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.2))
+                        .frame(width: 64, height: 64)
+                    Image(systemName: icon)
+                        .font(.system(size: 22))
+                        .foregroundStyle(isActive ? .yellow : .white)
+                }
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
             }
         }
     }
@@ -457,7 +479,6 @@ struct CameraView: View {
             Circle()
                 .fill(.red)
                 .frame(width: 10, height: 10)
-
             Text(formattedDuration)
                 .font(.system(size: 15, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white)
@@ -469,9 +490,7 @@ struct CameraView: View {
 
     private var formattedDuration: String {
         let total = Int(capture.recordingDuration)
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%d:%02d", m, s)
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
 
