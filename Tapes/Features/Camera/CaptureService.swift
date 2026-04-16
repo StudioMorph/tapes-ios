@@ -129,6 +129,15 @@ final class CaptureService: NSObject, ObservableObject {
         }
     }
 
+    func removeItem(at index: Int) {
+        guard capturedItems.indices.contains(index) else { return }
+        capturedItems.remove(at: index)
+        capturedCount = capturedItems.count
+        if capturedItems.isEmpty {
+            onThumbnailUpdated?(UIImage())
+        }
+    }
+
     func discardSession() {
         capturedItems = []
         DispatchQueue.main.async { [weak self] in

@@ -99,6 +99,7 @@ struct CameraView: View {
     @State private var pinchBaseZoom: CGFloat = 1.0
     @State private var showOptions = false
     @State private var shutterFlash = false
+    @State private var showCarousel = false
 
     var body: some View {
         NavigationStack {
@@ -153,7 +154,10 @@ struct CameraView: View {
                 .ignoresSafeArea(edges: .bottom)
                 .allowsHitTesting(false)
 
-                if capture.isCountingDown {
+                if showCarousel {
+                    sessionCarouselOverlay
+                        .transition(.opacity)
+                } else if capture.isCountingDown {
                     countdownOverlay
                 } else {
                     VStack(spacing: 0) {
@@ -442,27 +446,33 @@ struct CameraView: View {
 
     private var thumbnailPreview: some View {
         Group {
-            if let thumb = lastThumbnail {
-                Image(uiImage: thumb)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(.white.opacity(0.3), lineWidth: 1.5)
-                    )
-                    .overlay(alignment: .topTrailing) {
-                        if capture.capturedCount > 1 {
-                            Text("\(capture.capturedCount)")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 20, height: 20)
-                                .background(.red, in: Circle())
-                                .offset(x: 4, y: -4)
-                        }
+            if let thumb = lastThumbnail, capture.capturedCount > 0 {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showCarousel = true
                     }
-                    .rotationEffect(orientationObserver.iconRotation)
+                } label: {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(.white.opacity(0.3), lineWidth: 1.5)
+                        )
+                        .overlay(alignment: .topTrailing) {
+                            if capture.capturedCount > 1 {
+                                Text("\(capture.capturedCount)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 20, height: 20)
+                                    .background(.red, in: Circle())
+                                    .offset(x: 4, y: -4)
+                            }
+                        }
+                        .rotationEffect(orientationObserver.iconRotation)
+                }
             } else {
                 Circle()
                     .fill(.white.opacity(0.12))
@@ -601,6 +611,104 @@ struct CameraView: View {
         }
         .disabled(disabled)
         .opacity(disabled ? 0.4 : 1)
+    }
+
+    // MARK: - Session Carousel
+
+    private var sessionCarouselOverlay: some View {
+        GeometryReader { geo in
+            let itemHeight = geo.size.height / 2
+
+            ZStack {
+                Color.black.opacity(0.6)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showCarousel = false
+                        }
+                    }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 32) {
+                        ForEach(Array(capture.capturedItems.enumerated()), id: \.offset) { index, item in
+                            carouselItem(item, at: index, height: itemHeight)
+                        }
+                    }
+                    .padding(.horizontal, 32)
+                }
+                .frame(height: itemHeight)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func carouselItem(_ item: PickedMedia, at index: Int, height: CGFloat) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                switch item {
+                case let .photo(image, _, _, _, _):
+                    let ratio = image.size.width / max(image.size.height, 1)
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: height * ratio, height: height)
+                        .clipped()
+
+                case let .video(url, _, _):
+                    if let url, let thumb = videoThumbnail(from: url) {
+                        let ratio = thumb.size.width / max(thumb.size.height, 1)
+                        ZStack {
+                            Image(uiImage: thumb)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: height * ratio, height: height)
+                                .clipped()
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
+                    } else {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(white: 0.2))
+                            .frame(width: height * 16 / 9, height: height)
+                            .overlay {
+                                Image(systemName: "video.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    capture.removeItem(at: index)
+                    if capture.capturedItems.isEmpty {
+                        showCarousel = false
+                        lastThumbnail = nil
+                    }
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.black.opacity(0.6), in: Circle())
+            }
+            .offset(x: -4, y: 4)
+        }
+    }
+
+    private func videoThumbnail(from url: URL) -> UIImage? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 600, height: 600)
+        if let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) {
+            return UIImage(cgImage: cgImage)
+        }
+        return nil
     }
 
     // MARK: - Countdown Overlay
