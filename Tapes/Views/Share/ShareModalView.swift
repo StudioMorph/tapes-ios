@@ -38,7 +38,6 @@ struct ShareModalView: View {
                     }
 
                     exportSection
-                    saveToDeviceSection
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.top, Tokens.Spacing.l)
@@ -115,24 +114,6 @@ struct ShareModalView: View {
                 action: {
                     dismiss()
                     // TODO: Trigger export coordinator
-                }
-            )
-        }
-    }
-
-    // MARK: - Save to Device
-
-    private var saveToDeviceSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            SectionHeader(title: "Save to Device")
-
-            shareOptionRow(
-                icon: "photo.on.rectangle.angled",
-                title: "Save Clips to Album",
-                subtitle: "Save all clips individually to a Photos album",
-                action: {
-                    dismiss()
-                    // TODO: Trigger save to device
                 }
             )
         }

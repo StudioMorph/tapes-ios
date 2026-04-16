@@ -87,7 +87,7 @@ struct ShareLinkSection: View {
                 .pickerStyle(.segmented)
 
                 securedToggle
-                linkPill
+                linkBlock
                 if securedByEmail {
                     emailInputRow
                     authorisedUsersList
@@ -151,55 +151,67 @@ struct ShareLinkSection: View {
         }
     }
 
-    // MARK: - Link Pill
+    // MARK: - Link Block (URL row + Share Link button in one container)
 
-    private var linkPill: some View {
-        HStack(spacing: Tokens.Spacing.s) {
-            Image(systemName: "link")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Tokens.Colors.secondaryText)
+    private var linkBlock: some View {
+        VStack(spacing: Tokens.Spacing.s) {
+            HStack(spacing: Tokens.Spacing.s) {
+                Image(systemName: "link")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Tokens.Colors.secondaryText)
 
-            Text(linkDisplayString)
-                .font(.system(size: 14, weight: .regular, design: .monospaced))
-                .foregroundStyle(Tokens.Colors.primaryText)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if uploadCoordinator.isUploading && cachedResponse == nil {
-                ProgressView().controlSize(.small)
-            }
-
-            Button {
-                copyLinkTapped()
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 14, weight: .semibold))
+                Text(linkDisplayString)
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
                     .foregroundStyle(Tokens.Colors.primaryText)
-                    .frame(width: 32, height: 32)
-                    .background(Tokens.Colors.primaryBackground)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Copy link")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                shareLinkTapped()
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Tokens.Colors.primaryText)
-                    .frame(width: 32, height: 32)
-                    .background(Tokens.Colors.primaryBackground)
-                    .clipShape(Circle())
+                if uploadCoordinator.isUploading && cachedResponse == nil {
+                    ProgressView().controlSize(.small)
+                }
+
+                Button {
+                    copyLinkTapped()
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Tokens.Colors.systemBlue)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Copy link")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Share link")
+
+            shareLinkButton
         }
-        .padding(.horizontal, Tokens.Spacing.s + 2)
-        .padding(.vertical, 6)
+        .padding(Tokens.Spacing.s)
         .background(Tokens.Colors.primaryBackground)
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+    }
+
+    // MARK: - Share Link Button
+
+    @ViewBuilder
+    private var shareLinkButton: some View {
+        let label = Label("Share Link", systemImage: "square.and.arrow.up")
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity)
+
+        if securedByEmail {
+            Button { shareLinkTapped() } label: { label }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.regular)
+                .tint(Tokens.Colors.systemBlue)
+        } else {
+            Button { shareLinkTapped() } label: { label }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.regular)
+                .tint(Tokens.Colors.systemBlue)
+        }
     }
 
     private var linkDisplayString: String {
@@ -217,34 +229,50 @@ struct ShareLinkSection: View {
                 .foregroundStyle(Tokens.Colors.secondaryText)
                 .frame(width: 24)
 
-            TextField("name@example.com", text: $emailInput)
-                .textContentType(.emailAddress)
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.system(size: 15))
-                .onSubmit {
-                    if canInvite { inviteTapped() }
+            ZStack(alignment: .leading) {
+                if emailInput.isEmpty {
+                    Text("name@example.com")
+                        .font(.system(size: 15))
+                        .foregroundColor(Color(.placeholderText))
+                        .allowsHitTesting(false)
                 }
+
+                TextField("", text: $emailInput)
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.system(size: 15))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .tint(Tokens.Colors.systemBlue)
+                    .onSubmit {
+                        if canInvite { inviteTapped() }
+                    }
+            }
 
             Button {
                 inviteTapped()
             } label: {
                 if isInviting {
-                    ProgressView().controlSize(.small)
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
                 } else {
-                    Text("Invite")
-                        .font(.system(size: 14, weight: .semibold))
+                    Label("Invite", systemImage: "paperplane.fill")
+                        .font(.subheadline.weight(.semibold))
                 }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(canInvite ? Tokens.Colors.systemBlue : Tokens.Colors.tertiaryText)
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .tint(Tokens.Colors.systemBlue)
             .disabled(!canInvite)
         }
-        .padding(.horizontal, Tokens.Spacing.m)
-        .padding(.vertical, Tokens.Spacing.s + 2)
+        .padding(.leading, Tokens.Spacing.m)
+        .padding(.trailing, 10)
+        .frame(height: 48)
         .background(Tokens.Colors.primaryBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
+        .clipShape(Capsule())
     }
 
     // MARK: - Authorised Users
