@@ -15,10 +15,29 @@ final class CaptureService: NSObject, ObservableObject {
     @Published var livePhotoEnabled = true
     @Published private(set) var isLivePhotoSupported = false
     @Published private(set) var capturedCount = 0
+    @Published var timerDelay: TimerDelay = .off
+    @Published private(set) var isCountingDown = false
+    @Published private(set) var countdownRemaining = 0
 
     enum CaptureMode: String, CaseIterable {
         case video = "VIDEO"
         case photo = "PHOTO"
+    }
+
+    enum TimerDelay: Int, CaseIterable {
+        case off = 0
+        case three = 3
+        case five = 5
+        case ten = 10
+
+        var next: TimerDelay {
+            switch self {
+            case .off: return .three
+            case .three: return .five
+            case .five: return .ten
+            case .ten: return .off
+            }
+        }
     }
 
     struct ZoomPreset: Identifiable {
@@ -48,6 +67,7 @@ final class CaptureService: NSObject, ObservableObject {
 
     private var recordingTimer: Timer?
     private var recordingStartTime: Date?
+    private var countdownTimer: Timer?
 
     // MARK: - Multi-capture
 
@@ -387,6 +407,36 @@ final class CaptureService: NSObject, ObservableObject {
 
             self.photoOutput.capturePhoto(with: settings, delegate: self)
         }
+    }
+
+    func capturePhotoWithTimer() {
+        guard captureMode == .photo else { return }
+
+        if timerDelay == .off {
+            capturePhoto()
+            return
+        }
+
+        countdownRemaining = timerDelay.rawValue
+        isCountingDown = true
+
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            self.countdownRemaining -= 1
+            if self.countdownRemaining <= 0 {
+                timer.invalidate()
+                self.countdownTimer = nil
+                self.isCountingDown = false
+                self.capturePhoto()
+            }
+        }
+    }
+
+    func cancelCountdown() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        isCountingDown = false
+        countdownRemaining = 0
     }
 
     // MARK: - Video Recording

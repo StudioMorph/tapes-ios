@@ -66,6 +66,7 @@ struct CameraView: View {
                             }
                             return
                         }
+                        if capture.isCountingDown { return }
                         capture.focus(at: devicePoint)
                         showFocus(at: viewPoint)
                     }
@@ -96,14 +97,18 @@ struct CameraView: View {
                 .ignoresSafeArea(edges: .bottom)
                 .allowsHitTesting(false)
 
-                VStack(spacing: 0) {
-                    Spacer()
+                if capture.isCountingDown {
+                    countdownOverlay
+                } else {
+                    VStack(spacing: 0) {
+                        Spacer()
 
-                    if showOptions {
-                        optionsPanel
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else {
-                        defaultBottomControls
+                        if showOptions {
+                            optionsPanel
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        } else {
+                            defaultBottomControls
+                        }
                     }
                 }
 
@@ -119,46 +124,32 @@ struct CameraView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        if capture.capturedCount > 0 {
-                            capture.discardSession()
+                    if !capture.isCountingDown {
+                        Button {
+                            if capture.capturedCount > 0 {
+                                capture.discardSession()
+                            }
+                            coordinator.isPresented = false
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
                         }
-                        coordinator.isPresented = false
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 4) {
-                        Button {
-                            capture.toggleTorch()
-                        } label: {
-                            Image(systemName: flashIconName)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(capture.torchEnabled ? .yellow : .white)
-                                .frame(width: 36, height: 34)
-                        }
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                showOptions.toggle()
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 36, height: 34)
-                        }
+                    if !capture.isCountingDown {
+                        topTrailingToolbar
                     }
-                    .padding(.horizontal, 4)
-                    .background(.ultraThinMaterial, in: Capsule())
                 }
             }
         }
         .onChange(of: capture.captureMode) { _, newMode in
             if newMode == .photo {
                 capture.ensureTorchOff()
+            }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showOptions = false
             }
         }
         .onAppear {
@@ -177,6 +168,47 @@ struct CameraView: View {
 
     private var flashIconName: String {
         capture.torchEnabled ? "bolt.fill" : "bolt.slash.fill"
+    }
+
+    // MARK: - Top Trailing Toolbar
+
+    @ViewBuilder
+    private var topTrailingToolbar: some View {
+        if capture.captureMode == .video {
+            Button {
+                capture.toggleTorch()
+            } label: {
+                Image(systemName: flashIconName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(capture.torchEnabled ? .yellow : .white)
+                    .frame(width: 36, height: 34)
+            }
+            .padding(.horizontal, 4)
+            .background(.ultraThinMaterial, in: Capsule())
+        } else {
+            HStack(spacing: 4) {
+                Button {
+                    capture.toggleTorch()
+                } label: {
+                    Image(systemName: flashIconName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(capture.torchEnabled ? .yellow : .white)
+                        .frame(width: 36, height: 34)
+                }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showOptions.toggle()
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 34)
+                }
+            }
+            .padding(.horizontal, 4)
+            .background(.ultraThinMaterial, in: Capsule())
+        }
     }
 
     // MARK: - Default Bottom Controls
@@ -253,7 +285,7 @@ struct CameraView: View {
         Button {
             switch capture.captureMode {
             case .photo:
-                capture.capturePhoto()
+                capture.capturePhotoWithTimer()
             case .video:
                 if capture.isRecording {
                     capture.stopRecording()
@@ -375,52 +407,66 @@ struct CameraView: View {
         }
     }
 
-    // MARK: - Options Panel
+    // MARK: - Options Panel (Photo mode only)
 
     private var optionsPanel: some View {
         VStack {
             Spacer()
 
-            optionButtonsGrid
-                .padding(.horizontal, 24)
-                .padding(.vertical, 20)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal, 20)
-                .padding(.bottom, 60)
+            HStack(spacing: 24) {
+                cameraOptionButton(
+                    icon: flashIconName,
+                    label: "FLASH",
+                    isActive: capture.torchEnabled
+                ) {
+                    capture.toggleTorch()
+                }
+
+                cameraOptionButton(
+                    icon: capture.livePhotoEnabled ? "livephoto" : "livephoto.slash",
+                    label: "LIVE",
+                    isActive: capture.livePhotoEnabled && capture.isLivePhotoSupported,
+                    disabled: !capture.isLivePhotoSupported
+                ) {
+                    capture.livePhotoEnabled.toggle()
+                }
+
+                timerOptionButton
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .padding(.horizontal, 20)
+            .padding(.bottom, 60)
         }
     }
 
-    @ViewBuilder
-    private var optionButtonsGrid: some View {
-        if capture.captureMode == .photo {
-            HStack(spacing: 24) {
-                cameraOptionButton(
-                    icon: flashIconName,
-                    label: "FLASH",
-                    isActive: capture.torchEnabled
-                ) {
-                    capture.toggleTorch()
-                }
+    private var timerOptionButton: some View {
+        Button {
+            capture.timerDelay = capture.timerDelay.next
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.2))
+                        .frame(width: 64, height: 64)
 
-                if capture.isLivePhotoSupported {
-                    cameraOptionButton(
-                        icon: capture.livePhotoEnabled ? "livephoto" : "livephoto.slash",
-                        label: "LIVE",
-                        isActive: capture.livePhotoEnabled
-                    ) {
-                        capture.livePhotoEnabled.toggle()
+                    if capture.timerDelay != .off {
+                        Circle()
+                            .stroke(Color.yellow, style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                            .frame(width: 52, height: 52)
+                        Text("\(capture.timerDelay.rawValue)")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(.yellow)
+                    } else {
+                        Image(systemName: "timer")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.white)
                     }
                 }
-            }
-        } else {
-            HStack(spacing: 24) {
-                cameraOptionButton(
-                    icon: flashIconName,
-                    label: "FLASH",
-                    isActive: capture.torchEnabled
-                ) {
-                    capture.toggleTorch()
-                }
+                Text("TIMER")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
             }
         }
     }
@@ -429,6 +475,7 @@ struct CameraView: View {
         icon: String,
         label: String,
         isActive: Bool,
+        disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -437,14 +484,55 @@ struct CameraView: View {
                     Circle()
                         .fill(Color(white: 0.2))
                         .frame(width: 64, height: 64)
+
+                    if isActive && !disabled {
+                        Circle()
+                            .stroke(Color.yellow, style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                            .frame(width: 52, height: 52)
+                    }
+
                     Image(systemName: icon)
                         .font(.system(size: 22))
-                        .foregroundStyle(isActive ? .yellow : .white)
+                        .foregroundStyle(isActive && !disabled ? .yellow : .white)
                 }
                 Text(label)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.7))
             }
+        }
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
+    }
+
+    // MARK: - Countdown Overlay
+
+    private var countdownOverlay: some View {
+        VStack {
+            HStack {
+                Text("\(capture.countdownRemaining)")
+                    .font(.system(size: 96, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .padding(.leading, 24)
+                    .padding(.top, 80)
+                Spacer()
+            }
+
+            Spacer()
+
+            Button {
+                capture.cancelCountdown()
+            } label: {
+                ZStack {
+                    Circle()
+                        .stroke(Color(white: 0.35), lineWidth: 5)
+                        .frame(width: 76, height: 76)
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.white)
+                        .frame(width: 28, height: 28)
+                }
+            }
+            .padding(.bottom, 60)
         }
     }
 
