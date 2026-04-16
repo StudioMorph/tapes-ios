@@ -98,6 +98,7 @@ struct CameraView: View {
     @State private var lastThumbnail: UIImage?
     @State private var pinchBaseZoom: CGFloat = 1.0
     @State private var showOptions = false
+    @State private var shutterFlash = false
 
     var body: some View {
         NavigationStack {
@@ -129,6 +130,13 @@ struct CameraView: View {
                             pinchBaseZoom = capture.currentZoomFactor
                         }
                 )
+
+                if shutterFlash {
+                    Color.black
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
 
                 focusSquareOverlay
                     .ignoresSafeArea()
@@ -209,6 +217,16 @@ struct CameraView: View {
                 windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
             }
 
+            capture.onShutterFired = {
+                withAnimation(.easeIn(duration: 0.05)) {
+                    shutterFlash = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        shutterFlash = false
+                    }
+                }
+            }
             capture.onThumbnailUpdated = { image in
                 lastThumbnail = image
             }

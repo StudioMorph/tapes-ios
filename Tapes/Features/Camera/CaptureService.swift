@@ -81,6 +81,7 @@ final class CaptureService: NSObject, ObservableObject {
 
     // MARK: - Callbacks
 
+    var onShutterFired: (() -> Void)?
     var onPhotoCaptured: ((UIImage) -> Void)?
     var onVideoCaptured: ((URL, TimeInterval) -> Void)?
     var onSessionComplete: (([PickedMedia]) -> Void)?
@@ -542,6 +543,15 @@ final class CaptureService: NSObject, ObservableObject {
 // MARK: - AVCapturePhotoCaptureDelegate
 
 extension CaptureService: AVCapturePhotoCaptureDelegate {
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        willCapturePhotoFor resolvedSettings: AVCaptureResolvedPhotoSettings
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            self?.onShutterFired?()
+        }
+    }
+
     func photoOutput(
         _ output: AVCapturePhotoOutput,
         didFinishProcessingPhoto photo: AVCapturePhoto,
