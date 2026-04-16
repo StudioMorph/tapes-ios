@@ -42,6 +42,20 @@ class CameraCoordinator: NSObject, ObservableObject {
         }
     }
 
+    func handleMultiCapture(_ media: [PickedMedia]) {
+        guard !media.isEmpty else {
+            isPresented = false
+            return
+        }
+
+        saveMediaToPhotosLibrary(media) { [weak self] savedMedia in
+            DispatchQueue.main.async {
+                self?.completion?(savedMedia)
+                self?.isPresented = false
+            }
+        }
+    }
+
     // MARK: - Photos Save
 
     private func saveMediaToPhotosLibrary(_ media: [PickedMedia], completion: @escaping ([PickedMedia]) -> Void) {
