@@ -100,6 +100,7 @@ struct CameraView: View {
     @State private var showOptions = false
     @State private var shutterFlash = false
     @State private var showCarousel = false
+    @State private var videoThumbnailCache: [URL: UIImage] = [:]
 
     var body: some View {
         NavigationStack {
@@ -449,6 +450,7 @@ struct CameraView: View {
         Group {
             if let thumb = lastThumbnail, capture.capturedCount > 0 {
                 Button {
+                    buildVideoThumbnailCache()
                     withAnimation(.easeInOut(duration: 0.25)) {
                         showCarousel = true
                     }
@@ -673,7 +675,7 @@ struct CameraView: View {
                         .clipped()
 
                 case let .video(url, _, _):
-                    if let url, let thumb = videoThumbnail(from: url) {
+                    if let url, let thumb = videoThumbnailCache[url] {
                         let ratio = thumb.size.width / max(thumb.size.height, 1)
                         ZStack {
                             Image(uiImage: thumb)
@@ -718,15 +720,18 @@ struct CameraView: View {
         }
     }
 
-    private func videoThumbnail(from url: URL) -> UIImage? {
-        let asset = AVURLAsset(url: url)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 600, height: 600)
-        if let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) {
-            return UIImage(cgImage: cgImage)
+    private func buildVideoThumbnailCache() {
+        for item in capture.capturedItems {
+            if case let .video(url, _, _) = item, let url, videoThumbnailCache[url] == nil {
+                let asset = AVURLAsset(url: url)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 600, height: 600)
+                if let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) {
+                    videoThumbnailCache[url] = UIImage(cgImage: cgImage)
+                }
+            }
         }
-        return nil
     }
 
     // MARK: - Countdown Overlay
