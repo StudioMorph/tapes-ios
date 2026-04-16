@@ -175,6 +175,7 @@ struct CameraView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar(showCarousel ? .hidden : .visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if !capture.isCountingDown {
@@ -620,23 +621,40 @@ struct CameraView: View {
             let itemHeight = geo.size.height / 2
 
             ZStack {
-                Color.black.opacity(0.6)
+                Rectangle()
+                    .fill(.ultraThinMaterial)
                     .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showCarousel = false
-                        }
-                    }
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 32) {
-                        ForEach(Array(capture.capturedItems.enumerated()), id: \.offset) { index, item in
-                            carouselItem(item, at: index, height: itemHeight)
+                VStack(spacing: 0) {
+                    HStack {
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showCarousel = false
+                            }
+                        } label: {
+                            Text("Done")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(.yellow)
                         }
                     }
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+
+                    Spacer()
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 32) {
+                            ForEach(Array(capture.capturedItems.enumerated()), id: \.offset) { index, item in
+                                carouselItem(item, at: index, height: itemHeight)
+                            }
+                        }
+                        .padding(.horizontal, 32)
+                    }
+                    .frame(height: itemHeight)
+
+                    Spacer()
                 }
-                .frame(height: itemHeight)
             }
         }
     }
