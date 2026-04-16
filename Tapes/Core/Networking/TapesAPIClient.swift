@@ -90,11 +90,36 @@ actor TapesAPIClient {
         return response
     }
 
+    // MARK: - Share Variants
+
+    /// One of the 4 permanent share links every tape exposes.
+    ///
+    /// `view`/`collab` selects the recipient role; `open`/`protected` selects whether
+    /// the link is wide-open (anyone with the URL can add the tape) or gated behind
+    /// a server-side email allow-list.
+    enum ShareVariant: String, Codable, CaseIterable, Sendable {
+        case viewOpen = "view_open"
+        case viewProtected = "view_protected"
+        case collabOpen = "collab_open"
+        case collabProtected = "collab_protected"
+
+        var isProtected: Bool {
+            self == .viewProtected || self == .collabProtected
+        }
+
+        var isCollaborative: Bool {
+            self == .collabOpen || self == .collabProtected
+        }
+    }
+
     // MARK: - Tapes
 
     struct CreateTapeResponse: Decodable {
         let tapeId: String
         let shareId: String
+        let shareIdCollab: String
+        let shareIdViewProtected: String
+        let shareIdCollabProtected: String
         let shareUrl: String
         let deepLink: String
         let createdAt: String
@@ -103,10 +128,22 @@ actor TapesAPIClient {
         enum CodingKeys: String, CodingKey {
             case tapeId = "tape_id"
             case shareId = "share_id"
+            case shareIdCollab = "share_id_collab"
+            case shareIdViewProtected = "share_id_view_protected"
+            case shareIdCollabProtected = "share_id_collab_protected"
             case shareUrl = "share_url"
             case deepLink = "deep_link"
             case createdAt = "created_at"
             case clipsUploaded = "clips_uploaded"
+        }
+
+        func shareId(for variant: ShareVariant) -> String {
+            switch variant {
+            case .viewOpen: return shareId
+            case .collabOpen: return shareIdCollab
+            case .viewProtected: return shareIdViewProtected
+            case .collabProtected: return shareIdCollabProtected
+            }
         }
     }
 
@@ -129,8 +166,9 @@ actor TapesAPIClient {
         let mode: String
         let ownerId: String
         let shareId: String
-        let shareIdCollab: String?
-        let openAccess: Bool?
+        let shareIdCollab: String
+        let shareIdViewProtected: String
+        let shareIdCollabProtected: String
         let expiresAt: String?
         let createdAt: String
         let updatedAt: String
@@ -143,32 +181,27 @@ actor TapesAPIClient {
             case ownerId = "owner_id"
             case shareId = "share_id"
             case shareIdCollab = "share_id_collab"
-            case openAccess = "open_access"
+            case shareIdViewProtected = "share_id_view_protected"
+            case shareIdCollabProtected = "share_id_collab_protected"
             case expiresAt = "expires_at"
             case createdAt = "created_at"
             case updatedAt = "updated_at"
             case clipCount = "clip_count"
             case collaboratorCount = "collaborator_count"
         }
-    }
 
-    struct OpenAccessResponse: Decodable {
-        let tapeId: String
-        let openAccess: Bool
-
-        enum CodingKeys: String, CodingKey {
-            case tapeId = "tape_id"
-            case openAccess = "open_access"
+        func shareId(for variant: ShareVariant) -> String {
+            switch variant {
+            case .viewOpen: return shareId
+            case .collabOpen: return shareIdCollab
+            case .viewProtected: return shareIdViewProtected
+            case .collabProtected: return shareIdCollabProtected
+            }
         }
     }
 
     func getTape(tapeId: String) async throws -> TapeInfo {
         try await get(path: "/tapes/\(tapeId)")
-    }
-
-    func updateOpenAccess(tapeId: String, openAccess: Bool) async throws -> OpenAccessResponse {
-        struct Body: Encodable { let open_access: Bool }
-        return try await put(path: "/tapes/\(tapeId)/open-access", body: Body(open_access: openAccess))
     }
 
     func deleteTape(tapeId: String) async throws {
@@ -266,6 +299,9 @@ actor TapesAPIClient {
         let tapeId: String
         let title: String
         let mode: String
+        let accessMode: String?
+        let shareVariant: ShareVariant?
+        let isProtected: Bool?
         let ownerName: String?
         let clipCount: Int
         let status: String
@@ -275,6 +311,9 @@ actor TapesAPIClient {
         enum CodingKeys: String, CodingKey {
             case tapeId = "tape_id"
             case title, mode
+            case accessMode = "access_mode"
+            case shareVariant = "share_variant"
+            case isProtected = "is_protected"
             case ownerName = "owner_name"
             case clipCount = "clip_count"
             case status
@@ -289,22 +328,24 @@ actor TapesAPIClient {
 
     // MARK: - Collaborators
 
-    struct CollaboratorInfo: Decodable, Identifiable {
+    struct CollaboratorInfo: Decodable, Identifiable, Hashable {
         let userId: String?
         let email: String
         let name: String?
         let role: String
         let status: String
-        let accessMode: String?
+        let shareVariant: ShareVariant?
         let joinedAt: String?
 
-        var id: String { userId ?? email }
+        /// Identity is scoped by (email, variant) — the same email can appear
+        /// on two different protected lists independently.
+        var id: String { "\(email.lowercased())|\(shareVariant?.rawValue ?? "_owner")" }
         var displayName: String { name ?? email }
 
         enum CodingKeys: String, CodingKey {
             case userId = "user_id"
             case email, name, role, status
-            case accessMode = "access_mode"
+            case shareVariant = "share_variant"
             case joinedAt = "joined_at"
         }
     }
@@ -318,8 +359,17 @@ actor TapesAPIClient {
         return response.collaborators
     }
 
-    func inviteCollaborator(tapeId: String, email: String, role: String = "collaborator", accessMode: String = "view") async throws {
-        let body = ["email": email, "role": role, "access_mode": accessMode]
+    func inviteCollaborator(
+        tapeId: String,
+        email: String,
+        shareVariant: ShareVariant,
+        role: String = "collaborator"
+    ) async throws {
+        let body: [String: String] = [
+            "email": email,
+            "role": role,
+            "share_variant": shareVariant.rawValue,
+        ]
         let _: CollaboratorInfo = try await post(path: "/tapes/\(tapeId)/collaborators", body: body)
     }
 
@@ -328,9 +378,9 @@ actor TapesAPIClient {
         let _: [String: String] = try await put(path: "/tapes/\(tapeId)/collaborators/\(userId)/role", body: body)
     }
 
-    func revokeCollaborator(tapeId: String, identifier: String) async throws {
+    func revokeCollaborator(tapeId: String, identifier: String, shareVariant: ShareVariant) async throws {
         let encoded = identifier.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? identifier
-        try await delete(path: "/tapes/\(tapeId)/collaborators/\(encoded)")
+        try await delete(path: "/tapes/\(tapeId)/collaborators/\(encoded)?share_variant=\(shareVariant.rawValue)")
     }
 
     // MARK: - Sync

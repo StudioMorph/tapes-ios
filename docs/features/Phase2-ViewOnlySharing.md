@@ -8,13 +8,16 @@ Complete view-only sharing flow: share a tape via link, recipients receive push 
 
 ### Sharing Side (Owner)
 ```
-Tap share icon → ShareModalView → ShareFlowView
-  → POST /tapes (create server record)
-  → POST /tapes/:id/collaborators (invite by email)
+Tap share icon → ShareModalView (with embedded ShareLinkSection)
+  → POST /tapes (mints all 4 share IDs on first share)
+  → Copy link / Share link / Invite email  (any of these triggers R2 upload if needed)
+  → POST /tapes/:id/collaborators { email, share_variant } (per invite)
   → Server sends APNs push to invited user
-  → Share link displayed: tapes://t/{shareId}
-  → UIActivityViewController for link distribution
+  → Share link shown in modal: tapes://t/{shareId}  (one of 4 variants)
+  → System share sheet for link distribution
 ```
+
+> The dedicated `ShareFlowView` sub-sheet has been removed — sharing now happens inline in `ShareModalView` via `ShareLinkSection`.
 
 ### Recipient Side
 ```

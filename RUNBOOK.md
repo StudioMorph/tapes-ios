@@ -235,7 +235,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
     - `Tapes/Core/Auth/AuthManager.swift`
     - `Tapes/Core/Networking/TapesAPIClient.swift`
     - `Tapes/Core/Networking/ShareUploadCoordinator.swift`
-    - `Tapes/Views/Share/ShareFlowView.swift`, `Tapes/Views/Share/SharedTapesView.swift`
+    - `Tapes/Views/Share/ShareModalView.swift`, `Tapes/Views/Share/ShareLinkSection.swift`, `Tapes/Views/Share/SharedTapesView.swift`
     - `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift`
     - `Tapes/Core/Navigation/NavigationCoordinator.swift`
   - **Design System**
@@ -301,8 +301,9 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 
 - `Tapes/Core/Auth/AuthManager.swift` — Apple ID auth + server JWT exchange
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API contract (tapes, clips, collaborators, shares, manifest)
-- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator (progress overlay, completion dialogs)
-- `Tapes/Views/Share/ShareFlowView.swift` — sender share flow (uploads clips to R2)
+- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator (progress overlay, completion dialogs); exposes `resultCreateResponse` with all four share IDs
+- `Tapes/Views/Share/ShareModalView.swift` — single entry point modal for sharing (Export, Save Clips, and inline `ShareLinkSection`)
+- `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI: `Viewing / Collaborating` role tabs, `Secured by email` toggle, link pill with copy + system share sheet, invite compose, authorised-users chips
 - `Tapes/Views/Share/SharedTapesView.swift` — Shared tab (renders real `TapeCardView` components)
 - `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — recipient download + tape builder (writes assets into Photos library + tape-specific album)
 - `Tapes/Core/Navigation/NavigationCoordinator.swift` — deep link handling
@@ -314,6 +315,16 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 3. Assets are saved to the Photos library and associated with a per-tape album (`"[Tape Name]"` for view-only, `"[Tape Name] - Collab"` for collaborative duplicates).
 4. A real `Tape` with `ShareInfo` metadata is created and persisted locally, linked by `PHAsset.localIdentifier`.
 5. Tape appears in the "Shared" tab as a normal tape card.
+
+### Share Model — Four Independent Links
+
+Every tape has four share links, one per cell of the `role × protection` matrix: `view_open`, `view_protected`, `collab_open`, `collab_protected`. All four IDs are minted on creation and back-filled for older tapes on first access.
+
+- **Default action is "share link"**: the root share modal shows the current variant's URL and copy / system-share buttons.
+- **`Secured by email` toggle** flips between the `*_open` and `*_protected` variants for the currently selected role.
+- **Invites are sent one by one** and are scoped to a single variant. Revoking a collaborator only affects that variant.
+- The **first invite / link-share action** on a tape whose clips have not yet been uploaded triggers the R2 upload; subsequent invites reuse the cached `CreateTapeResponse`.
+- The `collaborators` table carries a `share_variant` column with unique index `(tape_id, LOWER(email), COALESCE(share_variant, '_owner'))` so the same email can be invited independently to multiple variants.
 
 ### Collaborative Tapes
 

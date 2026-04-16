@@ -8,18 +8,17 @@ Phase 3 extends the view-only sharing from Phase 2 to support collaborative tape
 
 ## Key UI Components
 
-### CollaboratorsView
-- Full-screen modal presented from `SharedTapeDetailView`
-- Invite section with email input and role picker (Collaborator / Co-Admin)
-- Member list with contextual menu (promote, demote, revoke) — owner only
-- Role badges with colour coding (Owner: orange, Co-Admin: blue, Collaborator: grey)
-- Destructive action confirmation alert for revocation
+### ShareLinkSection (embedded in `ShareModalView`)
+- Inline sharing UI on the owner's side — replaces the old standalone `CollaboratorsView`.
+- `Viewing tape` / `Collaborating tape` role tabs switch which of the 4 share variants is active.
+- `Secured by email` toggle flips between open and protected variants for that role.
+- "Authorised users" chip list is per-variant — revoking a chip only affects that variant.
+- Invites are sent **one per tap**, scoped to the currently-selected `share_variant`.
 
 ### SharedTapeDetailView (Enhanced)
 - **Contribute section** — PhotosPicker for adding clips to collaborative tapes
 - **Upload progress** — per-clip progress with overall percentage
 - **Admin section** — Sync Push button with rate-limit feedback
-- **Collaborator toolbar** — person.2 icon in navigation bar opens CollaboratorsView
 - **Pull-to-refresh** — fetches latest manifest and downloads new clips incrementally
 - **Contributor attribution** — clip rows show contributor name
 
@@ -40,10 +39,9 @@ Phase 3 extends the view-only sharing from Phase 2 to support collaborative tape
 4. Only new clips are downloaded (incremental)
 
 ### Collaborator Management
-1. `TapesAPIClient.listCollaborators()` → display in CollaboratorsView
-2. `inviteCollaborator()` → backend creates record, sends push to invitee
-3. `updateRole()` → backend validates owner permission, updates role
-4. `revokeCollaborator()` → backend sets status to revoked, expires tracking
+1. `TapesAPIClient.listCollaborators()` → display chips grouped by `share_variant` inside `ShareLinkSection`
+2. `inviteCollaborator(email, shareVariant:)` → backend creates a record scoped to the variant, sends push to invitee
+3. `revokeCollaborator(email, shareVariant:)` → backend sets status to `revoked` **for that variant only**; clip download tracking is expired only if the user has no remaining active variants on the tape
 
 ## Backend Changes
 

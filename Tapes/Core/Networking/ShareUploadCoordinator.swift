@@ -7,6 +7,15 @@ import AudioToolbox
 import BackgroundTasks
 import os
 
+/// Coordinates background uploads for the share flow.
+///
+/// Upload semantics (4-link model):
+///   • A tape only needs to be uploaded once. Any share action (copy link,
+///     share sheet, send first invite) on a tape whose clips have not yet
+///     been uploaded triggers `ensureTapeUploaded`.
+///   • `ensureTapeUploaded` is idempotent: if the server reports
+///     `clips_uploaded == true`, we just cache the response and return.
+///   • `contributeClips` uploads unsynced clips on a shared-collab tape.
 @MainActor
 public class ShareUploadCoordinator: ObservableObject {
 
@@ -23,10 +32,12 @@ public class ShareUploadCoordinator: ObservableObject {
 
     // MARK: - Result (available after success)
 
-    @Published var resultShareId: String?
-    @Published var resultShareUrl: String?
+    /// Whether the most recent upload was for a collaborative share.
+    /// `TapesListView` reads this to decide whether to fork the owner's
+    /// tape into a "Collab" duplicate in the Shared tab.
     @Published var resultMode: ShareMode = .viewing
     @Published var resultRemoteTapeId: String?
+    @Published var resultCreateResponse: TapesAPIClient.CreateTapeResponse?
 
     // MARK: - Internal State
 
@@ -36,7 +47,6 @@ public class ShareUploadCoordinator: ObservableObject {
 
     private var pendingTapeId: String?
     private var pendingCreateResponse: TapesAPIClient.CreateTapeResponse?
-    private var pendingInvites: [String] = []
     private(set) var sourceTape: Tape?
 
     enum ShareMode: String {
@@ -101,30 +111,51 @@ public class ShareUploadCoordinator: ObservableObject {
         return "~\(Int(ceil(remaining / 60))) min remaining"
     }
 
-    // MARK: - Start Upload & Share
+    // MARK: - Ensure Tape Uploaded
 
-    func startShare(
+    /// Guarantees the tape + all its real clips exist on the server.
+    /// Calls `onCompleted` on the main actor with the create response
+    /// (which carries all 4 share IDs) once the tape is fully uploaded.
+    ///
+    /// - Parameters:
+    ///   - tape: The local tape the user is sharing.
+    ///   - intendedForCollaboration: If `true`, signals that the caller
+    ///     performed a collab-link action. On success, `resultMode` is set
+    ///     to `.collaborating` so `TapesListView` can fork the tape into a
+    ///     "Collab" duplicate in the Shared tab.
+    ///   - api: Authenticated API client.
+    ///   - onCompleted: Called on success with the server's response.
+    func ensureTapeUploaded(
         tape: Tape,
-        mode: ShareMode,
-        inviteEmails: [String],
-        api: TapesAPIClient
+        intendedForCollaboration: Bool,
+        api: TapesAPIClient,
+        onCompleted: ((TapesAPIClient.CreateTapeResponse) -> Void)? = nil
     ) {
+        // If the clips are already uploaded on the server, call the
+        // completion synchronously without opening the progress dialog.
+        if let cached = pendingCreateResponse, cached.clipsUploaded == true,
+           cached.tapeId.lowercased() == tape.id.uuidString.lowercased() {
+            self.resultCreateResponse = cached
+            self.resultRemoteTapeId = cached.tapeId
+            if intendedForCollaboration { self.resultMode = .collaborating }
+            onCompleted?(cached)
+            return
+        }
+
         guard !isUploading else { return }
 
         isUploading = true
         totalClips = 0
         completedClips = 0
         failedClipIndices = []
-        statusMessage = "Creating tape…"
+        statusMessage = "Preparing tape…"
         uploadError = nil
-        resultShareId = nil
-        resultShareUrl = nil
         resultRemoteTapeId = nil
-        resultMode = mode
+        resultCreateResponse = nil
+        if intendedForCollaboration { resultMode = .collaborating }
         showProgressDialog = true
         showCompletionDialog = false
         uploadStartTime = Date()
-        pendingInvites = inviteEmails
         sourceTape = tape
 
         if #available(iOS 26, *) {
@@ -135,12 +166,16 @@ public class ShareUploadCoordinator: ObservableObject {
             guard let self else { return }
 
             let tapeId = tape.id.uuidString.lowercased()
-            let apiMode = mode == .viewing ? "view_only" : "collaborative"
+            // The server uses `mode` as a tape-level setting (view_only vs
+            // collaborative). We now always mint all 4 share variants on the
+            // server regardless, so this only affects the `tapes.mode` column
+            // which feeds the recipient's Shared-tab segmentation.
+            let apiMode = intendedForCollaboration ? "collaborative" : "view_only"
             self.pendingTapeId = tapeId
 
             do {
                 let response: TapesAPIClient.CreateTapeResponse
-                if let cached = self.pendingCreateResponse {
+                if let cached = self.pendingCreateResponse, cached.tapeId.lowercased() == tapeId {
                     response = cached
                 } else {
                     let tapeSettings: [String: Any] = [
@@ -208,57 +243,75 @@ public class ShareUploadCoordinator: ObservableObject {
                         self.finishUpload(success: false)
                         return
                     }
+
+                    // After a full upload, flip the server cache marker to true
+                    // so subsequent `ensureTapeUploaded` calls are instant.
+                    self.pendingCreateResponse = TapesAPIClient.CreateTapeResponse(
+                        tapeId: response.tapeId,
+                        shareId: response.shareId,
+                        shareIdCollab: response.shareIdCollab,
+                        shareIdViewProtected: response.shareIdViewProtected,
+                        shareIdCollabProtected: response.shareIdCollabProtected,
+                        shareUrl: response.shareUrl,
+                        deepLink: response.deepLink,
+                        createdAt: response.createdAt,
+                        clipsUploaded: true
+                    )
                 }
 
-                // Upload complete — send invites
-                self.statusMessage = "Sending invites…"
-                let shareId = response.shareId
-                let shareUrl = response.shareUrl
-                let accessMode = mode == .viewing ? "view" : "collaborate"
-
-                for email in self.pendingInvites {
-                    do {
-                        try await api.inviteCollaborator(
-                            tapeId: tapeId,
-                            email: email,
-                            accessMode: accessMode
-                        )
-                    } catch {
-                        TapesLog.upload.error("Invite failed for \(email): \(error.localizedDescription)")
-                    }
-                }
-
-                self.resultShareId = shareId
-                self.resultShareUrl = shareUrl
+                let finalResponse = self.pendingCreateResponse ?? response
+                self.resultCreateResponse = finalResponse
                 self.resultRemoteTapeId = tapeId
-                self.pendingCreateResponse = nil
-                self.pendingInvites = []
 
                 self.finishUpload(success: true)
 
-                if UIApplication.shared.applicationState == .active {
-                    self.playCompletionFeedback()
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                // Fire the completion dialog only when we actually had to
+                // upload clips — silent-ensure calls shouldn't interrupt the UI.
+                if !skipUpload {
+                    if UIApplication.shared.applicationState == .active {
+                        self.playCompletionFeedback()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            self.showCompletionDialog = true
+                        }
+                    } else {
+                        self.sendCompletionNotification()
                         self.showCompletionDialog = true
                     }
-                } else {
-                    self.sendCompletionNotification()
-                    self.showCompletionDialog = true
                 }
 
+                onCompleted?(finalResponse)
+
             } catch {
-                TapesLog.upload.error("Share failed: \(error.localizedDescription)")
+                TapesLog.upload.error("Ensure upload failed: \(error.localizedDescription)")
                 self.uploadError = error.localizedDescription
                 self.finishUpload(success: false)
             }
         }
     }
 
+    /// Cached create-response for the given local tape, if the server has
+    /// already confirmed it. The share section uses this as its source of
+    /// truth for the 4 share IDs once upload finishes.
+    func cachedCreateResponse(for tape: Tape) -> TapesAPIClient.CreateTapeResponse? {
+        guard let cached = pendingCreateResponse ?? resultCreateResponse else { return nil }
+        guard cached.tapeId.lowercased() == tape.id.uuidString.lowercased() else { return nil }
+        return cached
+    }
+
+    /// Primes the coordinator with a server-known response (e.g. from
+    /// `GET /tapes/:id` when the modal opens on a previously-shared tape).
+    func seedCreateResponse(_ response: TapesAPIClient.CreateTapeResponse, for tape: Tape) {
+        guard response.tapeId.lowercased() == tape.id.uuidString.lowercased() else { return }
+        pendingCreateResponse = response
+        resultCreateResponse = response
+        resultRemoteTapeId = response.tapeId
+    }
+
     // MARK: - Retry Failed Clips
 
     func retryUpload(tape: Tape, api: TapesAPIClient) {
-        let mode = resultMode
-        startShare(tape: tape, mode: mode, inviteEmails: pendingInvites, api: api)
+        let intendedForCollab = resultMode == .collaborating
+        ensureTapeUploaded(tape: tape, intendedForCollaboration: intendedForCollab, api: api)
     }
 
     // MARK: - Contribute (upload unsynced clips on collaborative tapes)

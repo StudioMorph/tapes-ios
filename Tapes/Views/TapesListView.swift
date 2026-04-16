@@ -94,12 +94,12 @@ struct TapesListView: View {
                       shareUploadCoordinator.resultMode == .collaborating,
                       let source = shareUploadCoordinator.sourceTape,
                       let remoteId = shareUploadCoordinator.resultRemoteTapeId,
-                      let shareId = shareUploadCoordinator.resultShareId else { return }
+                      let response = shareUploadCoordinator.resultCreateResponse else { return }
 
                 tapesStore.forkTapeForCollaboration(
                     source,
                     remoteTapeId: remoteId,
-                    shareId: shareId,
+                    shareId: response.shareIdCollab,
                     ownerName: authManager.userName
                 )
             }

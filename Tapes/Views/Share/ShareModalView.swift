@@ -7,9 +7,6 @@ struct ShareModalView: View {
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tapesStore: TapesStore
 
-    @State private var showingShareFlow = false
-    @State private var showingExport = false
-
     private var isCollaborativeShared: Bool {
         tape.shareInfo?.mode == "collaborative"
     }
@@ -22,16 +19,24 @@ struct ShareModalView: View {
         !unsyncedClips.isEmpty
     }
 
+    /// Disable the share section entirely for tapes received by the
+    /// current user as view-only (they cannot re-share what they don't own).
+    private var canOwnShare: Bool {
+        tape.shareInfo == nil || tape.shareInfo?.mode == "collaborative"
+    }
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.l) {
                     if isCollaborativeShared {
                         contributeSection
                     }
-                    if !isCollaborativeShared {
-                        shareSection
+
+                    if canOwnShare && !isCollaborativeShared {
+                        ShareLinkSection(tape: tape)
                     }
+
                     exportSection
                     saveToDeviceSection
                 }
@@ -54,12 +59,10 @@ struct ShareModalView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingShareFlow) {
-            ShareFlowView(tape: tape)
-        }
         .onChange(of: uploadCoordinator.isUploading) { _, isUploading in
+            // When the background upload starts, collapse the modal so the
+            // global progress overlay (owned by the parent view) stays visible.
             if isUploading {
-                showingShareFlow = false
                 dismiss()
             }
         }
@@ -96,19 +99,6 @@ struct ShareModalView: View {
                 .foregroundStyle(Tokens.Colors.secondaryText)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Tokens.Spacing.m)
-        }
-    }
-
-    // MARK: - Share With Others
-
-    private var shareSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            shareOptionRow(
-                icon: "square.and.arrow.up",
-                title: "Share This Tape",
-                subtitle: "Allow your family and friends to rebuild this tape on their devices, so they can play and edit it",
-                action: { showingShareFlow = true }
-            )
         }
     }
 

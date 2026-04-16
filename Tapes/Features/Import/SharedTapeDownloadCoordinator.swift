@@ -110,11 +110,23 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                         self.resultTape = updated
                     }
                 } else {
+                    // The link's role (view vs collaborate) takes precedence
+                    // over the tape-level mode so view-only links to a
+                    // collaborative tape still land the recipient in the
+                    // Viewing segment.
+                    let resolvedMode: String = {
+                        if let access = resolution.accessMode {
+                            return access == "collaborate" ? "collaborative" : "view_only"
+                        }
+                        return manifest.mode
+                    }()
+
                     let tape = Self.buildTape(
                         from: manifest,
                         clips: clips,
                         shareId: shareId,
-                        ownerName: resolution.ownerName
+                        ownerName: resolution.ownerName,
+                        mode: resolvedMode
                     )
                     tapeStore.addSharedTape(tape)
                     tapeStore.associateClipsWithAlbum(tapeID: tape.id, clips: clips)
@@ -287,7 +299,8 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         from manifest: TapeManifest,
         clips: [Clip],
         shareId: String,
-        ownerName: String?
+        ownerName: String?,
+        mode: String? = nil
     ) -> Tape {
         let transitionType: TransitionType
         if let t = manifest.tapeSettings.transition?.type {
@@ -311,7 +324,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         let info = ShareInfo(
             shareId: shareId,
             ownerName: ownerName ?? manifest.ownerName,
-            mode: manifest.mode,
+            mode: mode ?? manifest.mode,
             expiresAt: expiresAt,
             remoteTapeId: manifest.tapeId
         )

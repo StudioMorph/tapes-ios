@@ -113,15 +113,51 @@ Even heavy users ($0.50–0.75/month infra cost) remain profitable at 80%+ margi
 - Notification mechanism: APNs direct, or via a share link in Messages?
 - How to handle the sender deleting their account — expire all shared tapes, or keep them alive for a grace period?
 
+## Share Model — Four Independent Links
+
+Every tape has **four distinct share links**, one per cell in the `role × protection` matrix:
+
+| | Unprotected (open) | Protected (email) |
+|---|---|---|
+| **View-only** | `view_open` | `view_protected` |
+| **Collaborative** | `collab_open` | `collab_protected` |
+
+All four share IDs are minted on tape creation (`tapes.ts → createTape`) and back-filled by `ensureAllShareIds` when an older tape is first accessed. The `collaborators` table carries a `share_variant` column and a composite unique index `(tape_id, LOWER(email), COALESCE(share_variant, '_owner'))`, so the same email can be invited to distinct variants independently.
+
+### Why four links instead of "toggle access mode"
+
+Each variant is a different audience:
+
+- Users invited to the **collab-protected** link should never silently gain access if the owner flips Secured off.
+- An **open collab** link handed out on social should not start letting random people in just because someone toggled "Secured by email" on later.
+
+Treating each cell as its own audience — with its own URL and its own invite list — makes the mental model predictable and the server-side authorisation straightforward.
+
+### Resolution
+
+`share.ts → resolveShare` looks up the share ID across all four columns, computes `(accessMode, shareVariant, isProtected)` from the winning column, then:
+
+- **Open variants** (`view_open`, `collab_open`): auto-join the caller with `access_mode` derived from the variant.
+- **Protected variants** (`view_protected`, `collab_protected`): require the caller's email to appear in `collaborators` for that tape **and** that variant. Invited rows are flipped to `active` on first open.
+
+The resolution payload now includes `access_mode`, `share_variant`, and `is_protected` so the iOS client can route the recipient to the correct Shared tab regardless of the tape's overall mode.
+
+### Invite / revoke scoping
+
+- `POST /tapes/:id/collaborators` requires `share_variant` in the body and rejects `*_open` variants (those are auto-join).
+- `DELETE /tapes/:id/collaborators/:email?share_variant=…` scopes the revoke to a single variant. A user revoked from `collab_protected` can still keep access they were granted via `view_protected`, and vice versa.
+- Revoking only expires previously-issued clip download URLs if the user has no other active variant on the tape — matching the principle that we cannot pull back a tape already rebuilt on another device.
+
 ## Background Upload Architecture
 
 Sharing uploads run in the background via `ShareUploadCoordinator`, mirroring the export pattern from `ExportCoordinator`. Key design decisions:
 
-- **`ShareUploadCoordinator`** (`Tapes/Core/Networking/ShareUploadCoordinator.swift`): `@MainActor ObservableObject` owned by `TapesListView` as a `@StateObject`. Manages the full upload-then-invite lifecycle.
+- **`ShareUploadCoordinator`** (`Tapes/Core/Networking/ShareUploadCoordinator.swift`): `@MainActor ObservableObject` owned by `TapesListView` as a `@StateObject`. Manages the upload lifecycle and exposes a cached `CreateTapeResponse` (with all four share IDs) so the share UI can render links immediately.
+- **Idempotent `ensureTapeUploaded`**: Safe to call from any share-UI entry point. If the tape has already been uploaded (`clipsUploaded == true` in the cached response), it returns without work. The first invite tap or the first **Share link** copy/share action is what triggers the upload — not a separate "Send invites" button.
 - **Background task support**: Uses `BGContinuedProcessingTask` (iOS 26+) for extended background time, with `UIApplication.beginBackgroundTask` as fallback for older iOS.
-- **Modal dismissal**: When `ShareFlowView` initiates a share requiring clip uploads, it delegates to the coordinator and immediately dismisses. The user can navigate freely while uploads continue.
+- **Modal dismissal**: When an upload starts from inside `ShareModalView`, the modal dismisses itself on `uploadCoordinator.isUploading` so the global progress overlay is visible.
 - **Progress overlay**: `ShareUploadProgressDialog` (GlassAlertCard) displays on `TapesListView` with clip progress, ETA, and cancel option. When dismissed, a small blue progress ring appears in the toolbar.
-- **Completion**: On success, the coordinator sends invites, then shows a completion dialog (or local notification if backgrounded) with sound/haptic feedback.
+- **Completion**: On a collaborative upload the coordinator publishes `resultCreateResponse.shareIdCollab` and the list view forks the tape into "Shared > Collaborating" (see below).
 - **Error handling**: Upload failures are surfaced via a native alert with retry/cancel options.
 - **BG task identifier**: `StudioMorph.Tapes.upload` (registered in `Info.plist` and `TapesApp.init`).
 
@@ -175,10 +211,10 @@ These settings are stored in D1 (`clips` table), included in the manifest respon
 
 ## Related Files
 
-- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and `resultRemoteTapeId` for fork.
+- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and exposes `resultCreateResponse` (all four share IDs) for fork.
 - `Tapes/Views/Share/ShareUploadOverlay.swift` — progress, completion, and error dialogs.
-- `Tapes/Views/Share/ShareFlowView.swift` — share configuration UI, delegates to coordinator.
-- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing; shows Contribute button on forked tapes.
+- `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI embedded in `ShareModalView`: role tabs, `Secured by email` toggle, link pill (copy + system share sheet), email compose, authorised-users chips.
+- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing; embeds `ShareLinkSection` directly (no push), shows Contribute button on forked tapes.
 - `Tapes/Views/Share/SharedTapesView.swift` — Shared tab with View Only / Collaborating segments.
 - `Tapes/Views/TapesListView.swift` — observes share completion to trigger `forkTapeForCollaboration`.
 - `Tapes/ViewModels/TapesStore.swift` — `forkTapeForCollaboration()` and `mergeClipsIntoSharedTape()`.

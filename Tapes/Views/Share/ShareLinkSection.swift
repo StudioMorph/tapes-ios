@@ -1,0 +1,618 @@
+import SwiftUI
+import UIKit
+
+/// Inline share-link section embedded in `ShareModalView`.
+///
+/// Presents the 4-link share model in a simple way:
+/// • Role picker (Viewing / Collaborating) — flips between view and collab links.
+/// • "Secured by email" toggle — flips between the open and protected variant
+///   for the currently selected role.
+/// • Link pill + copy/share — always visible. Taps trigger tape upload on first use.
+/// • Email invite input (protected variants) — invites are sent one at a time.
+/// • Authorised users chips — revocable per-variant list of invited collaborators.
+struct ShareLinkSection: View {
+
+    let tape: Tape
+
+    @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
+    @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var tapesStore: TapesStore
+
+    // MARK: - UI state
+
+    enum RoleTab: String, CaseIterable {
+        case viewing = "Viewing tape"
+        case collaborating = "Collaborating tape"
+    }
+
+    @State private var selectedRole: RoleTab = .viewing
+    @State private var securedByEmail = false
+    @State private var emailInput = ""
+
+    // MARK: - Server state
+
+    @State private var collaborators: [TapesAPIClient.CollaboratorInfo] = []
+    @State private var isBootstrapping = false
+    @State private var isInviting = false
+    @State private var revokingIds: Set<String> = []
+    @State private var shareActivityURL: URL?
+    @State private var copiedConfirmation = false
+    @State private var errorMessage: String?
+
+    // MARK: - Derived
+
+    private var currentVariant: TapesAPIClient.ShareVariant {
+        switch (selectedRole, securedByEmail) {
+        case (.viewing, false): return .viewOpen
+        case (.viewing, true):  return .viewProtected
+        case (.collaborating, false): return .collabOpen
+        case (.collaborating, true):  return .collabProtected
+        }
+    }
+
+    private var cachedResponse: TapesAPIClient.CreateTapeResponse? {
+        uploadCoordinator.cachedCreateResponse(for: tape)
+    }
+
+    private var shareURL: URL? {
+        guard let response = cachedResponse else { return nil }
+        let shareId = response.shareId(for: currentVariant)
+        let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
+        return URL(string: "\(base)/t/\(shareId)")
+    }
+
+    /// Users invited against the currently-selected variant only.
+    private var collaboratorsForCurrentVariant: [TapesAPIClient.CollaboratorInfo] {
+        collaborators.filter { $0.shareVariant == currentVariant && $0.role != "owner" }
+    }
+
+    private var canInvite: Bool {
+        guard authManager.hasServerSession else { return false }
+        let trimmed = emailInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return isValidEmail(trimmed) && !isInviting
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
+            SectionHeader(title: "Share This Tape")
+
+            VStack(spacing: Tokens.Spacing.m) {
+                Picker("", selection: $selectedRole) {
+                    ForEach(RoleTab.allCases, id: \.self) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                securedToggle
+                linkPill
+                if securedByEmail {
+                    emailInputRow
+                    authorisedUsersList
+                }
+
+                if let error = errorMessage {
+                    Text(error)
+                        .font(Tokens.Typography.caption)
+                        .foregroundStyle(Tokens.Colors.systemRed)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(Tokens.Spacing.m)
+            .background(Tokens.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+        }
+        .task { await bootstrapShareState() }
+        .sheet(item: Binding(
+            get: { shareActivityURL.map(ShareURLItem.init) },
+            set: { if $0 == nil { shareActivityURL = nil } }
+        )) { item in
+            ShareActivityView(url: item.url)
+                .ignoresSafeArea()
+        }
+        .overlay(alignment: .top) {
+            if copiedConfirmation {
+                CopiedToast()
+                    .padding(.top, Tokens.Spacing.m)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: copiedConfirmation)
+    }
+
+    // MARK: - Secured Toggle
+
+    private var securedToggle: some View {
+        HStack(spacing: Tokens.Spacing.m) {
+            Image(systemName: securedByEmail ? "lock.fill" : "lock.open")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(securedByEmail ? Tokens.Colors.systemBlue : Tokens.Colors.secondaryText)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Secured by email")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                Text(securedByEmail
+                     ? "Only invited emails can add this tape."
+                     : "Anyone with the link can add this tape.")
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: $securedByEmail)
+                .labelsHidden()
+                .disabled(!authManager.hasServerSession)
+        }
+    }
+
+    // MARK: - Link Pill
+
+    private var linkPill: some View {
+        HStack(spacing: Tokens.Spacing.s) {
+            Image(systemName: "link")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+
+            Text(linkDisplayString)
+                .font(.system(size: 14, weight: .regular, design: .monospaced))
+                .foregroundStyle(Tokens.Colors.primaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if uploadCoordinator.isUploading && cachedResponse == nil {
+                ProgressView().controlSize(.small)
+            }
+
+            Button {
+                copyLinkTapped()
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .frame(width: 32, height: 32)
+                    .background(Tokens.Colors.primaryBackground)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Copy link")
+
+            Button {
+                shareLinkTapped()
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+                    .frame(width: 32, height: 32)
+                    .background(Tokens.Colors.primaryBackground)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share link")
+        }
+        .padding(.horizontal, Tokens.Spacing.s + 2)
+        .padding(.vertical, 6)
+        .background(Tokens.Colors.primaryBackground)
+        .clipShape(Capsule())
+    }
+
+    private var linkDisplayString: String {
+        if let url = shareURL { return url.absoluteString }
+        if uploadCoordinator.isUploading { return uploadCoordinator.statusMessage }
+        return "tapes.app/t/…"
+    }
+
+    // MARK: - Email Input Row
+
+    private var emailInputRow: some View {
+        HStack(spacing: Tokens.Spacing.s) {
+            Image(systemName: "envelope")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+                .frame(width: 24)
+
+            TextField("name@example.com", text: $emailInput)
+                .textContentType(.emailAddress)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(size: 15))
+                .onSubmit {
+                    if canInvite { inviteTapped() }
+                }
+
+            Button {
+                inviteTapped()
+            } label: {
+                if isInviting {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text("Invite")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(canInvite ? Tokens.Colors.systemBlue : Tokens.Colors.tertiaryText)
+            .disabled(!canInvite)
+        }
+        .padding(.horizontal, Tokens.Spacing.m)
+        .padding(.vertical, Tokens.Spacing.s + 2)
+        .background(Tokens.Colors.primaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.thumb))
+    }
+
+    // MARK: - Authorised Users
+
+    private var authorisedUsersList: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+            HStack {
+                Text("Authorised users")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+                Spacer()
+                if isBootstrapping {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+
+            if collaboratorsForCurrentVariant.isEmpty {
+                Text("No one invited yet.")
+                    .font(Tokens.Typography.caption)
+                    .foregroundStyle(Tokens.Colors.tertiaryText)
+                    .padding(.vertical, Tokens.Spacing.xs)
+            } else {
+                WrapHStack(spacing: Tokens.Spacing.xs) {
+                    ForEach(collaboratorsForCurrentVariant) { collab in
+                        collaboratorChip(collab)
+                    }
+                }
+            }
+        }
+    }
+
+    private func collaboratorChip(_ collab: TapesAPIClient.CollaboratorInfo) -> some View {
+        HStack(spacing: 6) {
+            Text(collab.displayName)
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+            Button {
+                revokeTapped(collab)
+            } label: {
+                if revokingIds.contains(collab.id) {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Tokens.Colors.secondaryText)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(collab.displayName)")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Tokens.Colors.primaryBackground)
+        .clipShape(Capsule())
+    }
+
+    // MARK: - Actions
+
+    private func copyLinkTapped() {
+        errorMessage = nil
+
+        if let url = shareURL {
+            UIPasteboard.general.string = url.absoluteString
+            flashCopiedToast()
+            return
+        }
+
+        // Tape not yet uploaded — bootstrap, then copy when the URL is available.
+        guard let api = authManager.apiClient else {
+            errorMessage = "Please sign in to share tapes."
+            return
+        }
+
+        uploadCoordinator.ensureTapeUploaded(
+            tape: tape,
+            intendedForCollaboration: currentVariant.isCollaborative,
+            api: api
+        ) { response in
+            let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
+            if let url = URL(string: "\(base)/t/\(response.shareId(for: currentVariant))") {
+                UIPasteboard.general.string = url.absoluteString
+                flashCopiedToast()
+            }
+        }
+    }
+
+    private func shareLinkTapped() {
+        errorMessage = nil
+
+        if let url = shareURL {
+            shareActivityURL = url
+            return
+        }
+
+        guard let api = authManager.apiClient else {
+            errorMessage = "Please sign in to share tapes."
+            return
+        }
+
+        uploadCoordinator.ensureTapeUploaded(
+            tape: tape,
+            intendedForCollaboration: currentVariant.isCollaborative,
+            api: api
+        ) { response in
+            let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
+            if let url = URL(string: "\(base)/t/\(response.shareId(for: currentVariant))") {
+                shareActivityURL = url
+            }
+        }
+    }
+
+    private func inviteTapped() {
+        errorMessage = nil
+
+        let trimmed = emailInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard isValidEmail(trimmed) else { return }
+
+        guard let api = authManager.apiClient else {
+            errorMessage = "Please sign in to invite collaborators."
+            return
+        }
+
+        let variant = currentVariant
+        guard variant.isProtected else { return }
+
+        if collaborators.contains(where: {
+            $0.shareVariant == variant && $0.email.lowercased() == trimmed
+        }) {
+            errorMessage = "\(trimmed) has already been invited to this link."
+            return
+        }
+
+        isInviting = true
+
+        Task { @MainActor in
+            defer { isInviting = false }
+
+            // Ensure tape is on the server (and clips uploaded) before inviting —
+            // the first invite on an unshared tape is what bootstraps R2 uploads.
+            await withCheckedContinuation { cont in
+                if uploadCoordinator.cachedCreateResponse(for: tape) != nil {
+                    cont.resume()
+                    return
+                }
+                uploadCoordinator.ensureTapeUploaded(
+                    tape: tape,
+                    intendedForCollaboration: variant.isCollaborative,
+                    api: api
+                ) { _ in cont.resume() }
+            }
+
+            guard let remoteTapeId = uploadCoordinator.resultRemoteTapeId
+                ?? uploadCoordinator.cachedCreateResponse(for: tape)?.tapeId else {
+                errorMessage = "Couldn't upload this tape. Please try again."
+                return
+            }
+
+            do {
+                try await api.inviteCollaborator(
+                    tapeId: remoteTapeId,
+                    email: trimmed,
+                    shareVariant: variant
+                )
+                emailInput = ""
+                await reloadCollaborators(using: api, tapeId: remoteTapeId)
+            } catch {
+                errorMessage = friendlyError(error)
+            }
+        }
+    }
+
+    private func revokeTapped(_ collab: TapesAPIClient.CollaboratorInfo) {
+        guard let api = authManager.apiClient,
+              let remoteTapeId = uploadCoordinator.resultRemoteTapeId
+                ?? uploadCoordinator.cachedCreateResponse(for: tape)?.tapeId,
+              let variant = collab.shareVariant else { return }
+
+        revokingIds.insert(collab.id)
+
+        Task { @MainActor in
+            defer { revokingIds.remove(collab.id) }
+            do {
+                let identifier = collab.userId ?? collab.email
+                try await api.revokeCollaborator(
+                    tapeId: remoteTapeId,
+                    identifier: identifier,
+                    shareVariant: variant
+                )
+                await reloadCollaborators(using: api, tapeId: remoteTapeId)
+            } catch {
+                errorMessage = friendlyError(error)
+            }
+        }
+    }
+
+    // MARK: - Bootstrapping
+
+    /// Pre-loads existing share state without triggering any uploads.
+    /// If the tape has never been shared, `api.getTape` returns 404 and we
+    /// leave the UI in its "pending bootstrap" state until the user acts.
+    private func bootstrapShareState() async {
+        guard let api = authManager.apiClient else { return }
+        isBootstrapping = true
+        defer { isBootstrapping = false }
+
+        let remoteTapeId = tape.id.uuidString.lowercased()
+
+        do {
+            let info = try await api.getTape(tapeId: remoteTapeId)
+            let base = TapesPublicShareBase
+            let shareUrl = "\(base)/t/\(info.shareId)"
+            let response = TapesAPIClient.CreateTapeResponse(
+                tapeId: info.tapeId,
+                shareId: info.shareId,
+                shareIdCollab: info.shareIdCollab,
+                shareIdViewProtected: info.shareIdViewProtected,
+                shareIdCollabProtected: info.shareIdCollabProtected,
+                shareUrl: shareUrl,
+                deepLink: "tapes://t/\(info.shareId)",
+                createdAt: info.createdAt,
+                clipsUploaded: true
+            )
+            uploadCoordinator.seedCreateResponse(response, for: tape)
+            await reloadCollaborators(using: api, tapeId: remoteTapeId)
+        } catch {
+            // Tape hasn't been shared yet — this is the normal first-time path.
+        }
+    }
+
+    private func reloadCollaborators(using api: TapesAPIClient, tapeId: String) async {
+        do {
+            collaborators = try await api.listCollaborators(tapeId: tapeId)
+        } catch {
+            // Non-fatal — the UI just won't display the chips.
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func flashCopiedToast() {
+        copiedConfirmation = true
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.6))
+            copiedConfirmation = false
+        }
+    }
+
+    private func isValidEmail(_ value: String) -> Bool {
+        guard !value.isEmpty else { return false }
+        let regex = #"^[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"#
+        return value.range(of: regex, options: .regularExpression) != nil
+    }
+
+    private func friendlyError(_ error: Error) -> String {
+        if let api = error as? APIError {
+            switch api {
+            case .validation(let message), .server(let message):
+                return message
+            case .unauthorized:
+                return "Your session has expired. Please sign in again."
+            default: break
+            }
+        }
+        return "Something went wrong. Please try again."
+    }
+}
+
+// MARK: - ShareURLItem
+
+private struct ShareURLItem: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
+}
+
+// MARK: - ShareActivityView (UIActivityViewController wrapper)
+
+private struct ShareActivityView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - CopiedToast
+
+private struct CopiedToast: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+            Text("Link copied")
+                .font(.system(size: 14, weight: .semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.75), in: Capsule())
+    }
+}
+
+// MARK: - WrapHStack (lightweight flow layout)
+
+private struct WrapHStack<Content: View>: View {
+    let spacing: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    init(spacing: CGFloat = 8, @ViewBuilder content: @escaping () -> Content) {
+        self.spacing = spacing
+        self.content = content
+    }
+
+    var body: some View {
+        FlowLayout(spacing: spacing) { content() }
+    }
+}
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var lineWidth: CGFloat = 0
+        var totalHeight: CGFloat = 0
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if lineWidth + size.width > maxWidth {
+                totalHeight += lineHeight + spacing
+                lineWidth = size.width + spacing
+                lineHeight = size.height
+            } else {
+                lineWidth += size.width + spacing
+                lineHeight = max(lineHeight, size.height)
+            }
+        }
+        totalHeight += lineHeight
+        let used = min(lineWidth, maxWidth == .infinity ? lineWidth : maxWidth)
+        return CGSize(width: used, height: totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var lineHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX && x > bounds.minX {
+                x = bounds.minX
+                y += lineHeight + spacing
+                lineHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+    }
+}
+
+// MARK: - Public share base (mirrors TapesAPIClient)
+
+#if DEBUG
+private let TapesPublicShareBase = "https://tapes-api.hi-7d5.workers.dev"
+#else
+private let TapesPublicShareBase = "https://api.tapes.app"
+#endif
