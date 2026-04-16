@@ -84,6 +84,7 @@ struct CameraView: View {
                 )
 
                 focusSquareOverlay
+                    .ignoresSafeArea()
 
                 VStack {
                     Spacer()
@@ -327,7 +328,7 @@ struct CameraView: View {
             ForEach(CaptureService.CaptureMode.allCases, id: \.self) { mode in
                 Button {
                     withAnimation(.easeInOut(duration: 0.25)) {
-                        capture.captureMode = mode
+                        capture.applyCaptureMode(mode)
                     }
                 } label: {
                     Text(mode.rawValue)

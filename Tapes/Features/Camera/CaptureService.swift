@@ -162,18 +162,9 @@ final class CaptureService: NSObject, ObservableObject {
         if session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
             photoOutput.maxPhotoQualityPrioritization = .quality
-            if photoOutput.isLivePhotoCaptureSupported {
-                photoOutput.isLivePhotoCaptureEnabled = true
-            }
         }
 
-        if session.canAddOutput(movieOutput) {
-            session.addOutput(movieOutput)
-            if let connection = movieOutput.connection(with: .video),
-               connection.isVideoStabilizationSupported {
-                connection.preferredVideoStabilizationMode = .auto
-            }
-        }
+        applyModeOutputs(for: .video)
 
         let switchOvers = videoDevice.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat($0.doubleValue) }
         let switchFactor = switchOvers.first ?? 1.0
@@ -189,11 +180,47 @@ final class CaptureService: NSObject, ObservableObject {
         session.commitConfiguration()
 
         let presets = buildZoomPresets(for: videoDevice)
+        let liveSupported = photoOutput.isLivePhotoCaptureSupported
         DispatchQueue.main.async { [weak self] in
             self?.availableZoomPresets = presets
             self?.primarySwitchOverFactor = switchFactor
             self?.currentZoomFactor = switchFactor
-            self?.isLivePhotoSupported = self?.photoOutput.isLivePhotoCaptureSupported ?? false
+            self?.isLivePhotoSupported = liveSupported
+        }
+    }
+
+    /// Add/remove movieOutput depending on mode so Live Photo works in photo mode.
+    func applyCaptureMode(_ mode: CaptureMode) {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.session.beginConfiguration()
+            self.applyModeOutputs(for: mode)
+            self.session.commitConfiguration()
+
+            let liveSupported = self.photoOutput.isLivePhotoCaptureSupported
+            DispatchQueue.main.async {
+                self.captureMode = mode
+                self.isLivePhotoSupported = liveSupported
+            }
+        }
+    }
+
+    private func applyModeOutputs(for mode: CaptureMode) {
+        if mode == .video {
+            if !session.outputs.contains(movieOutput), session.canAddOutput(movieOutput) {
+                session.addOutput(movieOutput)
+                if let connection = movieOutput.connection(with: .video),
+                   connection.isVideoStabilizationSupported {
+                    connection.preferredVideoStabilizationMode = .auto
+                }
+            }
+        } else {
+            if session.outputs.contains(movieOutput) {
+                session.removeOutput(movieOutput)
+            }
+            if photoOutput.isLivePhotoCaptureSupported {
+                photoOutput.isLivePhotoCaptureEnabled = true
+            }
         }
     }
 
@@ -444,7 +471,15 @@ final class CaptureService: NSObject, ObservableObject {
     func startRecording() {
         guard !isRecording else { return }
         sessionQueue.async { [weak self] in
-            guard let self, !self.movieOutput.isRecording else { return }
+            guard let self else { return }
+            if !self.session.outputs.contains(self.movieOutput) {
+                self.session.beginConfiguration()
+                if self.session.canAddOutput(self.movieOutput) {
+                    self.session.addOutput(self.movieOutput)
+                }
+                self.session.commitConfiguration()
+            }
+            guard !self.movieOutput.isRecording else { return }
 
             let outputURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
