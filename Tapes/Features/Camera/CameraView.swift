@@ -1,5 +1,41 @@
 import SwiftUI
 import AVFoundation
+import CoreMotion
+
+// MARK: - Device Orientation Observer
+
+private final class DeviceOrientationObserver: ObservableObject {
+    @Published var iconRotation: Angle = .zero
+
+    private let motionManager = CMMotionManager()
+
+    func start() {
+        guard motionManager.isAccelerometerAvailable else { return }
+        motionManager.accelerometerUpdateInterval = 0.3
+        motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
+            guard let data else { return }
+            let angle = Self.rotationAngle(from: data.acceleration)
+            withAnimation(.easeInOut(duration: 0.25)) {
+                self?.iconRotation = angle
+            }
+        }
+    }
+
+    func stop() {
+        motionManager.stopAccelerometerUpdates()
+    }
+
+    private static func rotationAngle(from acceleration: CMAcceleration) -> Angle {
+        let x = acceleration.x
+        let y = acceleration.y
+
+        if abs(y) > abs(x) {
+            return y < 0 ? .zero : .degrees(180)
+        } else {
+            return x > 0 ? .degrees(-90) : .degrees(90)
+        }
+    }
+}
 
 // MARK: - Camera Preview
 
@@ -45,6 +81,7 @@ struct CameraPreviewView: UIViewRepresentable {
 struct CameraView: View {
     @ObservedObject var coordinator: CameraCoordinator
     @StateObject private var capture = CaptureService()
+    @StateObject private var orientationObserver = DeviceOrientationObserver()
 
     @State private var focusPoint: CGPoint?
     @State private var showFocusSquare = false
@@ -135,6 +172,7 @@ struct CameraView: View {
                             Image(systemName: "xmark")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.white)
+                                .rotationEffect(orientationObserver.iconRotation)
                         }
                     }
                 }
@@ -154,15 +192,24 @@ struct CameraView: View {
             }
         }
         .onAppear {
+            AppDelegate.orientationLock = .portrait
+            if let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            }
+
             capture.onThumbnailUpdated = { image in
                 lastThumbnail = image
             }
             capture.configure()
             capture.start()
             pinchBaseZoom = capture.currentZoomFactor
+            orientationObserver.start()
         }
         .onDisappear {
             capture.stop()
+            orientationObserver.stop()
+            AppDelegate.orientationLock = .allButUpsideDown
         }
         .statusBarHidden()
     }
@@ -182,6 +229,7 @@ struct CameraView: View {
                 Image(systemName: flashIconName)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(capture.torchEnabled ? .yellow : .white)
+                    .rotationEffect(orientationObserver.iconRotation)
                     .frame(width: 36, height: 34)
             }
             .padding(.horizontal, 4)
@@ -194,6 +242,7 @@ struct CameraView: View {
                     Image(systemName: flashIconName)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(capture.torchEnabled ? .yellow : .white)
+                        .rotationEffect(orientationObserver.iconRotation)
                         .frame(width: 36, height: 34)
                 }
                 Button {
@@ -204,6 +253,7 @@ struct CameraView: View {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
+                        .rotationEffect(orientationObserver.iconRotation)
                         .frame(width: 36, height: 34)
                 }
             }
@@ -268,6 +318,7 @@ struct CameraView: View {
                     Text(zoomLabel(for: preset))
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(isActive ? .yellow : .white.opacity(0.5))
+                        .rotationEffect(orientationObserver.iconRotation)
                         .frame(width: 40, height: 40)
                         .background(
                             Circle()
@@ -382,6 +433,7 @@ struct CameraView: View {
                                 .offset(x: 4, y: -4)
                         }
                     }
+                    .rotationEffect(orientationObserver.iconRotation)
             } else {
                 Circle()
                     .fill(.white.opacity(0.12))
@@ -399,6 +451,7 @@ struct CameraView: View {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(.white)
+                .rotationEffect(orientationObserver.iconRotation)
                 .frame(width: 48, height: 48)
                 .background(.ultraThinMaterial, in: Circle())
         }
