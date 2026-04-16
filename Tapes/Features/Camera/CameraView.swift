@@ -652,8 +652,9 @@ struct CameraView: View {
                             }
                         }
                         .padding(.horizontal, 32)
+                        .padding(.vertical, 28)
                     }
-                    .frame(height: itemHeight)
+                    .frame(height: itemHeight + 56)
 
                     Spacer()
                 }
