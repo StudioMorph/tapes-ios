@@ -160,13 +160,6 @@ struct CameraView: View {
                     }
                 }
 
-                if capture.isRecording {
-                    VStack {
-                        recordingBadge
-                            .padding(.top, 80)
-                        Spacer()
-                    }
-                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -184,6 +177,11 @@ struct CameraView: View {
                                 .foregroundStyle(.white)
                                 .rotationEffect(orientationObserver.iconRotation)
                         }
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    if capture.isRecording {
+                        recordingBadge
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
