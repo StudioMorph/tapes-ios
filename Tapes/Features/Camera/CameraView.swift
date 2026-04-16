@@ -636,8 +636,11 @@ struct CameraView: View {
                             }
                         } label: {
                             Text("Done")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.yellow)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(.ultraThinMaterial, in: Capsule())
                         }
                     }
                     .padding(.horizontal, 20)
