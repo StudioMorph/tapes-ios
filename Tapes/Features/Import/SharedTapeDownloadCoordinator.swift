@@ -1,4 +1,6 @@
 import Foundation
+import Photos
+import UIKit
 import os
 
 @MainActor
@@ -103,7 +105,10 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
                 if existingTape != nil {
                     tapeStore.mergeClipsIntoSharedTape(remoteTapeId: tapeId, newClips: clips)
-                    self.resultTape = tapeStore.sharedTape(forRemoteId: tapeId)
+                    if let updated = tapeStore.sharedTape(forRemoteId: tapeId) {
+                        tapeStore.associateClipsWithAlbum(tapeID: updated.id, clips: clips)
+                        self.resultTape = updated
+                    }
                 } else {
                     let tape = Self.buildTape(
                         from: manifest,
@@ -112,6 +117,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                         ownerName: resolution.ownerName
                     )
                     tapeStore.addSharedTape(tape)
+                    tapeStore.associateClipsWithAlbum(tapeID: tape.id, clips: clips)
                     self.resultTape = tape
                 }
 
@@ -155,56 +161,43 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         session: URLSession,
         api: TapesAPIClient
     ) async throws -> Clip {
-        let cachedURL = CloudDownloadManager.cacheURL(
-            tapeId: tapeId,
-            clipId: manifestClip.clipId,
-            type: manifestClip.type
-        )
-
-        if !FileManager.default.fileExists(atPath: cachedURL.path) {
-            guard let cloudUrl = manifestClip.cloudUrl, let downloadURL = URL(string: cloudUrl) else {
-                throw APIError.validation("Invalid download URL.")
-            }
-
-            let (tempURL, response) = try await session.download(for: URLRequest(url: downloadURL))
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                throw APIError.server("Download failed (HTTP \(code)).")
-            }
-
-            let cacheDir = cachedURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-            if FileManager.default.fileExists(atPath: cachedURL.path) {
-                try FileManager.default.removeItem(at: cachedURL)
-            }
-            try FileManager.default.moveItem(at: tempURL, to: cachedURL)
+        guard let cloudUrl = manifestClip.cloudUrl, let downloadURL = URL(string: cloudUrl) else {
+            throw APIError.validation("Invalid download URL.")
         }
 
-        // Download thumbnail
-        var thumbData: Data?
-        if let thumbUrlStr = manifestClip.thumbnailUrl, let thumbURL = URL(string: thumbUrlStr) {
-            let thumbCacheURL = CloudDownloadManager.thumbnailCacheURL(tapeId: tapeId, clipId: manifestClip.clipId)
-            if FileManager.default.fileExists(atPath: thumbCacheURL.path) {
-                thumbData = try? Data(contentsOf: thumbCacheURL)
-            } else {
-                if let (thumbTemp, thumbResp) = try? await session.download(for: URLRequest(url: thumbURL)),
-                   let thumbHttp = thumbResp as? HTTPURLResponse, (200...299).contains(thumbHttp.statusCode) {
-                    try? FileManager.default.createDirectory(at: thumbCacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try? FileManager.default.moveItem(at: thumbTemp, to: thumbCacheURL)
-                    thumbData = try? Data(contentsOf: thumbCacheURL)
-                }
-            }
+        let (tempURL, response) = try await session.download(for: URLRequest(url: downloadURL))
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw APIError.server("Download failed (HTTP \(code)).")
         }
 
-        // Confirm download with server
+        let clipType: ClipType = (manifestClip.type == "photo" || manifestClip.type == "image") ? .image : .video
+
+        let stableURL = Self.stableTempURL(clipId: manifestClip.clipId, type: clipType)
+        let stableDir = stableURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: stableDir, withIntermediateDirectories: true)
+        if FileManager.default.fileExists(atPath: stableURL.path) {
+            try FileManager.default.removeItem(at: stableURL)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: stableURL)
+
+        let assetLocalId = try await Self.saveToPhotosLibrary(fileURL: stableURL, clipType: clipType)
+
+        try? FileManager.default.removeItem(at: stableURL)
+
         Task {
             try? await api.confirmDownload(tapeId: tapeId, clipId: manifestClip.clipId)
         }
 
-        let clipType: ClipType = (manifestClip.type == "photo" || manifestClip.type == "image") ? .image : .video
-        var imageData: Data?
-        if clipType == .image {
-            imageData = try? Data(contentsOf: cachedURL)
+        var thumbData: Data?
+        if clipType == .image, let image = UIImage(contentsOfFile: stableURL.path) ?? Self.loadImageFromPhotos(assetLocalId: assetLocalId) {
+            thumbData = image.preparingThumbnail(of: CGSize(width: 480, height: 480))?.jpegData(compressionQuality: 0.8)
+        } else if let thumbUrlStr = manifestClip.thumbnailUrl, let thumbURL = URL(string: thumbUrlStr) {
+            if let (thumbTemp, thumbResp) = try? await session.download(for: URLRequest(url: thumbURL)),
+               let thumbHttp = thumbResp as? HTTPURLResponse, (200...299).contains(thumbHttp.statusCode),
+               let data = try? Data(contentsOf: thumbTemp) {
+                thumbData = data
+            }
         }
 
         let motion: MotionStyle = {
@@ -223,8 +216,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
         return Clip(
             id: UUID(uuidString: manifestClip.clipId) ?? UUID(),
-            localURL: clipType == .video ? cachedURL : nil,
-            imageData: imageData,
+            assetLocalId: assetLocalId,
             clipType: clipType,
             duration: Double(manifestClip.durationMs) / 1000.0,
             thumbnail: thumbData,
@@ -237,6 +229,56 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             volume: manifestClip.audioLevel,
             isSynced: true
         )
+    }
+
+    // MARK: - Photos Library
+
+    private static func stableTempURL(clipId: String, type: ClipType) -> URL {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("shared_downloads", isDirectory: true)
+        let ext = type == .video ? "mp4" : "jpg"
+        return tmp.appendingPathComponent("\(clipId).\(ext)")
+    }
+
+    private static func saveToPhotosLibrary(fileURL: URL, clipType: ClipType) async throws -> String {
+        var placeholderId: String?
+
+        try await PHPhotoLibrary.shared().performChanges {
+            let request: PHAssetChangeRequest?
+            if clipType == .video {
+                request = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileURL)
+            } else {
+                guard let image = UIImage(contentsOfFile: fileURL.path) else {
+                    return
+                }
+                request = PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            placeholderId = request?.placeholderForCreatedAsset?.localIdentifier
+        }
+
+        guard let assetId = placeholderId else {
+            throw APIError.server("Failed to save media to Photos library.")
+        }
+        return assetId
+    }
+
+    private static func loadImageFromPhotos(assetLocalId: String) -> UIImage? {
+        let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
+        guard let asset = fetch.firstObject else { return nil }
+
+        var result: UIImage?
+        let options = PHImageRequestOptions()
+        options.isSynchronous = true
+        options.deliveryMode = .highQualityFormat
+
+        PHImageManager.default().requestImage(
+            for: asset,
+            targetSize: CGSize(width: 480, height: 480),
+            contentMode: .aspectFill,
+            options: options
+        ) { image, _ in
+            result = image
+        }
+        return result
     }
 
     // MARK: - Build Tape

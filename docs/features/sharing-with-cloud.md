@@ -147,6 +147,21 @@ When a tape owner shares a tape as **collaborative**, the original tape in "My T
 
 View-only shares do **not** create a fork. The original tape is uploaded and a link is generated, but the owner's tape remains unchanged. Recipients get their own independent copy via `SharedTapeDownloadCoordinator`.
 
+## Shared Tape Media Storage
+
+When a recipient downloads a shared tape (or receives a contribution), media is saved directly to the **Photos library** — identical to how locally-created clips are stored:
+
+1. Media is downloaded from R2 to a temporary file.
+2. The file is saved to the Photos library via `PHAssetChangeRequest`, yielding a `PHAsset.localIdentifier`.
+3. The temporary file is deleted.
+4. The `Clip` stores the `assetLocalId` (not a file path or cloud URL).
+5. Clips are associated with a Photos album named after the tape via `TapeAlbumService`.
+
+This means:
+- **R2 can be safely cleaned up** after all recipients confirm download — no cloud URL is retained on the clip.
+- **No cache eviction risk** — assets live in the Photos library, which iOS never purges.
+- **Shared clips are structurally identical to local clips** — both use `assetLocalId` for media resolution.
+
 ## Clip Creative Settings
 
 When clips are uploaded (via initial share or contribution), the following creative settings are sent alongside basic metadata:
