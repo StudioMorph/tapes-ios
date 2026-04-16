@@ -39,9 +39,9 @@ private final class DeviceOrientationObserver: ObservableObject {
             }
         } else {
             if x > 0 {
-                return (.degrees(-90), 0)    // Landscape left (home right)
+                return (.degrees(-90), 180)  // Landscape right (home left)
             } else {
-                return (.degrees(90), 180)   // Landscape right (home left)
+                return (.degrees(90), 0)     // Landscape left (home right)
             }
         }
     }
