@@ -145,6 +145,10 @@ final class CaptureService: NSObject, ObservableObject {
         }
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     // MARK: - Session Configuration
 
     private func configureSession() {
@@ -192,6 +196,9 @@ final class CaptureService: NSObject, ObservableObject {
                 videoDevice.unlockForConfiguration()
             } catch {}
         }
+
+        configureContinuousAutoFocus(device: videoDevice)
+        subscribeToSubjectAreaChanges(device: videoDevice)
 
         session.commitConfiguration()
 
@@ -321,14 +328,60 @@ final class CaptureService: NSObject, ObservableObject {
                 try device.lockForConfiguration()
                 if device.isFocusPointOfInterestSupported {
                     device.focusPointOfInterest = point
-                    device.focusMode = .autoFocus
+                    if device.isFocusModeSupported(.autoFocus) {
+                        device.focusMode = .autoFocus
+                    }
                 }
                 if device.isExposurePointOfInterestSupported {
                     device.exposurePointOfInterest = point
-                    device.exposureMode = .autoExpose
+                    if device.isExposureModeSupported(.autoExpose) {
+                        device.exposureMode = .autoExpose
+                    }
                 }
+                device.isSubjectAreaChangeMonitoringEnabled = true
                 device.unlockForConfiguration()
             } catch {}
+        }
+    }
+
+    private func configureContinuousAutoFocus(device: AVCaptureDevice) {
+        do {
+            try device.lockForConfiguration()
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = CGPoint(x: 0.5, y: 0.5)
+            }
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
+            if device.isExposurePointOfInterestSupported {
+                device.exposurePointOfInterest = CGPoint(x: 0.5, y: 0.5)
+            }
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+            device.isSubjectAreaChangeMonitoringEnabled = true
+            device.unlockForConfiguration()
+        } catch {}
+    }
+
+    private func subscribeToSubjectAreaChanges(device: AVCaptureDevice) {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: .AVCaptureDeviceSubjectAreaDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSubjectAreaChange(_:)),
+            name: .AVCaptureDeviceSubjectAreaDidChange,
+            object: device
+        )
+    }
+
+    @objc private func handleSubjectAreaChange(_ notification: Notification) {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoDeviceInput?.device else { return }
+            self.configureContinuousAutoFocus(device: device)
         }
     }
 
@@ -387,6 +440,9 @@ final class CaptureService: NSObject, ObservableObject {
                 presets = []
                 switchFactor = 1.0
             }
+
+            self.configureContinuousAutoFocus(device: device)
+            self.subscribeToSubjectAreaChanges(device: device)
 
             DispatchQueue.main.async {
                 self.currentPosition = newPosition
