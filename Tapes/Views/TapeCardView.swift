@@ -664,8 +664,9 @@ struct TapeCardView: View {
             case let .video(url, duration, assetIdentifier):
                 let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
                 clips.append(clip)
-            case let .photo(image, assetIdentifier, _, _, _):
-                if let clip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+            case let .photo(image, assetIdentifier, isLivePhoto, _, _):
+                if var clip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+                    clip.isLivePhoto = isLivePhoto
                     clips.append(clip)
                 }
             }

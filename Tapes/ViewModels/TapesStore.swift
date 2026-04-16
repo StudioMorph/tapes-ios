@@ -780,8 +780,9 @@ extension TapesStore {
             case let .video(url, duration, assetIdentifier):
                 let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
                 newClips.append(clip)
-            case let .photo(image, assetIdentifier, _, _, _):
-                if let imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+            case let .photo(image, assetIdentifier, isLivePhoto, _, _):
+                if var imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+                    imageClip.isLivePhoto = isLivePhoto
                     newClips.append(imageClip)
                 } else {
                     TapesLog.store.warning("Could not build clip from UIImage data")
@@ -824,8 +825,9 @@ extension TapesStore {
             case let .video(url, duration, assetIdentifier):
                 let clip = makeVideoClip(url: url, duration: duration, assetIdentifier: assetIdentifier)
                 newClips.append(clip)
-            case let .photo(image, assetIdentifier, _, _, _):
-                if let imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+            case let .photo(image, assetIdentifier, isLivePhoto, _, _):
+                if var imageClip = makeImageClip(image: image, assetIdentifier: assetIdentifier) {
+                    imageClip.isLivePhoto = isLivePhoto
                     newClips.append(imageClip)
                 }
             }
