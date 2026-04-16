@@ -223,17 +223,17 @@ struct CameraView: View {
                     .padding(.bottom, 16)
             }
 
-            ZStack {
+            HStack {
+                Spacer()
                 shutterButton
-
-                if !capture.isRecording {
-                    HStack {
-                        Spacer()
-                        flipCameraButton
-                            .frame(maxWidth: .infinity)
+                Spacer()
+                    .overlay {
+                        if !capture.isRecording {
+                            flipCameraButton
+                        }
                     }
-                }
             }
+            .padding(.horizontal, 20)
             .padding(.bottom, 24)
 
             ZStack {
