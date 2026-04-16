@@ -6,14 +6,13 @@ import Photos
 class CameraCoordinator: NSObject, ObservableObject {
     @Published var isPresented = false
     @Published var capturedMedia: [PickedMedia] = []
-    
+
     private var completion: (([PickedMedia]) -> Void)?
-    
+
     func presentCamera(completion: @escaping ([PickedMedia]) -> Void) {
         self.completion = completion
         self.capturedMedia = []
-        
-        // Check camera permission
+
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             self.isPresented = true
@@ -26,17 +25,15 @@ class CameraCoordinator: NSObject, ObservableObject {
                 }
             }
         case .denied, .restricted:
-            // Handle permission denied
             break
         @unknown default:
             break
         }
     }
-    
+
     func handleCapturedMedia(_ media: [PickedMedia]) {
         self.capturedMedia = media
-        
-        // Save media to Photos library
+
         saveMediaToPhotosLibrary(media) { [weak self] savedMedia in
             DispatchQueue.main.async {
                 self?.completion?(savedMedia)
@@ -44,16 +41,17 @@ class CameraCoordinator: NSObject, ObservableObject {
             }
         }
     }
-    
+
+    // MARK: - Photos Save
+
     private func saveMediaToPhotosLibrary(_ media: [PickedMedia], completion: @escaping ([PickedMedia]) -> Void) {
         guard !media.isEmpty else {
             completion([])
             return
         }
-        
-        // Check Photos permission
+
         let status = PHPhotoLibrary.authorizationStatus()
-        
+
         switch status {
         case .authorized, .limited:
             performSave(media: media, completion: completion)
@@ -62,31 +60,23 @@ class CameraCoordinator: NSObject, ObservableObject {
                 if newStatus == .authorized || newStatus == .limited {
                     self.performSave(media: media, completion: completion)
                 } else {
-                    // Permission denied, return original media without saving
-                    DispatchQueue.main.async {
-                        completion(media)
-                    }
+                    DispatchQueue.main.async { completion(media) }
                 }
             }
         case .denied, .restricted:
-            // Permission denied, return original media without saving
-            DispatchQueue.main.async {
-                completion(media)
-            }
+            DispatchQueue.main.async { completion(media) }
         @unknown default:
-            DispatchQueue.main.async {
-                completion(media)
-            }
+            DispatchQueue.main.async { completion(media) }
         }
     }
-    
+
     private func performSave(media: [PickedMedia], completion: @escaping ([PickedMedia]) -> Void) {
         var savedMedia: [PickedMedia] = []
         let group = DispatchGroup()
-        
+
         for item in media {
             group.enter()
-            
+
             switch item {
             case let .video(url, duration, assetIdentifier):
                 guard let url else {
@@ -126,7 +116,7 @@ class CameraCoordinator: NSObject, ObservableObject {
                 }
             }
         }
-        
+
         group.notify(queue: .main) {
             completion(savedMedia)
         }
@@ -139,61 +129,4 @@ class CameraCoordinator: NSObject, ObservableObject {
         let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
         return fetch.firstObject?.duration ?? 0
     }
-}
-
-struct CameraView: UIViewControllerRepresentable {
-    @ObservedObject var coordinator: CameraCoordinator
-    
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.delegate = context.coordinator
-        picker.sourceType = .camera
-        picker.mediaTypes = ["public.movie", "public.image"] // Allow both video and photo
-        picker.videoQuality = .typeHigh
-        picker.allowsEditing = false
-        picker.cameraCaptureMode = .video // Set video as default
-        picker.modalPresentationStyle = .fullScreen // Ensure full screen presentation
-        picker.modalTransitionStyle = .coverVertical // Standard camera transition
-        return picker
-    }
-    
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {
-        // Ensure the picker maintains full screen presentation
-        uiViewController.modalPresentationStyle = .fullScreen
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(coordinator: coordinator)
-    }
-    
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let coordinator: CameraCoordinator
-        
-        init(coordinator: CameraCoordinator) {
-            self.coordinator = coordinator
-        }
-        
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            var mediaItems: [PickedMedia] = []
-            
-            if let videoURL = info[.mediaURL] as? URL {
-                // Handle video capture; duration resolved after save
-                mediaItems.append(.video(url: videoURL, duration: 0, assetIdentifier: nil))
-            } else if let image = info[.originalImage] as? UIImage {
-                // Handle photo capture
-                mediaItems.append(.photo(image: image, assetIdentifier: nil))
-            }
-            
-            picker.dismiss(animated: true) {
-                self.coordinator.handleCapturedMedia(mediaItems)
-            }
-        }
-        
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true) {
-                self.coordinator.isPresented = false
-            }
-        }
-    }
-
 }

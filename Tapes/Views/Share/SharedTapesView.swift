@@ -8,6 +8,7 @@ struct SharedTapesView: View {
     @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
     @StateObject private var downloadCoordinator = SharedTapeDownloadCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
+    @StateObject private var cameraCoordinator = CameraCoordinator()
 
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
@@ -137,6 +138,10 @@ struct SharedTapesView: View {
                 tapesStore.updateTape(updatedTape)
             })
         }
+        .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {
+            CameraView(coordinator: cameraCoordinator)
+                .ignoresSafeArea(.all, edges: .all)
+        }
     }
 
     // MARK: - Shared Tape List
@@ -160,7 +165,9 @@ struct SharedTapesView: View {
                                 onSettings: { tapesStore.selectTape(tape) },
                                 onPlay: { tapeToPreview = tape },
                                 onThumbnailDelete: { _ in },
-                                onCameraCapture: { _ in },
+                                onCameraCapture: { completion in
+                                    cameraCoordinator.presentCamera(completion: completion)
+                                },
                                 onTitleFocusRequest: {},
                                 titleEditingConfig: nil
                             )
