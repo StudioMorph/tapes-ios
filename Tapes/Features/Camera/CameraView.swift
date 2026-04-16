@@ -223,8 +223,18 @@ struct CameraView: View {
                     .padding(.bottom, 16)
             }
 
-            shutterButton
-                .padding(.bottom, 24)
+            ZStack {
+                shutterButton
+
+                if !capture.isRecording {
+                    HStack {
+                        Spacer()
+                        flipCameraButton
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .padding(.bottom, 24)
 
             ZStack {
                 if !capture.isRecording {
@@ -234,7 +244,7 @@ struct CameraView: View {
                 HStack {
                     thumbnailPreview
                     Spacer()
-                    trailingControl
+                    doneButton
                 }
                 .padding(.horizontal, 20)
             }
@@ -380,10 +390,24 @@ struct CameraView: View {
         }
     }
 
-    // MARK: - Trailing Control (Flip / Done)
+    // MARK: - Flip Camera
+
+    private var flipCameraButton: some View {
+        Button {
+            capture.switchCamera()
+        } label: {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+    }
+
+    // MARK: - Done Button
 
     @ViewBuilder
-    private var trailingControl: some View {
+    private var doneButton: some View {
         if capture.capturedCount > 0 && !capture.isRecording {
             Button {
                 let items = capture.capturedItems
@@ -396,14 +420,6 @@ struct CameraView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .background(.ultraThinMaterial, in: Capsule())
-            }
-        } else if !capture.isRecording {
-            Button {
-                capture.switchCamera()
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.white)
             }
         }
     }
