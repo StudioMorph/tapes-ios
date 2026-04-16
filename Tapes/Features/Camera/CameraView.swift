@@ -6,6 +6,7 @@ import CoreMotion
 
 private final class DeviceOrientationObserver: ObservableObject {
     @Published var iconRotation: Angle = .zero
+    @Published var videoRotationAngle: CGFloat = 90
 
     private let motionManager = CMMotionManager()
 
@@ -14,10 +15,11 @@ private final class DeviceOrientationObserver: ObservableObject {
         motionManager.accelerometerUpdateInterval = 0.3
         motionManager.startAccelerometerUpdates(to: .main) { [weak self] data, _ in
             guard let data else { return }
-            let angle = Self.rotationAngle(from: data.acceleration)
+            let (icon, video) = Self.angles(from: data.acceleration)
             withAnimation(.easeInOut(duration: 0.25)) {
-                self?.iconRotation = angle
+                self?.iconRotation = icon
             }
+            self?.videoRotationAngle = video
         }
     }
 
@@ -25,14 +27,22 @@ private final class DeviceOrientationObserver: ObservableObject {
         motionManager.stopAccelerometerUpdates()
     }
 
-    private static func rotationAngle(from acceleration: CMAcceleration) -> Angle {
+    private static func angles(from acceleration: CMAcceleration) -> (icon: Angle, video: CGFloat) {
         let x = acceleration.x
         let y = acceleration.y
 
         if abs(y) > abs(x) {
-            return y < 0 ? .zero : .degrees(180)
+            if y < 0 {
+                return (.zero, 90)           // Portrait
+            } else {
+                return (.degrees(180), 270)  // Upside down
+            }
         } else {
-            return x > 0 ? .degrees(-90) : .degrees(90)
+            if x > 0 {
+                return (.degrees(-90), 0)    // Landscape left (home right)
+            } else {
+                return (.degrees(90), 180)   // Landscape right (home left)
+            }
         }
     }
 }
@@ -190,6 +200,9 @@ struct CameraView: View {
             withAnimation(.easeInOut(duration: 0.2)) {
                 showOptions = false
             }
+        }
+        .onChange(of: orientationObserver.videoRotationAngle) { _, newAngle in
+            capture.videoRotationAngle = newAngle
         }
         .onAppear {
             AppDelegate.orientationLock = .portrait

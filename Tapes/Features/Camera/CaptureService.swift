@@ -65,6 +65,9 @@ final class CaptureService: NSObject, ObservableObject {
     let photoOutput = AVCapturePhotoOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
 
+    /// Updated by CameraView based on physical device orientation via accelerometer.
+    var videoRotationAngle: CGFloat = 90
+
     private var recordingTimer: Timer?
     private var recordingStartTime: Date?
     private var countdownTimer: Timer?
@@ -415,8 +418,16 @@ final class CaptureService: NSObject, ObservableObject {
     // MARK: - Photo Capture
 
     func capturePhoto() {
+        let rotationAngle = videoRotationAngle
         sessionQueue.async { [weak self] in
             guard let self else { return }
+
+            if let connection = self.photoOutput.connection(with: .video) {
+                connection.videoRotationAngle = rotationAngle
+                if connection.isVideoMirroringSupported && self.currentPosition == .front {
+                    connection.isVideoMirrored = true
+                }
+            }
 
             let settings = AVCapturePhotoSettings()
 
@@ -473,6 +484,7 @@ final class CaptureService: NSObject, ObservableObject {
 
     func startRecording() {
         guard !isRecording else { return }
+        let rotationAngle = videoRotationAngle
         sessionQueue.async { [weak self] in
             guard let self else { return }
             if !self.session.outputs.contains(self.movieOutput) {
@@ -489,7 +501,7 @@ final class CaptureService: NSObject, ObservableObject {
                 .appendingPathExtension("mov")
 
             if let connection = self.movieOutput.connection(with: .video) {
-                connection.videoRotationAngle = 90
+                connection.videoRotationAngle = rotationAngle
                 if connection.isVideoMirroringSupported && self.currentPosition == .front {
                     connection.isVideoMirrored = true
                 }
