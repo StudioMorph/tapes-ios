@@ -336,7 +336,8 @@ Every tape has four share links, one per cell of the `role × protection` matrix
 
 - Cloudflare secrets managed via `wrangler secret put` (JWT_SECRET, R2 credentials, `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`)
 - Backend deployed via `wrangler deploy` from `tapes-api/`
-- D1 migrations live in `tapes-api/migrations/` and are applied via `wrangler d1 migrations apply tapes-db`
+- D1 migrations live in `tapes-api/migrations/` and are applied via `wrangler d1 migrations apply tapes-db --remote`
+- Latest migration: `0008_live_photo_movie_url.sql` — adds `live_photo_movie_url` column to `clips` table for Live Photo paired video storage
 - iOS entitlements: Associated Domains (`applinks:`), Push Notifications
 
 ---

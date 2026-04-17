@@ -12,6 +12,8 @@ struct SharedTapesView: View {
 
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
+    @State private var tapeToSettings: Tape?
+    @State private var showingSettings = false
     @State private var selectedSegment: SharedSegment = .viewOnly
 
     enum SharedSegment: String, CaseIterable {
@@ -115,18 +117,19 @@ struct SharedTapesView: View {
         .sheet(item: $tapeToShare) { tape in
             ShareModalView(tape: tape)
         }
-        .sheet(isPresented: $tapesStore.showingSettingsSheet) {
-            if let selectedTape = tapesStore.selectedTape {
+        .sheet(isPresented: $showingSettings) {
+            if let settingsTape = tapeToSettings,
+               let binding = tapesStore.bindingForTape(id: settingsTape.id) {
                 TapeSettingsView(
-                    tape: Binding(
-                        get: { selectedTape },
-                        set: { tapesStore.updateTape($0) }
-                    ),
+                    tape: binding,
                     onDismiss: {
-                        tapesStore.showingSettingsSheet = false
-                        tapesStore.clearSelectedTape()
+                        showingSettings = false
+                        tapeToSettings = nil
                     },
-                    onTapeDeleted: {},
+                    onTapeDeleted: {
+                        showingSettings = false
+                        tapeToSettings = nil
+                    },
                     onMergeAndSave: { _ in }
                 )
             }
@@ -162,7 +165,10 @@ struct SharedTapesView: View {
                                 isLandscape: false,
                                 isShareDisabled: !isCollaborative,
                                 onShare: { tapeToShare = tape },
-                                onSettings: { tapesStore.selectTape(tape) },
+                                onSettings: {
+                                    tapeToSettings = tape
+                                    showingSettings = true
+                                },
                                 onPlay: { tapeToPreview = tape },
                                 onThumbnailDelete: { _ in },
                                 onCameraCapture: { completion in

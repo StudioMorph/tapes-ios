@@ -471,8 +471,16 @@ public class ShareUploadCoordinator: ObservableObject {
 
     private static func uploadClip(_ clip: Clip, tapeId: String, api: TapesAPIClient) async throws {
         let clipId = clip.id.uuidString.lowercased()
-        let clipType = clip.clipType == .video ? "video" : "photo"
         let durationMs = Int(clip.duration * 1000)
+
+        let clipType: String
+        if clip.isLivePhoto {
+            clipType = "live_photo"
+        } else if clip.clipType == .video {
+            clipType = "video"
+        } else {
+            clipType = "photo"
+        }
 
         let createResponse = try await api.createClip(
             tapeId: tapeId,
@@ -485,7 +493,9 @@ public class ShareUploadCoordinator: ObservableObject {
             motionStyle: clip.motionStyle.rawValue,
             imageDurationMs: clip.clipType == .image ? Int(clip.imageDuration * 1000) : nil,
             rotateQuarterTurns: clip.rotateQuarterTurns != 0 ? clip.rotateQuarterTurns : nil,
-            overrideScaleMode: clip.overrideScaleMode?.rawValue
+            overrideScaleMode: clip.overrideScaleMode?.rawValue,
+            livePhotoAsVideo: clip.isLivePhoto ? (clip.livePhotoAsVideo ?? false) : nil,
+            livePhotoSound: clip.isLivePhoto ? !(clip.livePhotoMuted ?? false) : nil
         )
 
         let fileData = try await resolveClipData(clip)
@@ -495,6 +505,11 @@ public class ShareUploadCoordinator: ObservableObject {
             data: fileData,
             contentType: clip.clipType == .video ? "video/mp4" : "image/jpeg"
         )
+
+        if clip.isLivePhoto, let movieUploadUrl = createResponse.livePhotoMovieUploadUrl {
+            let movieData = try await resolveLivePhotoMovieData(clip)
+            try await uploadToR2(url: movieUploadUrl, data: movieData, contentType: "video/quicktime")
+        }
 
         if let thumbData = clip.thumbnail {
             try await uploadToR2(
@@ -506,15 +521,25 @@ public class ShareUploadCoordinator: ObservableObject {
 
         let baseUploadUrl = createResponse.uploadUrl.components(separatedBy: "?").first ?? createResponse.uploadUrl
         let baseThumbUrl = createResponse.thumbnailUploadUrl.components(separatedBy: "?").first ?? createResponse.thumbnailUploadUrl
+        var baseMovieUrl: String?
+        if let movieUrl = createResponse.livePhotoMovieUploadUrl {
+            baseMovieUrl = movieUrl.components(separatedBy: "?").first ?? movieUrl
+        }
+
         _ = try await api.confirmUpload(
             tapeId: tapeId,
             clipId: clipId,
             cloudUrl: baseUploadUrl,
-            thumbnailUrl: baseThumbUrl
+            thumbnailUrl: baseThumbUrl,
+            livePhotoMovieUrl: baseMovieUrl
         )
     }
 
     private static func resolveClipData(_ clip: Clip) async throws -> Data {
+        if clip.isLivePhoto, let assetId = clip.assetLocalId {
+            return try await exportPHAssetData(identifier: assetId, isVideo: false)
+        }
+
         if let url = clip.localURL {
             return try Data(contentsOf: url)
         }
@@ -528,6 +553,18 @@ public class ShareUploadCoordinator: ObservableObject {
         }
 
         throw APIError.validation("Clip has no media to upload.")
+    }
+
+    private static func resolveLivePhotoMovieData(_ clip: Clip) async throws -> Data {
+        guard let assetId = clip.assetLocalId else {
+            throw APIError.validation("Live Photo has no asset identifier.")
+        }
+
+        guard let result = await extractLivePhotoVideo(assetIdentifier: assetId) else {
+            throw APIError.validation("Could not extract Live Photo video component.")
+        }
+
+        return try Data(contentsOf: result.url)
     }
 
     private static func exportPHAssetData(identifier: String, isVideo: Bool) async throws -> Data {

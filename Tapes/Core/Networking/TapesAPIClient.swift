@@ -216,6 +216,7 @@ actor TapesAPIClient {
         let uploadUrlExpiresAt: String
         let thumbnailUploadUrl: String
         let orderIndex: Int
+        let livePhotoMovieUploadUrl: String?
 
         enum CodingKeys: String, CodingKey {
             case clipId = "clip_id"
@@ -223,6 +224,7 @@ actor TapesAPIClient {
             case uploadUrlExpiresAt = "upload_url_expires_at"
             case thumbnailUploadUrl = "thumbnail_upload_url"
             case orderIndex = "order_index"
+            case livePhotoMovieUploadUrl = "live_photo_movie_upload_url"
         }
     }
 
@@ -231,7 +233,8 @@ actor TapesAPIClient {
                     recordedAt: String? = nil, fileSizeBytes: Int? = nil,
                     contentType: String? = nil,
                     motionStyle: String? = nil, imageDurationMs: Int? = nil,
-                    rotateQuarterTurns: Int? = nil, overrideScaleMode: String? = nil) async throws -> CreateClipResponse {
+                    rotateQuarterTurns: Int? = nil, overrideScaleMode: String? = nil,
+                    livePhotoAsVideo: Bool? = nil, livePhotoSound: Bool? = nil) async throws -> CreateClipResponse {
         var body: [String: Any] = [
             "clip_id": clipId,
             "type": type,
@@ -247,6 +250,8 @@ actor TapesAPIClient {
         if let v = imageDurationMs { body["image_duration_ms"] = v }
         if let v = rotateQuarterTurns { body["rotate_quarter_turns"] = v }
         if let v = overrideScaleMode { body["override_scale_mode"] = v }
+        if let v = livePhotoAsVideo { body["live_photo_as_video"] = v }
+        if let v = livePhotoSound { body["live_photo_sound"] = v }
 
         return try await postRaw(path: "/tapes/\(tapeId)/clips", body: body)
     }
@@ -266,8 +271,9 @@ actor TapesAPIClient {
     }
 
     func confirmUpload(tapeId: String, clipId: String, cloudUrl: String,
-                       thumbnailUrl: String) async throws -> UploadConfirmResponse {
-        let body = ["cloud_url": cloudUrl, "thumbnail_url": thumbnailUrl]
+                       thumbnailUrl: String, livePhotoMovieUrl: String? = nil) async throws -> UploadConfirmResponse {
+        var body: [String: String] = ["cloud_url": cloudUrl, "thumbnail_url": thumbnailUrl]
+        if let v = livePhotoMovieUrl { body["live_photo_movie_url"] = v }
         return try await post(path: "/tapes/\(tapeId)/clips/\(clipId)/uploaded", body: body)
     }
 

@@ -77,10 +77,8 @@ struct TapesList: View {
                 }
                 .onChange(of: editingTapeID) { _, newID in
                     guard let id = newID else { return }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            scrollProxy.scrollTo(id, anchor: .center)
-                        }
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        scrollProxy.scrollTo(id, anchor: .center)
                     }
                 }
             }

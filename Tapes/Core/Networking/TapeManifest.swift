@@ -49,6 +49,7 @@ struct ManifestClip: Codable, Identifiable {
     let type: String
     let cloudUrl: String?
     let thumbnailUrl: String?
+    let livePhotoMovieUrl: String?
     let contributorId: String?
     let contributorName: String?
     let recordedAt: String?
@@ -66,12 +67,14 @@ struct ManifestClip: Codable, Identifiable {
     let overrideScaleMode: String?
 
     var id: String { clipId }
+    var isLivePhoto: Bool { type == "live_photo" }
 
     enum CodingKeys: String, CodingKey {
         case clipId = "clip_id"
         case type
         case cloudUrl = "cloud_url"
         case thumbnailUrl = "thumbnail_url"
+        case livePhotoMovieUrl = "live_photo_movie_url"
         case contributorId = "contributor_id"
         case contributorName = "contributor_name"
         case recordedAt = "recorded_at"

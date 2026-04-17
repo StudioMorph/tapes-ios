@@ -209,6 +209,31 @@ When clips are uploaded (via initial share or contribution), the following creat
 
 These settings are stored in D1 (`clips` table), included in the manifest response, and applied when recipients download and rebuild the tape. Background music and modifications to other contributors' clips are explicitly excluded from contributions.
 
+## Live Photo Sharing
+
+Live Photos are shared with full fidelity — both the still image and the paired video component are preserved.
+
+### Upload path
+
+1. `ShareUploadCoordinator.uploadClip` detects `clip.isLivePhoto` and sends `type: "live_photo"` (with `live_photo_as_video` and `live_photo_sound` settings) to `POST /tapes/:id/clips`.
+2. The backend returns a third presigned URL (`live_photo_movie_upload_url`) alongside the standard media and thumbnail URLs.
+3. The still image (JPEG) is uploaded to the primary `upload_url`; the paired video (.mov) is extracted via `PHAssetResourceManager` (`.pairedVideo` resource type) and uploaded to the movie URL.
+4. `confirmUpload` sends the base URLs for all three objects (cloud, thumbnail, movie) so the backend stores `live_photo_movie_url` in the `clips` table.
+
+### Download path
+
+1. The manifest includes `live_photo_movie_url` (signed) for `live_photo` clips.
+2. `SharedTapeDownloadCoordinator` downloads both the still image and the movie to temp files.
+3. The clip is saved to the Photos library as a proper Live Photo using `PHAssetCreationRequest` with `.photo` (data) and `.pairedVideo` (fileURL) resources — the same approach used by the custom camera.
+4. The resulting `Clip` has `isLivePhoto = true`, `livePhotoAsVideo`, and `livePhotoMuted` set from the manifest, ensuring playback behaviour matches the sender's settings.
+
+### Backend
+
+- D1 `clips` table has a `live_photo_movie_url` column (migration `0008_live_photo_movie_url.sql`).
+- The `createClip` endpoint generates presigned upload URLs for both the still and movie when `type == 'live_photo'`.
+- The manifest endpoint signs and returns `live_photo_movie_url` alongside `cloud_url`.
+- Cleanup (`confirmDownload`) deletes the movie object from R2 when all recipients have downloaded.
+
 ## Related Files
 
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and exposes `resultCreateResponse` (all four share IDs) for fork.

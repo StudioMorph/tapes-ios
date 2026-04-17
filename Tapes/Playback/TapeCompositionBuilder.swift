@@ -750,8 +750,13 @@ struct TapeCompositionBuilder {
             return try await buildTimingAsset(at: url)
         }
         timingAssetTask = task
-        defer { timingAssetTask = nil }
-        return try await task.value
+        do {
+            let asset = try await task.value
+            return asset
+        } catch {
+            timingAssetTask = nil
+            throw error
+        }
     }
 
     private static func buildTimingAsset(at url: URL) async throws -> AVAsset {

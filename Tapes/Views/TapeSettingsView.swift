@@ -376,21 +376,17 @@ struct TapeSettingsView: View {
     
     private func deleteTape() {
         isDeleting = true
-        
-        Task {
-            await MainActor.run {
-                tapesStore.deleteTape(tape)
-            }
-            
-            #if os(iOS)
-            let notificationFeedback = UINotificationFeedbackGenerator()
-            notificationFeedback.notificationOccurred(.success)
-            #endif
-            
-            await MainActor.run {
-                onDismiss()
-                onTapeDeleted?()
-            }
+        let tapeSnapshot = tape
+
+        onDismiss()
+        onTapeDeleted?()
+
+        #if os(iOS)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        #endif
+
+        DispatchQueue.main.async {
+            tapesStore.deleteTape(tapeSnapshot)
         }
     }
     

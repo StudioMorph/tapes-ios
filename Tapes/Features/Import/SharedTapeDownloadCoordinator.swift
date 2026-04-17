@@ -183,9 +183,10 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             throw APIError.server("Download failed (HTTP \(code)).")
         }
 
-        let clipType: ClipType = (manifestClip.type == "photo" || manifestClip.type == "image") ? .image : .video
+        let isLivePhoto = manifestClip.isLivePhoto
+        let clipType: ClipType = isLivePhoto ? .image : ((manifestClip.type == "photo" || manifestClip.type == "image") ? .image : .video)
 
-        let stableURL = Self.stableTempURL(clipId: manifestClip.clipId, type: clipType)
+        let stableURL = Self.stableTempURL(clipId: manifestClip.clipId, ext: isLivePhoto ? "jpg" : (clipType == .video ? "mp4" : "jpg"))
         let stableDir = stableURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: stableDir, withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: stableURL.path) {
@@ -193,7 +194,28 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         }
         try FileManager.default.moveItem(at: tempURL, to: stableURL)
 
-        let assetLocalId = try await Self.saveToPhotosLibrary(fileURL: stableURL, clipType: clipType)
+        var movieStableURL: URL?
+        if isLivePhoto, let movieUrlStr = manifestClip.livePhotoMovieUrl, let movieURL = URL(string: movieUrlStr) {
+            let (movieTempURL, movieResp) = try await session.download(for: URLRequest(url: movieURL))
+            guard let movieHttp = movieResp as? HTTPURLResponse, (200...299).contains(movieHttp.statusCode) else {
+                let code = (movieResp as? HTTPURLResponse)?.statusCode ?? 0
+                throw APIError.server("Live Photo movie download failed (HTTP \(code)).")
+            }
+            let movieDest = Self.stableTempURL(clipId: manifestClip.clipId, ext: "mov")
+            if FileManager.default.fileExists(atPath: movieDest.path) {
+                try FileManager.default.removeItem(at: movieDest)
+            }
+            try FileManager.default.moveItem(at: movieTempURL, to: movieDest)
+            movieStableURL = movieDest
+        }
+
+        let assetLocalId: String
+        if isLivePhoto, let movieURL = movieStableURL {
+            assetLocalId = try await Self.saveLivePhotoToLibrary(imageURL: stableURL, movieURL: movieURL)
+            try? FileManager.default.removeItem(at: movieURL)
+        } else {
+            assetLocalId = try await Self.saveToPhotosLibrary(fileURL: stableURL, clipType: clipType)
+        }
 
         try? FileManager.default.removeItem(at: stableURL)
 
@@ -202,7 +224,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         }
 
         var thumbData: Data?
-        if clipType == .image, let image = UIImage(contentsOfFile: stableURL.path) ?? Self.loadImageFromPhotos(assetLocalId: assetLocalId) {
+        if clipType == .image, let image = Self.loadImageFromPhotos(assetLocalId: assetLocalId) {
             thumbData = image.preparingThumbnail(of: CGSize(width: 480, height: 480))?.jpegData(compressionQuality: 0.8)
         } else if let thumbUrlStr = manifestClip.thumbnailUrl, let thumbURL = URL(string: thumbUrlStr) {
             if let (thumbTemp, thumbResp) = try? await session.download(for: URLRequest(url: thumbURL)),
@@ -238,6 +260,9 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             trimEnd: Double(manifestClip.trimEndMs ?? 0) / 1000.0,
             motionStyle: motion,
             imageDuration: manifestClip.imageDurationMs.map { Double($0) / 1000.0 } ?? 4.0,
+            isLivePhoto: isLivePhoto,
+            livePhotoAsVideo: manifestClip.livePhotoAsVideo,
+            livePhotoMuted: isLivePhoto ? !(manifestClip.livePhotoSound ?? true) : nil,
             volume: manifestClip.audioLevel,
             isSynced: true
         )
@@ -245,9 +270,8 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
     // MARK: - Photos Library
 
-    private static func stableTempURL(clipId: String, type: ClipType) -> URL {
+    private static func stableTempURL(clipId: String, ext: String) -> URL {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("shared_downloads", isDirectory: true)
-        let ext = type == .video ? "mp4" : "jpg"
         return tmp.appendingPathComponent("\(clipId).\(ext)")
     }
 
@@ -269,6 +293,30 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
         guard let assetId = placeholderId else {
             throw APIError.server("Failed to save media to Photos library.")
+        }
+        return assetId
+    }
+
+    private static func saveLivePhotoToLibrary(imageURL: URL, movieURL: URL) async throws -> String {
+        var placeholderId: String?
+
+        try await PHPhotoLibrary.shared().performChanges {
+            let request = PHAssetCreationRequest.forAsset()
+
+            let imageData = try? Data(contentsOf: imageURL)
+            if let imageData {
+                request.addResource(with: .photo, data: imageData, options: nil)
+            }
+
+            let movieOptions = PHAssetResourceCreationOptions()
+            movieOptions.shouldMoveFile = false
+            request.addResource(with: .pairedVideo, fileURL: movieURL, options: movieOptions)
+
+            placeholderId = request.placeholderForCreatedAsset?.localIdentifier
+        }
+
+        guard let assetId = placeholderId else {
+            throw APIError.server("Failed to save Live Photo to Photos library.")
         }
         return assetId
     }

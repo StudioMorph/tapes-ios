@@ -553,10 +553,18 @@ public class TapesStore: ObservableObject {
 extension TapesStore {
     /// Returns a binding to a tape by ID, for use in views that need a `Binding<Tape>`.
     public func bindingForTape(id: UUID) -> Binding<Tape>? {
-        guard let idx = tapes.firstIndex(where: { $0.id == id }) else { return nil }
+        guard tapes.contains(where: { $0.id == id }) else { return nil }
         return Binding(
-            get: { self.tapes[idx] },
-            set: { self.tapes[idx] = $0 }
+            get: {
+                guard let idx = self.tapes.firstIndex(where: { $0.id == id }) else {
+                    return Tape(title: "")
+                }
+                return self.tapes[idx]
+            },
+            set: {
+                guard let idx = self.tapes.firstIndex(where: { $0.id == id }) else { return }
+                self.tapes[idx] = $0
+            }
         )
     }
 
@@ -1085,15 +1093,18 @@ extension TapesStore {
     
     // MARK: - Persistence Methods
     
-    /// Save tapes to disk
+    /// Save tapes to disk.
+    /// Snapshot construction (which copies blob data) is deferred into the
+    /// detached task so the main thread only captures a CoW array reference.
     private func scheduleSave() {
         saveTask?.cancel()
-        let sanitized = tapes.map { $0.removingPlaceholders() }
+        let snapshot = tapes
         let url = persistenceURL
         let actor = persistenceActor
         let delay = saveDebounce
         saveTask = Task.detached(priority: .utility) {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            let sanitized = snapshot.map { $0.removingPlaceholders() }
             await actor.save(sanitized, to: url)
         }
     }
@@ -1132,9 +1143,10 @@ extension TapesStore {
         restoreEmptyTapeInvariant(animated: false)
         isLoaded = true
 
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 500_000_000)
+        Task(priority: .background) { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
             self?.restoreMissingClipMetadata()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             self?.scheduleLegacyAlbumAssociation()
         }
     }
