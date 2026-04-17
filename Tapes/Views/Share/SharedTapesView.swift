@@ -14,6 +14,8 @@ struct SharedTapesView: View {
     @State private var tapeToShare: Tape?
     @State private var tapeToSettings: Tape?
     @State private var selectedSegment: SharedSegment = .viewOnly
+    @State private var editingTapeID: UUID?
+    @State private var draftTitle: String = ""
 
     enum SharedSegment: String, CaseIterable {
         case viewOnly = "View Only"
@@ -149,10 +151,24 @@ struct SharedTapesView: View {
                 LazyVStack(spacing: Tokens.Spacing.m) {
                     ForEach(filteredTapes) { tape in
                         if let binding = tapesStore.bindingForTape(id: tape.id) {
+                            let tapeID = tape.id
                             let isCollaborative = tape.shareInfo?.mode == "collaborative"
+
+                            let titleConfig: TapeCardView.TitleEditingConfig? = {
+                                guard editingTapeID == tapeID else { return nil }
+                                return TapeCardView.TitleEditingConfig(
+                                    text: Binding(
+                                        get: { draftTitle },
+                                        set: { draftTitle = $0 }
+                                    ),
+                                    tapeID: tapeID,
+                                    onCommit: { commitTitleEdit() }
+                                )
+                            }()
+
                             TapeCardView(
                                 tape: binding,
-                                tapeID: tape.id,
+                                tapeID: tapeID,
                                 tapeWidth: contentWidth,
                                 isLandscape: false,
                                 isShareDisabled: !isCollaborative,
@@ -163,8 +179,11 @@ struct SharedTapesView: View {
                                 onCameraCapture: { completion in
                                     cameraCoordinator.presentCamera(completion: completion)
                                 },
-                                onTitleFocusRequest: {},
-                                titleEditingConfig: nil
+                                onTitleFocusRequest: {
+                                    editingTapeID = tapeID
+                                    draftTitle = tape.title
+                                },
+                                titleEditingConfig: titleConfig
                             )
                             .background(Tokens.Colors.primaryBackground)
                             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
@@ -234,6 +253,19 @@ struct SharedTapesView: View {
 
             Spacer()
         }
+    }
+
+    // MARK: - Title Editing
+
+    private func commitTitleEdit() {
+        guard let tapeID = editingTapeID else { return }
+        let trimmed = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, var tape = tapesStore.tapes.first(where: { $0.id == tapeID }) {
+            tape.title = trimmed
+            tapesStore.updateTape(tape)
+        }
+        editingTapeID = nil
+        draftTitle = ""
     }
 
     // MARK: - Handle Incoming Share
