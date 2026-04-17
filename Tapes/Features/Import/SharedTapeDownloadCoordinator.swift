@@ -50,16 +50,20 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
                 let uploadedClips = manifest.clips.filter { $0.cloudUrl != nil }
 
-                if uploadedClips.isEmpty {
-                    self.downloadError = "This tape has no clips yet."
-                    self.isDownloading = false
-                    return
-                }
-
                 let tapeId = resolution.tapeId
                 let session = URLSession.shared
 
                 let existingTape = tapeStore.sharedTape(forRemoteId: tapeId)
+                let isReturning = existingTape != nil
+
+                if uploadedClips.isEmpty {
+                    self.downloadError = isReturning
+                        ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
+                        : "This tape is empty.\nAsk the Tapes owner to add content and try again."
+                    self.isDownloading = false
+                    return
+                }
+
                 let existingClipIds: Set<String>
                 if let existing = existingTape {
                     existingClipIds = Set(existing.clips.map { $0.id.uuidString.lowercased() })
@@ -69,7 +73,8 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
                 let clipsToDownload = uploadedClips.filter { !existingClipIds.contains($0.clipId.lowercased()) }
 
-                if clipsToDownload.isEmpty && existingTape != nil {
+                if clipsToDownload.isEmpty && isReturning {
+                    self.downloadError = "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                     self.isDownloading = false
                     return
                 }
@@ -96,9 +101,9 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 }
 
                 guard !Task.isCancelled, !clips.isEmpty else {
-                    if clips.isEmpty && existingTape == nil {
-                        self.downloadError = "All clips failed to download."
-                    }
+                    self.downloadError = isReturning
+                        ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
+                        : "This tape is empty.\nAsk the Tapes owner to add content and try again."
                     self.isDownloading = false
                     return
                 }
