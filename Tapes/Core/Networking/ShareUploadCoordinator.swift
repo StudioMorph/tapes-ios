@@ -197,7 +197,7 @@ public class ShareUploadCoordinator: ObservableObject {
                 }
 
                 let clipsToUpload = localClips.filter { !serverClipIds.contains($0.id.uuidString.lowercased()) }
-                let clipIdsToDelete = serverClipIds.subtracting(localClipIds)
+                let clipIdsToDelete = intendedForCollaboration ? Set<String>() : serverClipIds.subtracting(localClipIds)
 
                 let hasWork = !clipsToUpload.isEmpty || !clipIdsToDelete.isEmpty
 

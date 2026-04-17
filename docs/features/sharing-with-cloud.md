@@ -194,7 +194,7 @@ When a recipient downloads a shared tape (or receives a contribution), media is 
 5. Clips are associated with a Photos album named after the tape via `TapeAlbumService`.
 
 This means:
-- **R2 can be safely cleaned up** after all recipients confirm download — no cloud URL is retained on the clip.
+- **R2 assets are retained for 3 days** from the last share action, then purged by a daily scheduled job — no cloud URL is retained on the clip after cleanup.
 - **No cache eviction risk** — assets live in the Photos library, which iOS never purges.
 - **Shared clips are structurally identical to local clips** — both use `assetLocalId` for media resolution.
 
@@ -232,7 +232,22 @@ Live Photos are shared with full fidelity — both the still image and the paire
 - D1 `clips` table has a `live_photo_movie_url` column (migration `0008_live_photo_movie_url.sql`).
 - The `createClip` endpoint generates presigned upload URLs for both the still and movie when `type == 'live_photo'`.
 - The manifest endpoint signs and returns `live_photo_movie_url` alongside `cloud_url`.
-- Cleanup (`confirmDownload`) deletes the movie object from R2 when all recipients have downloaded.
+- Cleanup is handled by the tape-level R2 retention policy (see below), not by `confirmDownload`.
+
+## R2 Asset Retention Policy
+
+Shared assets are kept in R2 for **3 days** from the last share or re-share action, managed at the tape level.
+
+### How it works
+
+1. **On every share action** — `createTape` (for existing tapes) and `confirmUpload` both set `tapes.shared_assets_expire_at` to `now + 3 days`. This resets the timer for all assets on the tape, not just newly uploaded ones.
+2. **`confirmDownload` tracks but does not delete** — When a recipient confirms a clip download, the tracking record is updated (`downloaded_at` timestamp) but no R2 objects are removed and no clips are soft-deleted.
+3. **Daily scheduled cleanup** (`runSharedAssetCleanup`, runs at 04:00 UTC) — Finds tapes where `shared_assets_expire_at < now`, deletes all R2 objects (media, thumbnails, Live Photo movies) for those tapes, soft-deletes the clip records, expires download tracking, and clears `shared_assets_expire_at`.
+4. **Re-sharing after expiry** — If a tape's assets have been purged and the owner shares again, `ensureTapeUploaded` (delta sync) detects no clips on the server and performs a full re-upload.
+
+### D1 schema
+
+- `tapes.shared_assets_expire_at TEXT` — ISO 8601 timestamp; `NULL` means no shared assets are live (migration `0009_shared_assets_expire_at.sql`).
 
 ## Related Files
 
