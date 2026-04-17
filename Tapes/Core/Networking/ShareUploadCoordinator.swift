@@ -131,17 +131,6 @@ public class ShareUploadCoordinator: ObservableObject {
         api: TapesAPIClient,
         onCompleted: ((TapesAPIClient.CreateTapeResponse) -> Void)? = nil
     ) {
-        // If the clips are already uploaded on the server, call the
-        // completion synchronously without opening the progress dialog.
-        if let cached = pendingCreateResponse, cached.clipsUploaded == true,
-           cached.tapeId.lowercased() == tape.id.uuidString.lowercased() {
-            self.resultCreateResponse = cached
-            self.resultRemoteTapeId = cached.tapeId
-            if intendedForCollaboration { self.resultMode = .collaborating }
-            onCompleted?(cached)
-            return
-        }
-
         guard !isUploading else { return }
 
         isUploading = true
@@ -153,27 +142,20 @@ public class ShareUploadCoordinator: ObservableObject {
         resultRemoteTapeId = nil
         resultCreateResponse = nil
         if intendedForCollaboration { resultMode = .collaborating }
-        showProgressDialog = true
+        showProgressDialog = false
         showCompletionDialog = false
         uploadStartTime = Date()
         sourceTape = tape
-
-        if #available(iOS 26, *) {
-            submitContinuedProcessingTask()
-        }
 
         uploadTask = Task { [weak self] in
             guard let self else { return }
 
             let tapeId = tape.id.uuidString.lowercased()
-            // The server uses `mode` as a tape-level setting (view_only vs
-            // collaborative). We now always mint all 4 share variants on the
-            // server regardless, so this only affects the `tapes.mode` column
-            // which feeds the recipient's Shared-tab segmentation.
             let apiMode = intendedForCollaboration ? "collaborative" : "view_only"
             self.pendingTapeId = tapeId
 
             do {
+                // 1. Ensure the tape record exists on the server
                 let response: TapesAPIClient.CreateTapeResponse
                 if let cached = self.pendingCreateResponse, cached.tapeId.lowercased() == tapeId {
                     response = cached
@@ -200,28 +182,39 @@ public class ShareUploadCoordinator: ObservableObject {
                     self.pendingCreateResponse = response
                 }
 
-                let skipUpload = response.clipsUploaded == true
+                // 2. Compute delta: compare local clips vs server clips
+                let localClips = tape.clips.filter { !$0.isPlaceholder }
+                let localClipIds = Set(localClips.map { $0.id.uuidString.lowercased() })
 
-                if !skipUpload {
-                    let realClips = tape.clips.filter { !$0.isPlaceholder }
-                    let clipsToUpload: [(index: Int, clip: Clip)]
+                var serverClipIds: Set<String> = []
+                if response.clipsUploaded == true {
+                    do {
+                        let manifest = try await api.getManifest(tapeId: tapeId)
+                        serverClipIds = Set(manifest.clips.map { $0.clipId.lowercased() })
+                    } catch {
+                        TapesLog.upload.warning("Could not fetch manifest for delta; uploading all clips: \(error.localizedDescription)")
+                    }
+                }
 
-                    if self.failedClipIndices.isEmpty {
-                        clipsToUpload = realClips.enumerated().map { ($0.offset, $0.element) }
-                    } else {
-                        clipsToUpload = self.failedClipIndices.sorted().compactMap { idx in
-                            guard idx < realClips.count else { return nil }
-                            return (idx, realClips[idx])
-                        }
+                let clipsToUpload = localClips.filter { !serverClipIds.contains($0.id.uuidString.lowercased()) }
+                let clipIdsToDelete = serverClipIds.subtracting(localClipIds)
+
+                let hasWork = !clipsToUpload.isEmpty || !clipIdsToDelete.isEmpty
+
+                if hasWork {
+                    self.totalClips = clipsToUpload.count + clipIdsToDelete.count
+                    self.showProgressDialog = true
+
+                    if #available(iOS 26, *) {
+                        self.submitContinuedProcessingTask()
                     }
 
-                    self.totalClips = realClips.count
+                    // 3a. Upload new clips
                     var newFailures: Set<Int> = []
-
-                    for (index, clip) in clipsToUpload {
+                    for (index, clip) in clipsToUpload.enumerated() {
                         guard !Task.isCancelled else { break }
 
-                        self.statusMessage = "Uploading clip \(index + 1) of \(realClips.count)…"
+                        self.statusMessage = "Uploading clip \(index + 1) of \(clipsToUpload.count)…"
 
                         if #available(iOS 26, *) {
                             self.updateContinuedTaskProgress()
@@ -236,6 +229,20 @@ public class ShareUploadCoordinator: ObservableObject {
                         }
                     }
 
+                    // 3b. Delete removed clips from server + R2
+                    for clipId in clipIdsToDelete {
+                        guard !Task.isCancelled else { break }
+
+                        self.statusMessage = "Syncing removed clips…"
+
+                        do {
+                            try await api.deleteClip(tapeId: tapeId, clipId: clipId)
+                            self.completedClips += 1
+                        } catch {
+                            TapesLog.upload.error("Failed to delete server clip \(clipId): \(error.localizedDescription)")
+                        }
+                    }
+
                     self.failedClipIndices = newFailures
 
                     if !newFailures.isEmpty {
@@ -243,21 +250,20 @@ public class ShareUploadCoordinator: ObservableObject {
                         self.finishUpload(success: false)
                         return
                     }
-
-                    // After a full upload, flip the server cache marker to true
-                    // so subsequent `ensureTapeUploaded` calls are instant.
-                    self.pendingCreateResponse = TapesAPIClient.CreateTapeResponse(
-                        tapeId: response.tapeId,
-                        shareId: response.shareId,
-                        shareIdCollab: response.shareIdCollab,
-                        shareIdViewProtected: response.shareIdViewProtected,
-                        shareIdCollabProtected: response.shareIdCollabProtected,
-                        shareUrl: response.shareUrl,
-                        deepLink: response.deepLink,
-                        createdAt: response.createdAt,
-                        clipsUploaded: true
-                    )
                 }
+
+                // Update cached response
+                self.pendingCreateResponse = TapesAPIClient.CreateTapeResponse(
+                    tapeId: response.tapeId,
+                    shareId: response.shareId,
+                    shareIdCollab: response.shareIdCollab,
+                    shareIdViewProtected: response.shareIdViewProtected,
+                    shareIdCollabProtected: response.shareIdCollabProtected,
+                    shareUrl: response.shareUrl,
+                    deepLink: response.deepLink,
+                    createdAt: response.createdAt,
+                    clipsUploaded: true
+                )
 
                 let finalResponse = self.pendingCreateResponse ?? response
                 self.resultCreateResponse = finalResponse
@@ -265,9 +271,7 @@ public class ShareUploadCoordinator: ObservableObject {
 
                 self.finishUpload(success: true)
 
-                // Fire the completion dialog only when we actually had to
-                // upload clips — silent-ensure calls shouldn't interrupt the UI.
-                if !skipUpload {
+                if hasWork {
                     if UIApplication.shared.applicationState == .active {
                         self.playCompletionFeedback()
                         withAnimation(.easeInOut(duration: 0.2)) {

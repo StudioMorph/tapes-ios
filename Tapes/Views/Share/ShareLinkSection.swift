@@ -334,13 +334,6 @@ struct ShareLinkSection: View {
     private func copyLinkTapped() {
         errorMessage = nil
 
-        if let url = shareURL {
-            UIPasteboard.general.string = url.absoluteString
-            flashCopiedToast()
-            return
-        }
-
-        // Tape not yet uploaded — bootstrap, then copy when the URL is available.
         guard let api = authManager.apiClient else {
             errorMessage = "Please sign in to share tapes."
             return
@@ -364,11 +357,6 @@ struct ShareLinkSection: View {
     private func shareLinkTapped() {
         errorMessage = nil
 
-        if let url = shareURL {
-            shareActivityURL = url
-            return
-        }
-
         guard let api = authManager.apiClient else {
             errorMessage = "Please sign in to share tapes."
             return
@@ -379,7 +367,6 @@ struct ShareLinkSection: View {
             intendedForCollaboration: currentVariant.isCollaborative,
             api: api
         ) { response in
-            // Suppress the completion dialog — the share sheet IS the completion UX.
             uploadCoordinator.dismissCompletionDialog()
 
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""

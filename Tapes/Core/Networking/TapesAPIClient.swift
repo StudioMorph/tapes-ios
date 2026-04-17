@@ -293,6 +293,10 @@ actor TapesAPIClient {
         try await postEmpty(path: "/tapes/\(tapeId)/clips/\(clipId)/downloaded")
     }
 
+    func deleteClip(tapeId: String, clipId: String) async throws {
+        try await delete(path: "/tapes/\(tapeId)/clips/\(clipId)")
+    }
+
     // MARK: - Manifest
 
     func getManifest(tapeId: String) async throws -> TapeManifest {
