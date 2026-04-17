@@ -351,6 +351,8 @@ struct ShareLinkSection: View {
             intendedForCollaboration: currentVariant.isCollaborative,
             api: api
         ) { response in
+            uploadCoordinator.dismissCompletionDialog()
+
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
             if let url = URL(string: "\(base)/t/\(response.shareId(for: currentVariant))") {
                 UIPasteboard.general.string = url.absoluteString
@@ -377,6 +379,9 @@ struct ShareLinkSection: View {
             intendedForCollaboration: currentVariant.isCollaborative,
             api: api
         ) { response in
+            // Suppress the completion dialog — the share sheet IS the completion UX.
+            uploadCoordinator.dismissCompletionDialog()
+
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
             if let url = URL(string: "\(base)/t/\(response.shareId(for: currentVariant))") {
                 shareActivityURL = url

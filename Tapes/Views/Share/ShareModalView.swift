@@ -25,6 +25,11 @@ struct ShareModalView: View {
         tape.shareInfo == nil || tape.shareInfo?.mode == "collaborative"
     }
 
+    /// True when the upload coordinator is working on a contribute (not an initial share).
+    private var isContributeUpload: Bool {
+        isCollaborativeShared && uploadCoordinator.sourceTape?.id == tape.id
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -58,11 +63,12 @@ struct ShareModalView: View {
                 }
             }
         }
-        .onChange(of: uploadCoordinator.isUploading) { _, isUploading in
-            // When the background upload starts, collapse the modal so the
-            // global progress overlay (owned by the parent view) stays visible.
-            if isUploading {
-                dismiss()
+        .overlay {
+            if uploadCoordinator.isUploading && !isContributeUpload {
+                ShareUploadProgressDialog(coordinator: uploadCoordinator)
+            }
+            if uploadCoordinator.uploadError != nil && !isContributeUpload {
+                ShareUploadErrorAlert(coordinator: uploadCoordinator)
             }
         }
     }
