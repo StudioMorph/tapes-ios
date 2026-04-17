@@ -586,16 +586,14 @@ extension TapesStore {
     /// Creates a collaborative fork of a tape in the Shared/Collaborating segment.
     /// The original tape in My Tapes stays untouched.
     /// A separate Photos album "[Name] - Collab" is created for the fork.
+    /// Creates a collaborative fork of the source tape and adds it to the store.
+    /// The fork gets its own UUID which becomes the server `tape_id`.
+    /// Returns the fork so the caller can use its ID for upload.
+    @discardableResult
     public func forkTapeForCollaboration(
         _ sourceTape: Tape,
-        remoteTapeId: String,
-        shareId: String,
         ownerName: String?
-    ) {
-        if tapes.contains(where: { $0.shareInfo?.remoteTapeId == remoteTapeId }) {
-            return
-        }
-
+    ) -> Tape {
         var forkedClips = sourceTape.clips.filter { !$0.isPlaceholder }
         for i in forkedClips.indices {
             forkedClips[i].isSynced = true
@@ -603,15 +601,10 @@ extension TapesStore {
 
         let collabTitle = "\(sourceTape.title) - Collab"
 
-        let info = ShareInfo(
-            shareId: shareId,
-            ownerName: ownerName,
-            mode: "collaborative",
-            expiresAt: nil,
-            remoteTapeId: remoteTapeId
-        )
+        let forkId = UUID()
 
         let fork = Tape(
+            id: forkId,
             title: collabTitle,
             orientation: sourceTape.orientation,
             scaleMode: sourceTape.scaleMode,
@@ -626,7 +619,13 @@ extension TapesStore {
             blurExportBackground: sourceTape.blurExportBackground,
             livePhotosAsVideo: sourceTape.livePhotosAsVideo,
             livePhotosMuted: sourceTape.livePhotosMuted,
-            shareInfo: info
+            shareInfo: ShareInfo(
+                shareId: "",
+                ownerName: ownerName,
+                mode: "collaborative",
+                expiresAt: nil,
+                remoteTapeId: forkId.uuidString.lowercased()
+            )
         )
 
         tapes.append(fork)
@@ -635,6 +634,16 @@ extension TapesStore {
         if !forkedClips.isEmpty {
             associateClipsWithAlbum(tapeID: fork.id, clips: forkedClips)
         }
+
+        return fork
+    }
+
+    /// Updates the fork's ShareInfo with server-provided share IDs after upload.
+    public func updateForkShareInfo(forkId: UUID, shareId: String, remoteTapeId: String) {
+        guard let idx = tapes.firstIndex(where: { $0.id == forkId }) else { return }
+        tapes[idx].shareInfo?.shareId = shareId
+        tapes[idx].shareInfo?.remoteTapeId = remoteTapeId
+        autoSave()
     }
 
     /// Merges new clips into an existing shared tape (for incoming contributions).

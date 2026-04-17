@@ -89,20 +89,8 @@ struct TapesListView: View {
                 exportCoordinator.handleScenePhaseChange(newPhase)
                 shareUploadCoordinator.handleScenePhaseChange(newPhase)
             }
-            .onChange(of: shareUploadCoordinator.showCompletionDialog) { _, show in
-                guard show,
-                      shareUploadCoordinator.resultMode == .collaborating,
-                      let source = shareUploadCoordinator.sourceTape,
-                      let remoteId = shareUploadCoordinator.resultRemoteTapeId,
-                      let response = shareUploadCoordinator.resultCreateResponse else { return }
-
-                tapesStore.forkTapeForCollaboration(
-                    source,
-                    remoteTapeId: remoteId,
-                    shareId: response.shareIdCollab,
-                    ownerName: authManager.userName
-                )
-            }
+            // Fork creation for collaborative shares now happens in
+            // ShareLinkSection.resolveUploadTape() before upload starts.
             .toolbar {
                 if tapesStore.jigglingTapeID != nil {
                     ToolbarItem(placement: .topBarTrailing) {

@@ -339,11 +339,14 @@ struct ShareLinkSection: View {
             return
         }
 
+        let uploadTape = resolveUploadTape()
+
         uploadCoordinator.ensureTapeUploaded(
-            tape: tape,
+            tape: uploadTape,
             intendedForCollaboration: currentVariant.isCollaborative,
             api: api
         ) { response in
+            finaliseCollabFork(response: response, forkTape: uploadTape)
             uploadCoordinator.dismissCompletionDialog()
 
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
@@ -362,11 +365,14 @@ struct ShareLinkSection: View {
             return
         }
 
+        let uploadTape = resolveUploadTape()
+
         uploadCoordinator.ensureTapeUploaded(
-            tape: tape,
+            tape: uploadTape,
             intendedForCollaboration: currentVariant.isCollaborative,
             api: api
         ) { response in
+            finaliseCollabFork(response: response, forkTape: uploadTape)
             uploadCoordinator.dismissCompletionDialog()
 
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
@@ -374,6 +380,27 @@ struct ShareLinkSection: View {
                 shareActivityURL = url
             }
         }
+    }
+
+    /// For collaborative shares from an original (non-shared) tape, creates
+    /// the fork first so the upload uses the fork's UUID as the server tape_id.
+    /// For view-only or already-forked tapes, returns the tape as-is.
+    private func resolveUploadTape() -> Tape {
+        guard currentVariant.isCollaborative, tape.shareInfo == nil else {
+            return tape
+        }
+        return tapesStore.forkTapeForCollaboration(tape, ownerName: authManager.userName)
+    }
+
+    /// After a successful collaborative upload, updates the fork's ShareInfo
+    /// with the server-provided share IDs.
+    private func finaliseCollabFork(response: TapesAPIClient.CreateTapeResponse, forkTape: Tape) {
+        guard currentVariant.isCollaborative, forkTape.shareInfo != nil else { return }
+        tapesStore.updateForkShareInfo(
+            forkId: forkTape.id,
+            shareId: response.shareIdCollab,
+            remoteTapeId: response.tapeId
+        )
     }
 
     private func inviteTapped() {
@@ -402,22 +429,25 @@ struct ShareLinkSection: View {
         Task { @MainActor in
             defer { isInviting = false }
 
-            // Ensure tape is on the server (and clips uploaded) before inviting —
-            // the first invite on an unshared tape is what bootstraps R2 uploads.
+            let uploadTape = resolveUploadTape()
+
             await withCheckedContinuation { cont in
-                if uploadCoordinator.cachedCreateResponse(for: tape) != nil {
+                if uploadCoordinator.cachedCreateResponse(for: uploadTape) != nil {
                     cont.resume()
                     return
                 }
                 uploadCoordinator.ensureTapeUploaded(
-                    tape: tape,
+                    tape: uploadTape,
                     intendedForCollaboration: variant.isCollaborative,
                     api: api
-                ) { _ in cont.resume() }
+                ) { response in
+                    finaliseCollabFork(response: response, forkTape: uploadTape)
+                    cont.resume()
+                }
             }
 
             guard let remoteTapeId = uploadCoordinator.resultRemoteTapeId
-                ?? uploadCoordinator.cachedCreateResponse(for: tape)?.tapeId else {
+                ?? uploadCoordinator.cachedCreateResponse(for: uploadTape)?.tapeId else {
                 errorMessage = "Couldn't upload this tape. Please try again."
                 return
             }

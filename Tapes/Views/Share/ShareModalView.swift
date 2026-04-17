@@ -11,6 +11,18 @@ struct ShareModalView: View {
         tape.shareInfo?.mode == "collaborative"
     }
 
+    /// True when this is the owner's own collaborative fork
+    /// (remoteTapeId == local id, set in forkTapeForCollaboration).
+    private var isOwnerCollabFork: Bool {
+        isCollaborativeShared &&
+        tape.shareInfo?.remoteTapeId == tape.id.uuidString.lowercased()
+    }
+
+    /// True when this is a receiver's collaborative tape (not the owner's fork).
+    private var isReceiverCollab: Bool {
+        isCollaborativeShared && !isOwnerCollabFork
+    }
+
     private var unsyncedClips: [Clip] {
         tape.clips.filter { !$0.isPlaceholder && !$0.isSynced }
     }
@@ -19,26 +31,26 @@ struct ShareModalView: View {
         !unsyncedClips.isEmpty
     }
 
-    /// Disable the share section entirely for tapes received by the
-    /// current user as view-only (they cannot re-share what they don't own).
+    /// The share section is visible for: unshared tapes (My Tapes) and
+    /// the owner's collaborative fork (so they can re-share / refresh the link).
     private var canOwnShare: Bool {
-        tape.shareInfo == nil || tape.shareInfo?.mode == "collaborative"
+        tape.shareInfo == nil || isOwnerCollabFork
     }
 
     /// True when the upload coordinator is working on a contribute (not an initial share).
     private var isContributeUpload: Bool {
-        isCollaborativeShared && uploadCoordinator.sourceTape?.id == tape.id
+        isReceiverCollab && uploadCoordinator.sourceTape?.id == tape.id
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.l) {
-                    if isCollaborativeShared {
+                    if isReceiverCollab {
                         contributeSection
                     }
 
-                    if canOwnShare && !isCollaborativeShared {
+                    if canOwnShare {
                         ShareLinkSection(tape: tape)
                     }
 

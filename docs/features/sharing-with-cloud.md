@@ -163,25 +163,26 @@ Sharing uploads run in the background via `ShareUploadCoordinator`, mirroring th
 
 ## Collaborative Fork Architecture
 
-When a tape owner shares a tape as **collaborative**, the original tape in "My Tapes" stays completely untouched — no `shareInfo` is attached. Instead, a **fork** (duplicate) is created in the "Shared > Collaborating" segment:
+When a tape owner shares a tape as **collaborative**, a completely **independent fork** is created before any upload happens. The fork has its own UUID, its own server-side tape record, its own manifest, and its own share links. There is no link back to the original tape.
 
-1. **Owner shares as collaborative** — `ShareUploadCoordinator` uploads clips and sends invites. On completion, `TapesListView` detects the success and calls `TapesStore.forkTapeForCollaboration()`.
-2. **Fork creation** — A new `Tape` object is created with a fresh `UUID`, copies of all clips (marked as `isSynced`), and a `ShareInfo` linking it to the server-side `remoteTapeId`.
-3. **Original stays personal** — The original tape in "My Tapes" has no `shareInfo`, so `isShared == false`. It can be edited, deleted, or shared again independently.
-4. **Fork receives contributions** — When a collaborator contributes clips, the push notification triggers `SharedTapeDownloadCoordinator.startDownload()`, which detects the existing fork via `remoteTapeId` and **merges** only new clips (deduplicating by clip ID).
-5. **No duplication on re-open** — If the user taps a share link for a tape they already have, `startDownload` skips clips that already exist locally.
+1. **Fork created before upload** — `ShareLinkSection.resolveUploadTape()` calls `TapesStore.forkTapeForCollaboration()` which creates a new `Tape` with a fresh UUID, copies of all clips (marked `isSynced`), and a `ShareInfo` with `remoteTapeId` set to the fork's own UUID.
+2. **Upload uses the fork's UUID** — `ensureTapeUploaded` receives the fork as the `tape` parameter, so `createTape` on the server uses the fork's UUID as the `tape_id`. The original tape's UUID never touches the server for collaborative shares.
+3. **Original stays personal** — The original tape in "My Tapes" has no `shareInfo`, so `isShared == false`. It can be edited, deleted, or shared again independently. Sharing the original as collaborative again creates another independent fork.
+4. **Owner can re-share from the fork** — `ShareModalView` shows `ShareLinkSection` on the owner's collaborative fork (identified by `remoteTapeId == tape.id`). This lets the owner refresh the 3-day R2 timer or share the link again.
+5. **Fork receives contributions** — When a collaborator contributes clips, the push notification triggers `SharedTapeDownloadCoordinator.startDownload()`, which detects the existing fork via `remoteTapeId` and **merges** only new clips (deduplicating by clip ID).
+6. **No duplication on re-open** — If the user taps a share link for a tape they already have, `startDownload` skips clips that already exist locally.
 
 ### Data flow
 
 ```
-[My Tapes]  →  Original tape (shareInfo = nil, untouched)
-                    ↓ on collaborative share success
-[Shared > Collaborating]  →  Forked tape (shareInfo set, syncs contributions)
+[My Tapes]  →  Original tape (shareInfo = nil, untouched, never uploaded for collab)
+                    ↓ on collaborative share
+[Shared > Collaborating]  →  Fork (own UUID, own server tape, own manifest & links)
 ```
 
 ### View-only shares
 
-View-only shares do **not** create a fork. The original tape is uploaded and a link is generated, but the owner's tape remains unchanged. Recipients get their own independent copy via `SharedTapeDownloadCoordinator`.
+View-only shares do **not** create a fork. The original tape is uploaded under its own UUID and a link is generated, but the owner's tape remains unchanged. Recipients get their own independent copy via `SharedTapeDownloadCoordinator`.
 
 ## Shared Tape Media Storage
 
