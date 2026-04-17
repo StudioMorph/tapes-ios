@@ -241,7 +241,7 @@ Shared assets are kept in R2 for **3 days** from the last share or re-share acti
 
 ### How it works
 
-1. **On every share action** — `createTape` (for existing tapes) and `confirmUpload` both set `tapes.shared_assets_expire_at` to `now + 3 days`. This resets the timer for all assets on the tape, not just newly uploaded ones.
+1. **On every share action** — `createTape` (for existing tapes) and `confirmUpload` set `tapes.shared_assets_expire_at` based on the tape mode: **3 days** for view-only tapes, **7 days** for collaborative tapes. For collaborative tapes, contributions also reset the timer (giving participants more time to sync).
 2. **`confirmDownload` tracks but does not delete** — When a recipient confirms a clip download, the tracking record is updated (`downloaded_at` timestamp) but no R2 objects are removed and no clips are soft-deleted.
 3. **Daily scheduled cleanup** (`runSharedAssetCleanup`, runs at 04:00 UTC) — Finds tapes where `shared_assets_expire_at < now`, deletes all R2 objects (media, thumbnails, Live Photo movies) for those tapes, soft-deletes the clip records, expires download tracking, and clears `shared_assets_expire_at`.
 4. **Re-sharing after expiry** — If a tape's assets have been purged and the owner shares again, `ensureTapeUploaded` (delta sync) detects no clips on the server and performs a full re-upload.
