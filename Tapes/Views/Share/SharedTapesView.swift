@@ -13,7 +13,6 @@ struct SharedTapesView: View {
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
     @State private var tapeToSettings: Tape?
-    @State private var showingSettings = false
     @State private var selectedSegment: SharedSegment = .viewOnly
 
     enum SharedSegment: String, CaseIterable {
@@ -117,19 +116,12 @@ struct SharedTapesView: View {
         .sheet(item: $tapeToShare) { tape in
             ShareModalView(tape: tape)
         }
-        .sheet(isPresented: $showingSettings) {
-            if let settingsTape = tapeToSettings,
-               let binding = tapesStore.bindingForTape(id: settingsTape.id) {
+        .sheet(item: $tapeToSettings) { settingsTape in
+            if let binding = tapesStore.bindingForTape(id: settingsTape.id) {
                 TapeSettingsView(
                     tape: binding,
-                    onDismiss: {
-                        showingSettings = false
-                        tapeToSettings = nil
-                    },
-                    onTapeDeleted: {
-                        showingSettings = false
-                        tapeToSettings = nil
-                    },
+                    onDismiss: { tapeToSettings = nil },
+                    onTapeDeleted: { tapeToSettings = nil },
                     onMergeAndSave: { _ in }
                 )
             }
@@ -165,10 +157,7 @@ struct SharedTapesView: View {
                                 isLandscape: false,
                                 isShareDisabled: !isCollaborative,
                                 onShare: { tapeToShare = tape },
-                                onSettings: {
-                                    tapeToSettings = tape
-                                    showingSettings = true
-                                },
+                                onSettings: { tapeToSettings = tape },
                                 onPlay: { tapeToPreview = tape },
                                 onThumbnailDelete: { _ in },
                                 onCameraCapture: { completion in
