@@ -15,8 +15,8 @@ public class TapeSyncChecker: ObservableObject {
 
     private var lastCheckDate: Date?
 
-    /// Minimum interval between automatic checks. Change to 3600 for hourly.
-    static var checkInterval: TimeInterval = 10
+    /// Minimum interval between automatic checks.
+    static var checkInterval: TimeInterval = 60
 
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "SyncChecker")
 
