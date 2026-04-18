@@ -547,7 +547,7 @@ public class ShareUploadCoordinator: ObservableObject {
             return try await exportPHAssetData(identifier: assetId, isVideo: false)
         }
 
-        if let url = clip.localURL {
+        if let url = clip.localURL, FileManager.default.fileExists(atPath: url.path) {
             return try Data(contentsOf: url)
         }
 
@@ -575,8 +575,18 @@ public class ShareUploadCoordinator: ObservableObject {
     }
 
     private static func exportPHAssetData(identifier: String, isVideo: Bool) async throws -> Data {
-        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
-        guard let phAsset = fetchResult.firstObject else {
+        var phAsset: PHAsset?
+        for attempt in 0..<3 {
+            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
+            if let asset = fetchResult.firstObject {
+                phAsset = asset
+                break
+            }
+            if attempt < 2 {
+                try await Task.sleep(nanoseconds: UInt64((attempt + 1)) * 500_000_000)
+            }
+        }
+        guard let phAsset else {
             throw APIError.validation("Photo library asset not found.")
         }
 
