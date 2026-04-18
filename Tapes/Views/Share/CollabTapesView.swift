@@ -1,10 +1,9 @@
 import SwiftUI
 import AuthenticationServices
 
-struct SharedTapesView: View {
+struct CollabTapesView: View {
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tapesStore: TapesStore
-    @EnvironmentObject private var navigationCoordinator: NavigationCoordinator
     @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
     @StateObject private var downloadCoordinator = SharedTapeDownloadCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
@@ -17,11 +16,8 @@ struct SharedTapesView: View {
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
 
-    private var viewOnlyTapes: [Tape] {
-        tapesStore.sharedTapes.filter { tape in
-            guard let mode = tape.shareInfo?.mode else { return true }
-            return mode == "view_only"
-        }
+    private var collabTapes: [Tape] {
+        tapesStore.sharedTapes.filter { $0.shareInfo?.mode == "collaborative" }
     }
 
     var body: some View {
@@ -32,10 +28,10 @@ struct SharedTapesView: View {
 
                 if !authManager.isSignedIn {
                     signInPrompt
-                } else if viewOnlyTapes.isEmpty {
+                } else if collabTapes.isEmpty {
                     emptyState
                 } else {
-                    sharedTapeList
+                    collabTapeList
                 }
 
                 SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
@@ -50,7 +46,7 @@ struct SharedTapesView: View {
                     ShareUploadErrorAlert(coordinator: uploadCoordinator)
                 }
             }
-            .navigationTitle("Shared")
+            .navigationTitle("Collab")
             .navigationBarTitleDisplayMode(.large)
             .alert("Sign In Issue", isPresented: .init(
                 get: { authManager.authError != nil },
@@ -70,18 +66,6 @@ struct SharedTapesView: View {
             } message: {
                 if let msg = downloadCoordinator.downloadError {
                     Text(msg)
-                }
-            }
-            .onChange(of: navigationCoordinator.pendingSharedTapeId) { _, newId in
-                if let shareId = newId {
-                    navigationCoordinator.clearPendingTape()
-                    handleIncomingShare(shareId: shareId)
-                }
-            }
-            .onAppear {
-                if let shareId = navigationCoordinator.pendingSharedTapeId {
-                    navigationCoordinator.clearPendingTape()
-                    handleIncomingShare(shareId: shareId)
                 }
             }
         }
@@ -112,15 +96,15 @@ struct SharedTapesView: View {
         }
     }
 
-    // MARK: - Shared Tape List
+    // MARK: - Collab Tape List
 
-    private var sharedTapeList: some View {
+    private var collabTapeList: some View {
         GeometryReader { geometry in
             let contentWidth = geometry.size.width - (Tokens.Spacing.m * 2)
 
             ScrollView {
                 LazyVStack(spacing: Tokens.Spacing.m) {
-                    ForEach(viewOnlyTapes) { tape in
+                    ForEach(collabTapes) { tape in
                         if let binding = tapesStore.bindingForTape(id: tape.id) {
                             let tapeID = tape.id
 
@@ -141,7 +125,6 @@ struct SharedTapesView: View {
                                 tapeID: tapeID,
                                 tapeWidth: contentWidth,
                                 isLandscape: false,
-                                isShareDisabled: true,
                                 onShare: { tapeToShare = tape },
                                 onSettings: { tapeToSettings = tape },
                                 onPlay: { tapeToPreview = tape },
@@ -185,11 +168,11 @@ struct SharedTapesView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(Tokens.Colors.tertiaryText)
 
-            Text("Sign in to see shared tapes")
+            Text("Sign in to collaborate")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
 
-            Text("Tapes shared with you will appear here after you sign in with your Apple ID.")
+            Text("Collaborative tapes will appear here after you sign in with your Apple ID.")
                 .font(Tokens.Typography.caption)
                 .foregroundStyle(Tokens.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
@@ -214,15 +197,15 @@ struct SharedTapesView: View {
         VStack(spacing: Tokens.Spacing.l) {
             Spacer()
 
-            Image(systemName: "tray")
+            Image(systemName: "person.2.wave.2")
                 .font(.system(size: 48))
                 .foregroundStyle(Tokens.Colors.tertiaryText)
 
-            Text("No shared tapes yet")
+            Text("No collaborative tapes yet")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
 
-            Text("When someone shares a tape with you, it will appear here.")
+            Text("When you collaborate on a tape, it will appear here.")
                 .font(Tokens.Typography.caption)
                 .foregroundStyle(Tokens.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
@@ -245,20 +228,6 @@ struct SharedTapesView: View {
         draftTitle = ""
     }
 
-    // MARK: - Handle Incoming Share
-
-    private func handleIncomingShare(shareId: String) {
-        guard let api = authManager.apiClient else {
-            downloadCoordinator.downloadError = "Please sign in first to receive shared tapes."
-            return
-        }
-        downloadCoordinator.startDownload(
-            shareId: shareId,
-            api: api,
-            tapeStore: tapesStore
-        )
-    }
-
     // MARK: - Handle Badge Download
 
     private func handleDownload(tape: Tape) {
@@ -274,7 +243,7 @@ struct SharedTapesView: View {
 }
 
 #Preview {
-    SharedTapesView()
+    CollabTapesView()
         .environmentObject(TapesStore())
         .environmentObject(AuthManager())
         .environmentObject(EntitlementManager())

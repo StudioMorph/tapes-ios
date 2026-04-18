@@ -23,6 +23,7 @@ struct MainTabView: View {
     enum AppTab: Hashable {
         case myTapes
         case shared
+        case collab
         case account
     }
 
@@ -36,6 +37,10 @@ struct MainTabView: View {
                 SharedTapesView()
             }
             .badge(viewOnlyDownloadCount)
+
+            Tab("Collab", systemImage: "person.2.wave.2", value: AppTab.collab) {
+                CollabTapesView()
+            }
 
             Tab("Account", systemImage: "person.circle", value: AppTab.account) {
                 AccountTabView(showOnboarding: $showOnboarding)
