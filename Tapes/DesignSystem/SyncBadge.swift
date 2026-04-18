@@ -59,8 +59,9 @@ public struct SyncBadge: View {
         Text("\(count)")
             .font(.system(size: 11, weight: .bold, design: .rounded))
             .foregroundStyle(.white)
-            .frame(width: 22, height: 22)
-            .background(Circle().fill(Tokens.Colors.systemBlue))
+            .padding(.horizontal, count > 9 ? 4 : 0)
+            .frame(minWidth: 16, minHeight: 16)
+            .background(Capsule().fill(Tokens.Colors.systemBlue))
     }
 
     private var arrowTile: some View {
