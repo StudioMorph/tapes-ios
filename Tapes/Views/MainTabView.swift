@@ -2,8 +2,12 @@ import SwiftUI
 
 struct MainTabView: View {
     @Binding var showOnboarding: Bool
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var navigationCoordinator: NavigationCoordinator
+    @EnvironmentObject private var tapesStore: TapesStore
+    @EnvironmentObject private var authManager: AuthManager
     @StateObject private var shareUploadCoordinator = ShareUploadCoordinator()
+    @StateObject private var syncChecker = TapeSyncChecker()
 
     enum AppTab: Hashable {
         case myTapes
@@ -27,6 +31,12 @@ struct MainTabView: View {
         }
         .tint(Tokens.Colors.systemBlue)
         .environmentObject(shareUploadCoordinator)
+        .environmentObject(syncChecker)
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active, let api = authManager.apiClient {
+                syncChecker.checkAll(tapes: tapesStore.tapes, api: api)
+            }
+        }
     }
 }
 

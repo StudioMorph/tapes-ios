@@ -9,7 +9,7 @@ struct SharedTapesView: View {
     @StateObject private var downloadCoordinator = SharedTapeDownloadCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
-    @StateObject private var syncChecker = TapeSyncChecker()
+    @EnvironmentObject private var syncChecker: TapeSyncChecker
 
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
@@ -112,9 +112,6 @@ struct SharedTapesView: View {
                 if let shareId = navigationCoordinator.pendingSharedTapeId {
                     navigationCoordinator.clearPendingTape()
                     handleIncomingShare(shareId: shareId)
-                }
-                if let api = authManager.apiClient {
-                    syncChecker.checkAll(tapes: tapesStore.sharedTapes, api: api)
                 }
             }
         }
@@ -314,4 +311,5 @@ struct SharedTapesView: View {
         .environmentObject(EntitlementManager())
         .environmentObject(NavigationCoordinator())
         .environmentObject(ShareUploadCoordinator())
+        .environmentObject(TapeSyncChecker())
 }

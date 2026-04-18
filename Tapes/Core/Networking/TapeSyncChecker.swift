@@ -1,9 +1,9 @@
 import Foundation
 import os
 
-/// Checks server manifests for collaborative tapes and computes
+/// Checks server manifests for shared tapes and computes
 /// how many new clips are available to download. Also tracks
-/// how many local clips on view-only shared tapes need uploading.
+/// how many local clips on previously-shared My Tapes need uploading.
 @MainActor
 public class TapeSyncChecker: ObservableObject {
 
@@ -14,14 +14,16 @@ public class TapeSyncChecker: ObservableObject {
     @Published var pendingUploads: [UUID: Int] = [:]
 
     private var lastCheckDate: Date?
-    private static let cooldown: TimeInterval = 300
+
+    /// Minimum interval between automatic checks. Change to 3600 for hourly.
+    static var checkInterval: TimeInterval = 10
 
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "SyncChecker")
 
     /// Runs a lightweight manifest check for all shared tapes.
-    /// Respects a 5-minute cooldown to avoid excessive network calls.
+    /// Respects the `checkInterval` cooldown to avoid excessive network calls.
     func checkAll(tapes: [Tape], api: TapesAPIClient) {
-        if let last = lastCheckDate, Date().timeIntervalSince(last) < Self.cooldown {
+        if let last = lastCheckDate, Date().timeIntervalSince(last) < Self.checkInterval {
             return
         }
         lastCheckDate = Date()
@@ -46,12 +48,12 @@ public class TapeSyncChecker: ObservableObject {
         pendingUploads.removeValue(forKey: tapeId)
     }
 
-    // MARK: - Downloads (collaborative tapes with new server clips)
+    // MARK: - Downloads (shared tapes with new server clips)
 
     private func checkDownloads(tapes: [Tape], api: TapesAPIClient) async {
-        let collabTapes = tapes.filter { $0.shareInfo?.mode == "collaborative" }
+        let sharedTapes = tapes.filter { $0.shareInfo != nil }
 
-        for tape in collabTapes {
+        for tape in sharedTapes {
             guard let remoteTapeId = tape.shareInfo?.remoteTapeId else { continue }
 
             do {
@@ -71,7 +73,7 @@ public class TapeSyncChecker: ObservableObject {
         }
     }
 
-    // MARK: - Uploads (view-only tapes with unsynced local content)
+    // MARK: - Uploads (My Tapes with unsynced local content)
 
     private func checkUploads(tapes: [Tape]) {
         let myTapes = tapes.filter { $0.shareInfo == nil }
