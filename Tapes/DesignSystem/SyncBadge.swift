@@ -77,7 +77,7 @@ public struct SyncBadge: View {
                     bottomTrailingRadius: Tokens.Radius.card,
                     topTrailingRadius: 0
                 )
-                .fill(Tokens.Colors.secondaryBackground)
+                .fill(Tokens.Colors.tertiaryBackground)
             )
     }
 }
