@@ -9,6 +9,7 @@ struct SharedTapesView: View {
     @StateObject private var downloadCoordinator = SharedTapeDownloadCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
+    @StateObject private var syncChecker = TapeSyncChecker()
 
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
@@ -112,6 +113,9 @@ struct SharedTapesView: View {
                     navigationCoordinator.clearPendingTape()
                     handleIncomingShare(shareId: shareId)
                 }
+                if let api = authManager.apiClient {
+                    syncChecker.checkAll(tapes: tapesStore.sharedTapes, api: api)
+                }
             }
         }
         .environmentObject(importCoordinator)
@@ -187,6 +191,13 @@ struct SharedTapesView: View {
                             )
                             .background(Tokens.Colors.primaryBackground)
                             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+                            .overlay(alignment: .bottomTrailing) {
+                                if let count = syncChecker.pendingDownloads[tapeID], count > 0 {
+                                    SyncBadge(count: count, direction: .download) {
+                                        handleDownload(tape: tape)
+                                    }
+                                }
+                            }
                             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                             .compositingGroup()
                         }
@@ -275,6 +286,19 @@ struct SharedTapesView: View {
             downloadCoordinator.downloadError = "Please sign in first to receive shared tapes."
             return
         }
+        downloadCoordinator.startDownload(
+            shareId: shareId,
+            api: api,
+            tapeStore: tapesStore
+        )
+    }
+
+    // MARK: - Handle Badge Download
+
+    private func handleDownload(tape: Tape) {
+        guard let shareId = tape.shareInfo?.shareId,
+              let api = authManager.apiClient else { return }
+        syncChecker.clearDownload(for: tape.id)
         downloadCoordinator.startDownload(
             shareId: shareId,
             api: api,

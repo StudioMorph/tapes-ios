@@ -38,6 +38,8 @@ public class ShareUploadCoordinator: ObservableObject {
     @Published var resultMode: ShareMode = .viewing
     @Published var resultRemoteTapeId: String?
     @Published var resultCreateResponse: TapesAPIClient.CreateTapeResponse?
+    /// Count of local (non-placeholder) clips after the last successful upload.
+    @Published var lastUploadedClipCount: Int?
 
     // MARK: - Internal State
 
@@ -268,6 +270,7 @@ public class ShareUploadCoordinator: ObservableObject {
                 let finalResponse = self.pendingCreateResponse ?? response
                 self.resultCreateResponse = finalResponse
                 self.resultRemoteTapeId = tapeId
+                self.lastUploadedClipCount = localClips.count
 
                 self.finishUpload(success: true)
 

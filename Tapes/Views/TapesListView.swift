@@ -89,8 +89,12 @@ struct TapesListView: View {
                 exportCoordinator.handleScenePhaseChange(newPhase)
                 shareUploadCoordinator.handleScenePhaseChange(newPhase)
             }
-            // Fork creation for collaborative shares now happens in
-            // ShareLinkSection.resolveUploadTape() before upload starts.
+            .onChange(of: shareUploadCoordinator.lastUploadedClipCount) { _, count in
+                guard let count,
+                      let source = shareUploadCoordinator.sourceTape,
+                      source.shareInfo == nil else { return }
+                tapesStore.setLastUploadedClipCount(count, for: source.id)
+            }
             .toolbar {
                 if tapesStore.jigglingTapeID != nil {
                     ToolbarItem(placement: .topBarTrailing) {

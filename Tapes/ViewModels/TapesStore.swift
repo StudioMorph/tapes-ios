@@ -646,6 +646,13 @@ extension TapesStore {
         autoSave()
     }
 
+    /// Records how many clips are on the server after a share.
+    public func setLastUploadedClipCount(_ count: Int, for tapeId: UUID) {
+        guard let idx = tapes.firstIndex(where: { $0.id == tapeId }) else { return }
+        tapes[idx].lastUploadedClipCount = count
+        autoSave()
+    }
+
     /// Merges new clips into an existing shared tape (for incoming contributions).
     public func mergeClipsIntoSharedTape(remoteTapeId: String, newClips: [Clip]) {
         guard let idx = tapes.firstIndex(where: { $0.shareInfo?.remoteTapeId == remoteTapeId }) else { return }

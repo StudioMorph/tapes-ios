@@ -118,6 +118,13 @@ struct TapesList: View {
             )
             .background(Tokens.Colors.primaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+            .overlay(alignment: .bottomTrailing) {
+                if tape.pendingUploadCount > 0 {
+                    SyncBadge(count: tape.pendingUploadCount, direction: .upload) {
+                        onShare(tape)
+                    }
+                }
+            }
             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             .compositingGroup()
             .opacity(tapeStore.jigglingTapeID != nil && tapeStore.jigglingTapeID != tapeID ? 0.4 : 1)

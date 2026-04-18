@@ -159,6 +159,11 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var livePhotosMuted: Bool
     public var shareInfo: ShareInfo?
 
+    /// Number of non-placeholder clips on the server after the last share.
+    /// `nil` means the tape has never been shared. Used to compute the
+    /// upload badge delta on My Tapes.
+    public var lastUploadedClipCount: Int?
+
     public init(
         id: UUID = UUID(),
         title: String = "New Tape",
@@ -178,7 +183,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         blurExportBackground: Bool = true,
         livePhotosAsVideo: Bool = true,
         livePhotosMuted: Bool = true,
-        shareInfo: ShareInfo? = nil
+        shareInfo: ShareInfo? = nil,
+        lastUploadedClipCount: Int? = nil
     ) {
         self.id = id
         self.title = title
@@ -199,6 +205,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.livePhotosAsVideo = livePhotosAsVideo
         self.livePhotosMuted = livePhotosMuted
         self.shareInfo = shareInfo
+        self.lastUploadedClipCount = lastUploadedClipCount
     }
     
     // MARK: - Coding Keys
@@ -213,6 +220,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case livePhotosAsVideo
         case livePhotosMuted
         case shareInfo
+        case lastUploadedClipCount
     }
     
     // MARK: - Custom Decoder for Backward Compatibility
@@ -240,6 +248,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         livePhotosAsVideo = try container.decodeIfPresent(Bool.self, forKey: .livePhotosAsVideo) ?? true
         livePhotosMuted = try container.decodeIfPresent(Bool.self, forKey: .livePhotosMuted) ?? true
         shareInfo = try container.decodeIfPresent(ShareInfo.self, forKey: .shareInfo)
+        lastUploadedClipCount = try container.decodeIfPresent(Int.self, forKey: .lastUploadedClipCount)
     }
     
     // MARK: - Computed Properties
@@ -277,6 +286,14 @@ public struct Tape: Identifiable, Codable, Equatable {
 
     public var isShared: Bool {
         shareInfo != nil
+    }
+
+    /// Number of local clips that haven't been uploaded since the last share.
+    /// Returns 0 if the tape has never been shared.
+    public var pendingUploadCount: Int {
+        guard let uploaded = lastUploadedClipCount else { return 0 }
+        let localCount = clips.filter { !$0.isPlaceholder }.count
+        return max(0, localCount - uploaded)
     }
     
     // MARK: - Mutating Methods
