@@ -69,7 +69,7 @@ public struct SyncBadge: View {
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(Tokens.Colors.systemBlue)
             .offset(y: animating ? direction.animationOffset : 0)
-            .frame(minWidth: 40, minHeight: 40)
+            .frame(minWidth: 44, minHeight: 40)
             .background(
                 UnevenRoundedRectangle(
                     topLeadingRadius: Tokens.Radius.card,
@@ -77,7 +77,7 @@ public struct SyncBadge: View {
                     bottomTrailingRadius: Tokens.Radius.card,
                     topTrailingRadius: 0
                 )
-                .fill(Tokens.Colors.primaryBackground)
+                .fill(Tokens.Colors.secondaryBackground)
             )
     }
 }
