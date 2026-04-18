@@ -78,7 +78,7 @@ public struct SyncBadge: View {
                     topTrailingRadius: 0
                 )
                 .fill(Tokens.Colors.secondaryBackground)
-                .shadow(color: .black.opacity(0.25), radius: 4, x: -4, y: -4)
+                .shadow(color: .black.opacity(0.12), radius: 4, x: -4, y: -4)
             )
     }
 }
