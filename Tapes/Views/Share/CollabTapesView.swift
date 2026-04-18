@@ -17,7 +17,7 @@ struct CollabTapesView: View {
     @State private var draftTitle: String = ""
 
     private var ownerCollabTapes: [Tape] {
-        tapesStore.collabTapes
+        tapesStore.tapes
             .filter { $0.isCollabTape }
             .sorted { a, b in
                 let aEmpty = a.clips.isEmpty && !a.hasReceivedFirstContent
@@ -33,8 +33,8 @@ struct CollabTapesView: View {
     }
 
     private var receivedCollabTapes: [Tape] {
-        tapesStore.collabTapes
-            .filter { !$0.isCollabTape && $0.shareInfo?.mode == "collaborative" }
+        tapesStore.tapes
+            .filter { !$0.isCollabTape && $0.isShared && $0.shareInfo?.mode == "collaborative" }
             .sorted { a, b in
                 let aHas = syncChecker.pendingDownloads[a.id] != nil
                 let bHas = syncChecker.pendingDownloads[b.id] != nil
@@ -69,9 +69,6 @@ struct CollabTapesView: View {
             }
             .navigationTitle("Collab")
             .navigationBarTitleDisplayMode(.large)
-            .onAppear {
-                tapesStore.restoreEmptyCollabTapeInvariant(animated: false)
-            }
             .alert("Sign In Issue", isPresented: .init(
                 get: { authManager.authError != nil },
                 set: { if !$0 { authManager.authError = nil } }
@@ -150,8 +147,6 @@ struct CollabTapesView: View {
                 }
                 .padding(.horizontal, Tokens.Spacing.m)
                 .padding(.vertical, Tokens.Spacing.s)
-                .animation(.easeInOut(duration: 0.3), value: ownerCollabTapes.map(\.id))
-                .animation(.easeInOut(duration: 0.3), value: receivedCollabTapes.map(\.id))
             }
         }
     }

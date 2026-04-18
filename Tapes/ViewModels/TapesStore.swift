@@ -1108,6 +1108,7 @@ extension TapesStore {
         }
 
         restoreEmptyTapeInvariant(animated: false)
+        restoreEmptyCollabTapeInvariant(animated: false)
         isLoaded = true
 
         Task(priority: .background) { @MainActor [weak self] in
@@ -1319,8 +1320,8 @@ extension TapesStore {
 
     /// Restore invariant: ensure empty tape exists at top after loading
     public func restoreEmptyTapeInvariant(animated: Bool = true) {
-        let myTapesList = tapes.filter { !$0.isShared && !$0.isCollabTape }
-        if let first = myTapesList.first, first.clips.isEmpty && !first.hasReceivedFirstContent {
+        if let first = tapes.first(where: { !$0.isShared && !$0.isCollabTape }),
+           first.clips.isEmpty && !first.hasReceivedFirstContent {
             return
         }
         insertEmptyTapeAtTop(animated: animated)
@@ -1351,8 +1352,9 @@ extension TapesStore {
     }
 
     public func restoreEmptyCollabTapeInvariant(animated: Bool = true) {
-        let ownerCollabs = tapes.filter { $0.isCollabTape && $0.shareInfo == nil }
-        let hasEmpty = ownerCollabs.contains { $0.clips.isEmpty && !$0.hasReceivedFirstContent }
+        let hasEmpty = tapes.contains {
+            $0.isCollabTape && $0.shareInfo == nil && $0.clips.isEmpty && !$0.hasReceivedFirstContent
+        }
         if !hasEmpty {
             insertEmptyCollabTapeAtTop(animated: animated)
         }

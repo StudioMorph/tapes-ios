@@ -10,14 +10,15 @@ struct MainTabView: View {
     @StateObject private var syncChecker = TapeSyncChecker()
 
     private var viewOnlyDownloadCount: Int {
-        let viewOnlyTapeIds = Set(
-            tapesStore.sharedTapes
-                .filter { $0.shareInfo?.mode == "view_only" }
-                .map { $0.id }
-        )
-        return syncChecker.pendingDownloads
-            .filter { viewOnlyTapeIds.contains($0.key) }
-            .count
+        guard !syncChecker.pendingDownloads.isEmpty else { return 0 }
+        var count = 0
+        for tape in tapesStore.tapes where tape.isShared && !tape.isCollabTape {
+            if let mode = tape.shareInfo?.mode, mode == "view_only",
+               syncChecker.pendingDownloads[tape.id] != nil {
+                count += 1
+            }
+        }
+        return count
     }
 
     enum AppTab: Hashable {
