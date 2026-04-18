@@ -45,7 +45,7 @@ public struct Tokens {
         public static let dropShadow = Color(UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark
                 ? UIColor.black.withAlphaComponent(0.15)
-                : UIColor.black.withAlphaComponent(0.02)
+                : UIColor.black.withAlphaComponent(0.0)
         })
 
         // Legacy tokens for backward compatibility
