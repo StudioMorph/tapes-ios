@@ -327,6 +327,7 @@ public class ShareUploadCoordinator: ObservableObject {
 
         guard let remoteTapeId = tape.shareInfo?.remoteTapeId else { return }
 
+        sourceTape = tape
         isUploading = true
         totalClips = unsyncedClips.count
         completedClips = 0

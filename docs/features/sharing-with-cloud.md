@@ -170,8 +170,8 @@ Collaborative tapes are created natively in the **Collab tab** (marked `isCollab
 3. **ShareInfo persisted after first share** — `ShareLinkSection.finaliseShareInfo()` calls `TapesStore.setCollabShareInfo()` to store the server-provided `shareId` and `remoteTapeId` on the tape.
 4. **Tape receives contributions directly** — Contributors' clips land on the same tape. The owner sees contributions merged in.
 5. **No duplication on re-open** — If a user taps a share link for a tape they already have, `startDownload` skips clips that already exist locally.
-6. **Owner blocked from re-downloading** — If `resolveShare` returns `userRole == "owner"`, the download is aborted and a dialog is shown: "This is your tape. It already exists on your device."
-7. **Received tapes are never `isCollabTape`** — Downloaded collaborative tapes keep `isCollabTape = false`. Their collaborative nature is identified via `shareInfo.mode == "collaborative"`. This ensures the share modal only shows the contribute button (no share section) for contributors.
+6. **Received tapes are never `isCollabTape`** — Downloaded collaborative tapes keep `isCollabTape = false`. Their collaborative nature is identified via `shareInfo.mode == "collaborative"`. The share modal shows no share section for contributors; syncing is handled via the Sync badge on the card.
+7. **Owners can tap their own links safely** — If an owner taps their own share link, the existing delta sync detects the tape locally and only downloads new clips (e.g. contributions). No duplicate is created.
 
 ### Data flow
 
@@ -253,33 +253,44 @@ Shared assets are kept in R2 for **3 days** from the last share or re-share acti
 
 ## Sync Badge
 
-A reusable `SyncBadge` component (in `DesignSystem/SyncBadge.swift`) shows a blue count circle and an animated directional arrow on tape cards.
+A reusable `SyncBadge` component (in `DesignSystem/SyncBadge.swift`) shows a count circle and an icon on tape cards. Three directions are supported:
 
 ### Where it appears
 
-| Location | Direction | Condition |
-|---|---|---|
-| **Shared / Collaborating** tapes | Arrow DOWN | Server manifest has clips the local tape does not (`TapeSyncChecker` compares on appear) |
-| **My Tapes** (view-only, previously shared) | Arrow UP | `tape.pendingUploadCount > 0` (local non-placeholder clips exceed `lastUploadedClipCount`) |
+| Location | Direction | Icon | Condition |
+|---|---|---|---|
+| **My Tapes** (previously shared) | `.upload` | Arrow UP (bouncing) | `tape.pendingUploadCount > 0` |
+| **Shared** tab (view-only) | `.download` | Arrow DOWN (bouncing) | `syncChecker.pendingDownloads[tapeId] > 0` |
+| **Collab** tab (owner & contributor) | `.sync` | Circular arrows + "Sync" label (rotating) | Pending uploads + pending downloads > 0, and tape has been shared |
 
 ### Data flow
 
-1. **Download badge** — `TapeSyncChecker` fetches server manifests for collaborative tapes on `SharedTapesView.onAppear` (5-minute cooldown). Publishes `pendingDownloads[tapeId]`. Tapping the badge triggers a re-download via the existing `SharedTapeDownloadCoordinator`.
-2. **Upload badge** — After a successful share, `ShareUploadCoordinator` sets `lastUploadedClipCount`. `TapesListView` observes this and calls `tapesStore.setLastUploadedClipCount()`. `Tape.pendingUploadCount` is a computed property comparing local clips to the stored count. Tapping the badge opens the share modal.
+1. **Download count** — `TapeSyncChecker` fetches server manifests on app open (60-second cooldown). Publishes `pendingDownloads[tapeId]`. Used by Shared tab and Collab tab.
+2. **Upload count (My Tapes)** — `tape.pendingUploadCount` is a computed property: `clips.count - lastUploadedClipCount`. Reactive — updates instantly when clips change. After upload, `ShareUploadCoordinator` sets `lastUploadedClipCount` which `TapesListView` persists.
+3. **Upload count (Collab — owner)** — Same `pendingUploadCount` mechanism as My Tapes. Owner uploads via `ensureTapeUploaded`.
+4. **Upload count (Collab — contributor)** — Counts clips where `!isSynced && !isPlaceholder`. After contributing, `markClipSynced` sets each clip to synced.
+5. **Sync action** — Tapping the Sync badge on a collab tape uploads first (owner: `ensureTapeUploaded`, contributor: `contributeClips`), then downloads new clips, all in one tap.
+
+### Upload overlay scoping
+
+`ShareUploadCoordinator` is a shared `@EnvironmentObject`. To prevent multiple tabs from showing the same progress overlay simultaneously, each tab scopes its overlay using `sourceTape`:
+- `TapesListView`: shows overlay only when `sourceTape` is a My Tape
+- `CollabTapesView`: shows overlay only when `sourceTape` is a collab tape
+- `SharedTapesView`: never shows upload overlay (view-only receivers don't upload)
 
 ## Related Files
 
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and exposes `resultCreateResponse` (all four share IDs).
 - `Tapes/Views/Share/ShareUploadOverlay.swift` — progress, completion, and error dialogs.
 - `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI embedded in `ShareModalView`: `Secured by email` toggle, link pill (copy + system share sheet), email compose, authorised-users chips. Role is determined by `tape.isCollabTape`.
-- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing; embeds `ShareLinkSection` directly, shows Contribute button for non-owner collaborative tapes.
+- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing; embeds `ShareLinkSection` for owners, export section for all. No contribute button (syncing handled by badge).
 - `Tapes/Views/Share/SharedTapesView.swift` — Shared tab (view-only tapes only).
 - `Tapes/Views/Share/CollabTapesView.swift` — Collab tab with empty-tape creation and owner/contributor sections.
 - `Tapes/Views/TapesListView.swift` — My Tapes list with upload badge and sync upload trigger.
 - `Tapes/ViewModels/TapesStore.swift` — `setCollabShareInfo()`, `collabTapes`, and empty collab tape management.
-- `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — downloads shared tapes; blocks owners from re-downloading their own tape (`userRole == "owner"` check).
+- `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — downloads shared tapes; delta-syncs new clips for returning users.
 - `Tapes/Export/ExportCoordinator.swift` — sister pattern for background exports.
 - `Tapes/Core/Auth/AuthManager.swift` — Sign in with Apple, needed for share identity.
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API client for all backend calls.
-- `Tapes/Core/Networking/TapeSyncChecker.swift` — lightweight manifest checker for download badges.
-- `Tapes/DesignSystem/SyncBadge.swift` — reusable sync badge component (count + animated arrow).
+- `Tapes/Core/Networking/TapeSyncChecker.swift` — lightweight manifest checker for download counts (upload counts are computed reactively from the tape model).
+- `Tapes/DesignSystem/SyncBadge.swift` — reusable sync badge component (upload/download/sync directions).

@@ -5,7 +5,6 @@ struct SharedTapesView: View {
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tapesStore: TapesStore
     @EnvironmentObject private var navigationCoordinator: NavigationCoordinator
-    @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
     @StateObject private var downloadCoordinator = SharedTapeDownloadCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
@@ -43,16 +42,6 @@ struct SharedTapesView: View {
                 }
 
                 SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
-
-                if uploadCoordinator.showProgressDialog {
-                    ShareUploadProgressDialog(coordinator: uploadCoordinator)
-                }
-                if uploadCoordinator.showCompletionDialog {
-                    ShareUploadCompletionDialog(coordinator: uploadCoordinator)
-                }
-                if uploadCoordinator.uploadError != nil {
-                    ShareUploadErrorAlert(coordinator: uploadCoordinator)
-                }
             }
             .navigationTitle("Shared")
             .navigationBarTitleDisplayMode(.large)
@@ -87,6 +76,12 @@ struct SharedTapesView: View {
                     navigationCoordinator.clearPendingTape()
                     handleIncomingShare(shareId: shareId)
                 }
+            }
+            .onChange(of: downloadCoordinator.resultTape?.id) { _, newId in
+                guard newId != nil,
+                      let tape = downloadCoordinator.resultTape,
+                      tape.shareInfo?.mode == "collaborative" else { return }
+                navigationCoordinator.selectedTab = .collab
             }
         }
         .environmentObject(importCoordinator)

@@ -19,6 +19,11 @@ struct TapesListView: View {
     @State private var tapeToShare: Tape?
     @State private var tapeToSyncUpload: Tape?
 
+    private var isMyTapeUpload: Bool {
+        guard let source = shareUploadCoordinator.sourceTape else { return false }
+        return !source.isCollabTape && source.shareInfo?.mode != "collaborative"
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -93,8 +98,7 @@ struct TapesListView: View {
             }
             .onChange(of: shareUploadCoordinator.lastUploadedClipCount) { _, count in
                 guard let count,
-                      let source = shareUploadCoordinator.sourceTape,
-                      source.shareInfo == nil else { return }
+                      let source = shareUploadCoordinator.sourceTape else { return }
                 tapesStore.setLastUploadedClipCount(count, for: source.id)
             }
             .toolbar {
@@ -345,14 +349,16 @@ struct TapesListView: View {
             if exportCoordinator.exportError != nil {
                 ExportErrorAlert(coordinator: exportCoordinator)
             }
-            if shareUploadCoordinator.showProgressDialog {
-                ShareUploadProgressDialog(coordinator: shareUploadCoordinator)
-            }
-            if shareUploadCoordinator.showCompletionDialog {
-                ShareUploadCompletionDialog(coordinator: shareUploadCoordinator)
-            }
-            if shareUploadCoordinator.uploadError != nil {
-                ShareUploadErrorAlert(coordinator: shareUploadCoordinator)
+            if isMyTapeUpload {
+                if shareUploadCoordinator.showProgressDialog {
+                    ShareUploadProgressDialog(coordinator: shareUploadCoordinator)
+                }
+                if shareUploadCoordinator.showCompletionDialog {
+                    ShareUploadCompletionDialog(coordinator: shareUploadCoordinator)
+                }
+                if shareUploadCoordinator.uploadError != nil {
+                    ShareUploadErrorAlert(coordinator: shareUploadCoordinator)
+                }
             }
             if showingDeleteSuccessToast {
                 DeleteSuccessToast(isVisible: $showingDeleteSuccessToast)

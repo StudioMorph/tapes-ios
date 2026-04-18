@@ -4,26 +4,6 @@ struct ShareModalView: View {
     let tape: Tape
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
-    @EnvironmentObject private var authManager: AuthManager
-    @EnvironmentObject private var tapesStore: TapesStore
-
-    /// True when the user is a contributor (received someone else's collaborative tape).
-    private var isContributor: Bool {
-        tape.shareInfo?.mode == "collaborative" && !tape.isCollabTape
-    }
-
-    private var unsyncedClips: [Clip] {
-        tape.clips.filter { !$0.isPlaceholder && !$0.isSynced }
-    }
-
-    private var hasContributions: Bool {
-        !unsyncedClips.isEmpty
-    }
-
-    /// Owner of a collab tape can share (tape they created in the Collab tab).
-    private var isOwnerCollabTape: Bool {
-        tape.isCollabTape && !isContributor
-    }
 
     /// The share section is visible for:
     /// - My Tapes (not shared, not collab) — view-only sharing
@@ -35,19 +15,10 @@ struct ShareModalView: View {
         return true
     }
 
-    /// True when the upload coordinator is working on a contribute (not an initial share).
-    private var isContributeUpload: Bool {
-        isContributor && uploadCoordinator.sourceTape?.id == tape.id
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.l) {
-                    if isContributor || (isOwnerCollabTape && tape.shareInfo != nil) {
-                        contributeSection
-                    }
-
                     if canOwnShare {
                         ShareLinkSection(tape: tape)
                     }
@@ -74,46 +45,12 @@ struct ShareModalView: View {
             }
         }
         .overlay {
-            if uploadCoordinator.isUploading && !isContributeUpload {
+            if uploadCoordinator.isUploading {
                 ShareUploadProgressDialog(coordinator: uploadCoordinator)
             }
-            if uploadCoordinator.uploadError != nil && !isContributeUpload {
+            if uploadCoordinator.uploadError != nil {
                 ShareUploadErrorAlert(coordinator: uploadCoordinator)
             }
-        }
-    }
-
-    // MARK: - Contribute
-
-    private var contributeSection: some View {
-        VStack(spacing: Tokens.Spacing.m) {
-            Button {
-                guard let api = authManager.apiClient else { return }
-                uploadCoordinator.contributeClips(tape: tape, api: api) { syncedIds in
-                    for clipId in syncedIds {
-                        tapesStore.markClipSynced(clipId, inTape: tape.id)
-                    }
-                }
-            } label: {
-                HStack(spacing: Tokens.Spacing.s) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 22, weight: .medium))
-                    Text("Contribute Your Changes")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(hasContributions ? Tokens.Colors.systemBlue : Tokens.Colors.secondaryBackground)
-                .foregroundStyle(hasContributions ? .white : Tokens.Colors.tertiaryText)
-                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
-            }
-            .disabled(!hasContributions)
-
-            Text("When you contribute, everyone collaborating on this tape gets your clips.")
-                .font(Tokens.Typography.caption)
-                .foregroundStyle(Tokens.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Tokens.Spacing.m)
         }
     }
 

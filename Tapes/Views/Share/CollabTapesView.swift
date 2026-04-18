@@ -24,9 +24,9 @@ struct CollabTapesView: View {
                 let bEmpty = b.clips.isEmpty && !b.hasReceivedFirstContent
                 if aEmpty != bEmpty { return aEmpty }
 
-                let aHas = syncChecker.pendingDownloads[a.id] != nil
-                let bHas = syncChecker.pendingDownloads[b.id] != nil
-                if aHas != bHas { return aHas }
+                let aHasSync = syncCount(for: a) > 0
+                let bHasSync = syncCount(for: b) > 0
+                if aHasSync != bHasSync { return aHasSync }
 
                 return a.updatedAt > b.updatedAt
             }
@@ -36,11 +36,30 @@ struct CollabTapesView: View {
         tapesStore.tapes
             .filter { !$0.isCollabTape && $0.isShared && $0.shareInfo?.mode == "collaborative" }
             .sorted { a, b in
-                let aHas = syncChecker.pendingDownloads[a.id] != nil
-                let bHas = syncChecker.pendingDownloads[b.id] != nil
-                if aHas != bHas { return aHas }
+                let aHasSync = syncCount(for: a) > 0
+                let bHasSync = syncCount(for: b) > 0
+                if aHasSync != bHasSync { return aHasSync }
                 return a.updatedAt > b.updatedAt
             }
+    }
+
+    /// True when the upload coordinator is working on a tape owned by this tab.
+    private var isCollabUpload: Bool {
+        guard let source = uploadCoordinator.sourceTape else { return false }
+        return source.isCollabTape || source.shareInfo?.mode == "collaborative"
+    }
+
+    /// Computes the total pending sync items for a collab tape (uploads + downloads).
+    /// Upload count is computed reactively from the tape model, not from TapeSyncChecker.
+    private func syncCount(for tape: Tape) -> Int {
+        let downloads = syncChecker.pendingDownloads[tape.id] ?? 0
+        let uploads: Int
+        if tape.isCollabTape {
+            uploads = tape.pendingUploadCount
+        } else {
+            uploads = tape.clips.filter { !$0.isPlaceholder && !$0.isSynced }.count
+        }
+        return downloads + uploads
     }
 
     var body: some View {
@@ -57,14 +76,16 @@ struct CollabTapesView: View {
 
                 SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
 
-                if uploadCoordinator.showProgressDialog {
-                    ShareUploadProgressDialog(coordinator: uploadCoordinator)
-                }
-                if uploadCoordinator.showCompletionDialog {
-                    ShareUploadCompletionDialog(coordinator: uploadCoordinator)
-                }
-                if uploadCoordinator.uploadError != nil {
-                    ShareUploadErrorAlert(coordinator: uploadCoordinator)
+                if isCollabUpload {
+                    if uploadCoordinator.showProgressDialog {
+                        ShareUploadProgressDialog(coordinator: uploadCoordinator)
+                    }
+                    if uploadCoordinator.showCompletionDialog {
+                        ShareUploadCompletionDialog(coordinator: uploadCoordinator)
+                    }
+                    if uploadCoordinator.uploadError != nil {
+                        ShareUploadErrorAlert(coordinator: uploadCoordinator)
+                    }
                 }
             }
             .navigationTitle("Collab")
@@ -172,7 +193,7 @@ struct CollabTapesView: View {
             tapeID: tapeID,
             tapeWidth: width,
             isLandscape: false,
-            isShareDisabled: !isOwner,
+            isShareDisabled: false,
             onShare: { tapeToShare = tape },
             onSettings: { tapeToSettings = tape },
             onPlay: { tapeToPreview = tape },
@@ -192,9 +213,10 @@ struct CollabTapesView: View {
         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
         .overlay(alignment: .bottomTrailing) {
-            if let count = syncChecker.pendingDownloads[tapeID], count > 0 {
-                SyncBadge(count: count, direction: .download) {
-                    handleDownload(tape: tape)
+            let total = syncCount(for: tape)
+            if total > 0, tape.shareInfo != nil {
+                SyncBadge(count: total, direction: .sync) {
+                    handleSync(tape: tape)
                 }
             }
         }
@@ -247,17 +269,60 @@ struct CollabTapesView: View {
         draftTitle = ""
     }
 
-    // MARK: - Handle Badge Download
+    // MARK: - Handle Bidirectional Sync
 
-    private func handleDownload(tape: Tape) {
-        guard let shareId = tape.shareInfo?.shareId,
-              let api = authManager.apiClient else { return }
+    private func handleSync(tape: Tape) {
+        guard let api = authManager.apiClient else { return }
+
+        let hasUploads: Bool
+        if tape.isCollabTape {
+            hasUploads = tape.pendingUploadCount > 0
+        } else {
+            hasUploads = tape.clips.contains { !$0.isPlaceholder && !$0.isSynced }
+        }
+        let hasDownloads = (syncChecker.pendingDownloads[tape.id] ?? 0) > 0
+
         syncChecker.clearDownload(for: tape.id)
-        downloadCoordinator.startDownload(
-            shareId: shareId,
-            api: api,
-            tapeStore: tapesStore
-        )
+
+        if hasUploads {
+            let uploadAction: (Tape) -> Void = { tape in
+                if tape.isCollabTape {
+                    self.uploadCoordinator.ensureTapeUploaded(
+                        tape: tape,
+                        intendedForCollaboration: true,
+                        api: api
+                    ) { _ in
+                        if hasDownloads, let shareId = tape.shareInfo?.shareId {
+                            self.downloadCoordinator.startDownload(
+                                shareId: shareId,
+                                api: api,
+                                tapeStore: self.tapesStore
+                            )
+                        }
+                    }
+                } else {
+                    self.uploadCoordinator.contributeClips(tape: tape, api: api) { syncedIds in
+                        for clipId in syncedIds {
+                            self.tapesStore.markClipSynced(clipId, inTape: tape.id)
+                        }
+                        if hasDownloads, let shareId = tape.shareInfo?.shareId {
+                            self.downloadCoordinator.startDownload(
+                                shareId: shareId,
+                                api: api,
+                                tapeStore: self.tapesStore
+                            )
+                        }
+                    }
+                }
+            }
+            uploadAction(tape)
+        } else if hasDownloads, let shareId = tape.shareInfo?.shareId {
+            downloadCoordinator.startDownload(
+                shareId: shareId,
+                api: api,
+                tapeStore: tapesStore
+            )
+        }
     }
 }
 
