@@ -45,11 +45,13 @@ public struct SyncBadge: View {
     }
 
     private var badge: some View {
-        HStack(alignment: .top, spacing: -8) {
+        ZStack(alignment: .topLeading) {
+            arrowTile
+                .padding(.top, 4)
+                .padding(.leading, 4)
+
             countCircle
                 .zIndex(1)
-
-            arrowTile
         }
     }
 
@@ -68,10 +70,10 @@ public struct SyncBadge: View {
             .frame(width: 28, height: 28)
             .background(
                 UnevenRoundedRectangle(
-                    topLeadingRadius: 0,
-                    bottomLeadingRadius: Tokens.Radius.card,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: Tokens.Radius.card
+                    topLeadingRadius: Tokens.Radius.card,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: Tokens.Radius.card,
+                    topTrailingRadius: 0
                 )
                 .fill(Tokens.Colors.secondaryBackground)
             )
