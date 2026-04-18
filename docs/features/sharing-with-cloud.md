@@ -250,6 +250,22 @@ Shared assets are kept in R2 for **3 days** from the last share or re-share acti
 
 - `tapes.shared_assets_expire_at TEXT` — ISO 8601 timestamp; `NULL` means no shared assets are live (migration `0009_shared_assets_expire_at.sql`).
 
+## Sync Badge
+
+A reusable `SyncBadge` component (in `DesignSystem/SyncBadge.swift`) shows a blue count circle and an animated directional arrow on tape cards.
+
+### Where it appears
+
+| Location | Direction | Condition |
+|---|---|---|
+| **Shared / Collaborating** tapes | Arrow DOWN | Server manifest has clips the local tape does not (`TapeSyncChecker` compares on appear) |
+| **My Tapes** (view-only, previously shared) | Arrow UP | `tape.pendingUploadCount > 0` (local non-placeholder clips exceed `lastUploadedClipCount`) |
+
+### Data flow
+
+1. **Download badge** — `TapeSyncChecker` fetches server manifests for collaborative tapes on `SharedTapesView.onAppear` (5-minute cooldown). Publishes `pendingDownloads[tapeId]`. Tapping the badge triggers a re-download via the existing `SharedTapeDownloadCoordinator`.
+2. **Upload badge** — After a successful share, `ShareUploadCoordinator` sets `lastUploadedClipCount`. `TapesListView` observes this and calls `tapesStore.setLastUploadedClipCount()`. `Tape.pendingUploadCount` is a computed property comparing local clips to the stored count. Tapping the badge opens the share modal.
+
 ## Related Files
 
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and exposes `resultCreateResponse` (all four share IDs) for fork.
@@ -263,3 +279,5 @@ Shared assets are kept in R2 for **3 days** from the last share or re-share acti
 - `Tapes/Export/ExportCoordinator.swift` — sister pattern for background exports.
 - `Tapes/Core/Auth/AuthManager.swift` — Sign in with Apple, needed for share identity.
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API client for all backend calls.
+- `Tapes/Core/Networking/TapeSyncChecker.swift` — lightweight manifest checker for download badges.
+- `Tapes/DesignSystem/SyncBadge.swift` — reusable sync badge component (count + animated arrow).
