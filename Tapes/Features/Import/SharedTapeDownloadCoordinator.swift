@@ -382,13 +382,16 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             remoteTapeId: manifest.tapeId
         )
 
+        let isCollab = (mode ?? manifest.mode) == "collaborative"
+
         return Tape(
             title: manifest.title,
             transition: transitionType,
             transitionDuration: transitionDuration,
             clips: clips,
             hasReceivedFirstContent: true,
-            shareInfo: info
+            shareInfo: info,
+            isCollabTape: isCollab
         )
     }
 }

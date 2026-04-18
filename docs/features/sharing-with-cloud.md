@@ -157,32 +157,31 @@ Sharing uploads run in the background via `ShareUploadCoordinator`, mirroring th
 - **Background task support**: Uses `BGContinuedProcessingTask` (iOS 26+) for extended background time, with `UIApplication.beginBackgroundTask` as fallback for older iOS.
 - **Modal dismissal**: When an upload starts from inside `ShareModalView`, the modal dismisses itself on `uploadCoordinator.isUploading` so the global progress overlay is visible.
 - **Progress overlay**: `ShareUploadProgressDialog` (GlassAlertCard) displays on `TapesListView` with clip progress, ETA, and cancel option. When dismissed, a small blue progress ring appears in the toolbar.
-- **Completion**: On a collaborative upload the coordinator publishes `resultCreateResponse.shareIdCollab` and the list view forks the tape into "Shared > Collaborating" (see below).
+- **Completion**: Upload completes and the share link becomes available in the modal.
 - **Error handling**: Upload failures are surfaced via a native alert with retry/cancel options.
 - **BG task identifier**: `StudioMorph.Tapes.upload` (registered in `Info.plist` and `TapesApp.init`).
 
-## Collaborative Fork Architecture
+## Collaborative Tape Architecture
 
-When a tape owner shares a tape as **collaborative**, a completely **independent fork** is created before any upload happens. The fork has its own UUID, its own server-side tape record, its own manifest, and its own share links. There is no link back to the original tape.
+Collaborative tapes are created natively in the **Collab tab** (marked `isCollabTape = true`). There is no forking or duplication — the original tape is the collaborative tape.
 
-1. **Fork created before upload** — `ShareLinkSection.resolveUploadTape()` calls `TapesStore.forkTapeForCollaboration()` which creates a new `Tape` with a fresh UUID, copies of all clips (marked `isSynced`), and a `ShareInfo` with `remoteTapeId` set to the fork's own UUID.
-2. **Upload uses the fork's UUID** — `ensureTapeUploaded` receives the fork as the `tape` parameter, so `createTape` on the server uses the fork's UUID as the `tape_id`. The original tape's UUID never touches the server for collaborative shares.
-3. **Original stays personal** — The original tape in "My Tapes" has no `shareInfo`, so `isShared == false`. It can be edited, deleted, or shared again independently. Sharing the original as collaborative again creates another independent fork.
-4. **Owner can re-share from the fork** — `ShareModalView` shows `ShareLinkSection` on the owner's collaborative fork (identified by `remoteTapeId == tape.id`). This lets the owner refresh the 3-day R2 timer or share the link again.
-5. **Fork receives contributions** — When a collaborator contributes clips, the push notification triggers `SharedTapeDownloadCoordinator.startDownload()`, which detects the existing fork via `remoteTapeId` and **merges** only new clips (deduplicating by clip ID).
-6. **No duplication on re-open** — If the user taps a share link for a tape they already have, `startDownload` skips clips that already exist locally.
+1. **Created in Collab tab** — The Collab tab always has an empty tape at the top (like My Tapes). Users create content here, and these tapes can only be shared as collaborative.
+2. **Direct upload** — When the owner shares, `ensureTapeUploaded` uses the tape's own UUID as the server `tape_id`. No copy is made.
+3. **ShareInfo persisted after first share** — `ShareLinkSection.finaliseShareInfo()` calls `TapesStore.setCollabShareInfo()` to store the server-provided `shareId` and `remoteTapeId` on the tape.
+4. **Tape receives contributions directly** — Contributors' clips land on the same tape. The owner sees contributions merged in.
+5. **No duplication on re-open** — If a user taps a share link for a tape they already have, `startDownload` skips clips that already exist locally.
 
 ### Data flow
 
 ```
-[My Tapes]  →  Original tape (shareInfo = nil, untouched, never uploaded for collab)
-                    ↓ on collaborative share
-[Shared > Collaborating]  →  Fork (own UUID, own server tape, own manifest & links)
+[Collab tab]  →  Owner's collab tape (isCollabTape = true, uploaded under its own UUID)
+                    ↓ shared via link
+[Collab tab on receiver's device]  →  Received collab tape (isCollabTape = true via download)
 ```
 
-### View-only shares
+### My Tapes (view-only only)
 
-View-only shares do **not** create a fork. The original tape is uploaded under its own UUID and a link is generated, but the owner's tape remains unchanged. Recipients get their own independent copy via `SharedTapeDownloadCoordinator`.
+Tapes in My Tapes can **only** be shared as view-only. The share section has no segmented control — it is always view-only. The original tape is uploaded under its own UUID and a link is generated. Recipients get their own independent copy via `SharedTapeDownloadCoordinator` in the **Shared** tab.
 
 ## Shared Tape Media Storage
 
@@ -268,14 +267,15 @@ A reusable `SyncBadge` component (in `DesignSystem/SyncBadge.swift`) shows a blu
 
 ## Related Files
 
-- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and exposes `resultCreateResponse` (all four share IDs) for fork.
+- `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and exposes `resultCreateResponse` (all four share IDs).
 - `Tapes/Views/Share/ShareUploadOverlay.swift` — progress, completion, and error dialogs.
-- `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI embedded in `ShareModalView`: role tabs, `Secured by email` toggle, link pill (copy + system share sheet), email compose, authorised-users chips.
-- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing; embeds `ShareLinkSection` directly (no push), shows Contribute button on forked tapes.
-- `Tapes/Views/Share/SharedTapesView.swift` — Shared tab with View Only / Collaborating segments.
-- `Tapes/Views/TapesListView.swift` — observes share completion to trigger `forkTapeForCollaboration`.
-- `Tapes/ViewModels/TapesStore.swift` — `forkTapeForCollaboration()` and `mergeClipsIntoSharedTape()`.
-- `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — downloads shared tapes; merges clips into existing forks.
+- `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI embedded in `ShareModalView`: `Secured by email` toggle, link pill (copy + system share sheet), email compose, authorised-users chips. Role is determined by `tape.isCollabTape`.
+- `Tapes/Views/Share/ShareModalView.swift` — entry point for sharing; embeds `ShareLinkSection` directly, shows Contribute button for non-owner collaborative tapes.
+- `Tapes/Views/Share/SharedTapesView.swift` — Shared tab (view-only tapes only).
+- `Tapes/Views/Share/CollabTapesView.swift` — Collab tab with empty-tape creation and owner/contributor sections.
+- `Tapes/Views/TapesListView.swift` — My Tapes list with upload badge and sync upload trigger.
+- `Tapes/ViewModels/TapesStore.swift` — `setCollabShareInfo()`, `collabTapes`, and empty collab tape management.
+- `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — downloads shared tapes; sets `isCollabTape` for collaborative downloads.
 - `Tapes/Export/ExportCoordinator.swift` — sister pattern for background exports.
 - `Tapes/Core/Auth/AuthManager.swift` — Sign in with Apple, needed for share identity.
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API client for all backend calls.

@@ -737,7 +737,11 @@ struct TapeCardView: View {
         updated.hasReceivedFirstContent = true
         tapeStore.updateTape(updated)
 
-        tapeStore.insertEmptyTapeAtTop()
+        if tape.isCollabTape {
+            tapeStore.insertEmptyCollabTapeAtTop()
+        } else {
+            tapeStore.insertEmptyTapeAtTop()
+        }
     }
 
     private var isEmptyTape: Bool {

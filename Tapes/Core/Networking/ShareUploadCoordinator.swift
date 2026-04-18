@@ -33,8 +33,6 @@ public class ShareUploadCoordinator: ObservableObject {
     // MARK: - Result (available after success)
 
     /// Whether the most recent upload was for a collaborative share.
-    /// `TapesListView` reads this to decide whether to fork the owner's
-    /// tape into a "Collab" duplicate in the Shared tab.
     @Published var resultMode: ShareMode = .viewing
     @Published var resultRemoteTapeId: String?
     @Published var resultCreateResponse: TapesAPIClient.CreateTapeResponse?
@@ -121,10 +119,8 @@ public class ShareUploadCoordinator: ObservableObject {
     ///
     /// - Parameters:
     ///   - tape: The local tape the user is sharing.
-    ///   - intendedForCollaboration: If `true`, signals that the caller
-    ///     performed a collab-link action. On success, `resultMode` is set
-    ///     to `.collaborating` so `TapesListView` can fork the tape into a
-    ///     "Collab" duplicate in the Shared tab.
+    ///   - intendedForCollaboration: If `true`, creates the server tape in
+    ///     collaborative mode and skips delta-deletes.
     ///   - api: Authenticated API client.
     ///   - onCompleted: Called on success with the server's response.
     func ensureTapeUploaded(

@@ -76,7 +76,7 @@ public class TapeSyncChecker: ObservableObject {
     // MARK: - Uploads (My Tapes with unsynced local content)
 
     private func checkUploads(tapes: [Tape]) {
-        let myTapes = tapes.filter { $0.shareInfo == nil }
+        let myTapes = tapes.filter { $0.shareInfo == nil && !$0.isCollabTape }
 
         for tape in myTapes {
             let delta = tape.pendingUploadCount

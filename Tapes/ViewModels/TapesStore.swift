@@ -115,11 +115,15 @@ public class TapesStore: ObservableObject {
     @Published public private(set) var isLoaded = false
 
     public var myTapes: [Tape] {
-        tapes.filter { !$0.isShared }
+        tapes.filter { !$0.isShared && !$0.isCollabTape }
     }
 
     public var sharedTapes: [Tape] {
-        tapes.filter { $0.isShared }
+        tapes.filter { $0.isShared && !$0.isCollabTape }
+    }
+
+    public var collabTapes: [Tape] {
+        tapes.filter { $0.isCollabTape || ($0.isShared && $0.shareInfo?.mode == "collaborative") }
     }
 
     /// Number of tapes that have received content (excludes empty placeholder tapes).
@@ -586,63 +590,10 @@ extension TapesStore {
     /// Creates a collaborative fork of a tape in the Shared/Collaborating segment.
     /// The original tape in My Tapes stays untouched.
     /// A separate Photos album "[Name] - Collab" is created for the fork.
-    /// Creates a collaborative fork of the source tape and adds it to the store.
-    /// The fork gets its own UUID which becomes the server `tape_id`.
-    /// Returns the fork so the caller can use its ID for upload.
-    @discardableResult
-    public func forkTapeForCollaboration(
-        _ sourceTape: Tape,
-        ownerName: String?
-    ) -> Tape {
-        var forkedClips = sourceTape.clips.filter { !$0.isPlaceholder }
-        for i in forkedClips.indices {
-            forkedClips[i].isSynced = true
-        }
-
-        let collabTitle = "\(sourceTape.title) - Collab"
-
-        let forkId = UUID()
-
-        let fork = Tape(
-            id: forkId,
-            title: collabTitle,
-            orientation: sourceTape.orientation,
-            scaleMode: sourceTape.scaleMode,
-            transition: sourceTape.transition,
-            transitionDuration: sourceTape.transitionDuration,
-            seamTransitions: sourceTape.seamTransitions,
-            clips: forkedClips,
-            hasReceivedFirstContent: !forkedClips.isEmpty,
-            backgroundMusicMood: sourceTape.backgroundMusicMood,
-            backgroundMusicVolume: sourceTape.backgroundMusicVolume,
-            exportOrientation: sourceTape.exportOrientation,
-            blurExportBackground: sourceTape.blurExportBackground,
-            livePhotosAsVideo: sourceTape.livePhotosAsVideo,
-            livePhotosMuted: sourceTape.livePhotosMuted,
-            shareInfo: ShareInfo(
-                shareId: "",
-                ownerName: ownerName,
-                mode: "collaborative",
-                expiresAt: nil,
-                remoteTapeId: forkId.uuidString.lowercased()
-            )
-        )
-
-        tapes.append(fork)
-        autoSave()
-
-        if !forkedClips.isEmpty {
-            associateClipsWithAlbum(tapeID: fork.id, clips: forkedClips)
-        }
-
-        return fork
-    }
-
-    /// Updates the fork's ShareInfo with server-provided share IDs after upload.
-    public func updateForkShareInfo(forkId: UUID, shareId: String, remoteTapeId: String) {
-        guard let idx = tapes.firstIndex(where: { $0.id == forkId }) else { return }
-        tapes[idx].shareInfo?.shareId = shareId
-        tapes[idx].shareInfo?.remoteTapeId = remoteTapeId
+    /// Sets the ShareInfo on a collab tape after its first server upload.
+    public func setCollabShareInfo(tapeId: UUID, shareInfo: ShareInfo) {
+        guard let idx = tapes.firstIndex(where: { $0.id == tapeId }) else { return }
+        tapes[idx].shareInfo = shareInfo
         autoSave()
     }
 
@@ -1368,9 +1319,42 @@ extension TapesStore {
 
     /// Restore invariant: ensure empty tape exists at top after loading
     public func restoreEmptyTapeInvariant(animated: Bool = true) {
-        if let firstTape = tapes.first, firstTape.clips.isEmpty {
+        let myTapesList = tapes.filter { !$0.isShared && !$0.isCollabTape }
+        if let first = myTapesList.first, first.clips.isEmpty && !first.hasReceivedFirstContent {
             return
         }
         insertEmptyTapeAtTop(animated: animated)
+    }
+
+    // MARK: - Collab Empty Tape Management
+
+    public func insertEmptyCollabTapeAtTop(animated: Bool = true) {
+        let newEmptyTape = Tape(
+            title: "New Tape",
+            orientation: .portrait,
+            scaleMode: .fit,
+            transition: .none,
+            transitionDuration: 0.5,
+            clips: [],
+            hasReceivedFirstContent: false,
+            isCollabTape: true
+        )
+
+        if animated {
+            withAnimation(Animation.interactiveSpring(response: 0.42, dampingFraction: 0.82, blendDuration: 0.12)) {
+                tapes.append(newEmptyTape)
+            }
+            autoSave()
+        } else {
+            tapes.append(newEmptyTape)
+        }
+    }
+
+    public func restoreEmptyCollabTapeInvariant(animated: Bool = true) {
+        let ownerCollabs = tapes.filter { $0.isCollabTape && $0.shareInfo == nil }
+        let hasEmpty = ownerCollabs.contains { $0.clips.isEmpty && !$0.hasReceivedFirstContent }
+        if !hasEmpty {
+            insertEmptyCollabTapeAtTop(animated: animated)
+        }
     }
 }

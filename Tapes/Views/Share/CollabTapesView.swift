@@ -16,9 +16,25 @@ struct CollabTapesView: View {
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
 
-    private var collabTapes: [Tape] {
-        tapesStore.sharedTapes
-            .filter { $0.shareInfo?.mode == "collaborative" }
+    private var ownerCollabTapes: [Tape] {
+        tapesStore.collabTapes
+            .filter { $0.isCollabTape }
+            .sorted { a, b in
+                let aEmpty = a.clips.isEmpty && !a.hasReceivedFirstContent
+                let bEmpty = b.clips.isEmpty && !b.hasReceivedFirstContent
+                if aEmpty != bEmpty { return aEmpty }
+
+                let aHas = syncChecker.pendingDownloads[a.id] != nil
+                let bHas = syncChecker.pendingDownloads[b.id] != nil
+                if aHas != bHas { return aHas }
+
+                return a.updatedAt > b.updatedAt
+            }
+    }
+
+    private var receivedCollabTapes: [Tape] {
+        tapesStore.collabTapes
+            .filter { !$0.isCollabTape && $0.shareInfo?.mode == "collaborative" }
             .sorted { a, b in
                 let aHas = syncChecker.pendingDownloads[a.id] != nil
                 let bHas = syncChecker.pendingDownloads[b.id] != nil
@@ -35,8 +51,6 @@ struct CollabTapesView: View {
 
                 if !authManager.isSignedIn {
                     signInPrompt
-                } else if collabTapes.isEmpty {
-                    emptyState
                 } else {
                     collabTapeList
                 }
@@ -55,6 +69,9 @@ struct CollabTapesView: View {
             }
             .navigationTitle("Collab")
             .navigationBarTitleDisplayMode(.large)
+            .onAppear {
+                tapesStore.restoreEmptyCollabTapeInvariant(animated: false)
+            }
             .alert("Sign In Issue", isPresented: .init(
                 get: { authManager.authError != nil },
                 set: { if !$0 { authManager.authError = nil } }
@@ -111,59 +128,82 @@ struct CollabTapesView: View {
 
             ScrollView {
                 LazyVStack(spacing: Tokens.Spacing.m) {
-                    ForEach(collabTapes) { tape in
+                    ForEach(ownerCollabTapes) { tape in
                         if let binding = tapesStore.bindingForTape(id: tape.id) {
-                            let tapeID = tape.id
+                            collabTapeCard(tape: tape, binding: binding, width: contentWidth, isOwner: true)
+                        }
+                    }
 
-                            let titleConfig: TapeCardView.TitleEditingConfig? = {
-                                guard editingTapeID == tapeID else { return nil }
-                                return TapeCardView.TitleEditingConfig(
-                                    text: Binding(
-                                        get: { draftTitle },
-                                        set: { draftTitle = $0 }
-                                    ),
-                                    tapeID: tapeID,
-                                    onCommit: { commitTitleEdit() }
-                                )
-                            }()
+                    if !receivedCollabTapes.isEmpty {
+                        Text("Collaborating")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Tokens.Colors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, Tokens.Spacing.s)
 
-                            TapeCardView(
-                                tape: binding,
-                                tapeID: tapeID,
-                                tapeWidth: contentWidth,
-                                isLandscape: false,
-                                onShare: { tapeToShare = tape },
-                                onSettings: { tapeToSettings = tape },
-                                onPlay: { tapeToPreview = tape },
-                                onThumbnailDelete: { _ in },
-                                onCameraCapture: { completion in
-                                    cameraCoordinator.presentCamera(completion: completion)
-                                },
-                                onTitleFocusRequest: {
-                                    editingTapeID = tapeID
-                                    draftTitle = tape.title
-                                },
-                                titleEditingConfig: titleConfig
-                            )
-                            .background(Tokens.Colors.primaryBackground)
-                            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
-                            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-                            .overlay(alignment: .bottomTrailing) {
-                                if let count = syncChecker.pendingDownloads[tapeID], count > 0 {
-                                    SyncBadge(count: count, direction: .download) {
-                                        handleDownload(tape: tape)
-                                    }
-                                }
+                        ForEach(receivedCollabTapes) { tape in
+                            if let binding = tapesStore.bindingForTape(id: tape.id) {
+                                collabTapeCard(tape: tape, binding: binding, width: contentWidth, isOwner: false)
                             }
-                            .compositingGroup()
                         }
                     }
                 }
                 .padding(.horizontal, Tokens.Spacing.m)
                 .padding(.vertical, Tokens.Spacing.s)
-                .animation(.easeInOut(duration: 0.3), value: collabTapes.map(\.id))
+                .animation(.easeInOut(duration: 0.3), value: ownerCollabTapes.map(\.id))
+                .animation(.easeInOut(duration: 0.3), value: receivedCollabTapes.map(\.id))
             }
         }
+    }
+
+    @ViewBuilder
+    private func collabTapeCard(tape: Tape, binding: Binding<Tape>, width: CGFloat, isOwner: Bool) -> some View {
+        let tapeID = tape.id
+
+        let titleConfig: TapeCardView.TitleEditingConfig? = {
+            guard editingTapeID == tapeID else { return nil }
+            return TapeCardView.TitleEditingConfig(
+                text: Binding(
+                    get: { draftTitle },
+                    set: { draftTitle = $0 }
+                ),
+                tapeID: tapeID,
+                onCommit: { commitTitleEdit() }
+            )
+        }()
+
+        TapeCardView(
+            tape: binding,
+            tapeID: tapeID,
+            tapeWidth: width,
+            isLandscape: false,
+            isShareDisabled: !isOwner,
+            onShare: { tapeToShare = tape },
+            onSettings: { tapeToSettings = tape },
+            onPlay: { tapeToPreview = tape },
+            onThumbnailDelete: { clip in
+                tapesStore.deleteClip(from: tapeID, clip: clip)
+            },
+            onCameraCapture: { completion in
+                cameraCoordinator.presentCamera(completion: completion)
+            },
+            onTitleFocusRequest: {
+                editingTapeID = tapeID
+                draftTitle = tape.title
+            },
+            titleEditingConfig: titleConfig
+        )
+        .background(Tokens.Colors.primaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .overlay(alignment: .bottomTrailing) {
+            if let count = syncChecker.pendingDownloads[tapeID], count > 0 {
+                SyncBadge(count: count, direction: .download) {
+                    handleDownload(tape: tape)
+                }
+            }
+        }
+        .compositingGroup()
     }
 
     // MARK: - Sign In Prompt
@@ -180,7 +220,7 @@ struct CollabTapesView: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Tokens.Colors.secondaryText)
 
-            Text("Collaborative tapes will appear here after you sign in with your Apple ID.")
+            Text("Create collaborative tapes and invite others to contribute.")
                 .font(Tokens.Typography.caption)
                 .foregroundStyle(Tokens.Colors.tertiaryText)
                 .multilineTextAlignment(.center)
@@ -194,30 +234,6 @@ struct CollabTapesView: View {
             .frame(height: Tokens.HitTarget.recommended)
             .clipShape(Capsule())
             .padding(.horizontal, Tokens.Spacing.xxl)
-
-            Spacer()
-        }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: Tokens.Spacing.l) {
-            Spacer()
-
-            Image(systemName: "person.2.wave.2")
-                .font(.system(size: 48))
-                .foregroundStyle(Tokens.Colors.tertiaryText)
-
-            Text("No collaborative tapes yet")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(Tokens.Colors.secondaryText)
-
-            Text("When you collaborate on a tape, it will appear here.")
-                .font(Tokens.Typography.caption)
-                .foregroundStyle(Tokens.Colors.tertiaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Tokens.Spacing.xxl)
 
             Spacer()
         }

@@ -3,13 +3,12 @@ import UIKit
 
 /// Inline share-link section embedded in `ShareModalView`.
 ///
-/// Presents the 4-link share model in a simple way:
-/// • Role picker (Viewing / Collaborating) — flips between view and collab links.
-/// • "Secured by email" toggle — flips between the open and protected variant
-///   for the currently selected role.
-/// • Link pill + copy/share — always visible. Taps trigger tape upload on first use.
-/// • Email invite input (protected variants) — invites are sent one at a time.
-/// • Authorised users chips — revocable per-variant list of invited collaborators.
+/// The sharing role is determined by the tape's type:
+/// - My Tapes → always view-only
+/// - Collab tapes (owner) → always collaborative
+///
+/// The "Secured by email" toggle switches between open / protected
+/// within the fixed role.
 struct ShareLinkSection: View {
 
     let tape: Tape
@@ -20,12 +19,6 @@ struct ShareLinkSection: View {
 
     // MARK: - UI state
 
-    enum RoleTab: String, CaseIterable {
-        case viewing = "Viewing tape"
-        case collaborating = "Collaborating tape"
-    }
-
-    @State private var selectedRole: RoleTab = .viewing
     @State private var securedByEmail = false
     @State private var emailInput = ""
 
@@ -41,12 +34,15 @@ struct ShareLinkSection: View {
 
     // MARK: - Derived
 
+    private var isCollabTape: Bool {
+        tape.isCollabTape
+    }
+
     private var currentVariant: TapesAPIClient.ShareVariant {
-        switch (selectedRole, securedByEmail) {
-        case (.viewing, false): return .viewOpen
-        case (.viewing, true):  return .viewProtected
-        case (.collaborating, false): return .collabOpen
-        case (.collaborating, true):  return .collabProtected
+        if isCollabTape {
+            return securedByEmail ? .collabProtected : .collabOpen
+        } else {
+            return securedByEmail ? .viewProtected : .viewOpen
         }
     }
 
@@ -76,16 +72,9 @@ struct ShareLinkSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            SectionHeader(title: "Share This Tape")
+            SectionHeader(title: isCollabTape ? "Share for Collaboration" : "Share This Tape")
 
             VStack(spacing: Tokens.Spacing.m) {
-                Picker("", selection: $selectedRole) {
-                    ForEach(RoleTab.allCases, id: \.self) { tab in
-                        Text(tab.rawValue).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-
                 securedToggle
                 linkBlock
                 if securedByEmail {
@@ -339,14 +328,12 @@ struct ShareLinkSection: View {
             return
         }
 
-        let uploadTape = resolveUploadTape()
-
         uploadCoordinator.ensureTapeUploaded(
-            tape: uploadTape,
-            intendedForCollaboration: currentVariant.isCollaborative,
+            tape: tape,
+            intendedForCollaboration: isCollabTape,
             api: api
         ) { response in
-            finaliseCollabFork(response: response, forkTape: uploadTape)
+            finaliseShareInfo(response: response)
             uploadCoordinator.dismissCompletionDialog()
 
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
@@ -365,14 +352,12 @@ struct ShareLinkSection: View {
             return
         }
 
-        let uploadTape = resolveUploadTape()
-
         uploadCoordinator.ensureTapeUploaded(
-            tape: uploadTape,
-            intendedForCollaboration: currentVariant.isCollaborative,
+            tape: tape,
+            intendedForCollaboration: isCollabTape,
             api: api
         ) { response in
-            finaliseCollabFork(response: response, forkTape: uploadTape)
+            finaliseShareInfo(response: response)
             uploadCoordinator.dismissCompletionDialog()
 
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
@@ -382,25 +367,17 @@ struct ShareLinkSection: View {
         }
     }
 
-    /// For collaborative shares from an original (non-shared) tape, creates
-    /// the fork first so the upload uses the fork's UUID as the server tape_id.
-    /// For view-only or already-forked tapes, returns the tape as-is.
-    private func resolveUploadTape() -> Tape {
-        guard currentVariant.isCollaborative, tape.shareInfo == nil else {
-            return tape
-        }
-        return tapesStore.forkTapeForCollaboration(tape, ownerName: authManager.userName)
-    }
-
-    /// After a successful collaborative upload, updates the fork's ShareInfo
-    /// with the server-provided share IDs.
-    private func finaliseCollabFork(response: TapesAPIClient.CreateTapeResponse, forkTape: Tape) {
-        guard currentVariant.isCollaborative, forkTape.shareInfo != nil else { return }
-        tapesStore.updateForkShareInfo(
-            forkId: forkTape.id,
+    /// After the first successful upload of a collab tape, persist ShareInfo.
+    private func finaliseShareInfo(response: TapesAPIClient.CreateTapeResponse) {
+        guard isCollabTape, tape.shareInfo == nil else { return }
+        let info = ShareInfo(
             shareId: response.shareIdCollab,
+            ownerName: authManager.userName,
+            mode: "collaborative",
+            expiresAt: nil,
             remoteTapeId: response.tapeId
         )
+        tapesStore.setCollabShareInfo(tapeId: tape.id, shareInfo: info)
     }
 
     private func inviteTapped() {
@@ -429,25 +406,23 @@ struct ShareLinkSection: View {
         Task { @MainActor in
             defer { isInviting = false }
 
-            let uploadTape = resolveUploadTape()
-
             await withCheckedContinuation { cont in
-                if uploadCoordinator.cachedCreateResponse(for: uploadTape) != nil {
+                if uploadCoordinator.cachedCreateResponse(for: tape) != nil {
                     cont.resume()
                     return
                 }
                 uploadCoordinator.ensureTapeUploaded(
-                    tape: uploadTape,
-                    intendedForCollaboration: variant.isCollaborative,
+                    tape: tape,
+                    intendedForCollaboration: isCollabTape,
                     api: api
                 ) { response in
-                    finaliseCollabFork(response: response, forkTape: uploadTape)
+                    finaliseShareInfo(response: response)
                     cont.resume()
                 }
             }
 
             guard let remoteTapeId = uploadCoordinator.resultRemoteTapeId
-                ?? uploadCoordinator.cachedCreateResponse(for: uploadTape)?.tapeId else {
+                ?? uploadCoordinator.cachedCreateResponse(for: tape)?.tapeId else {
                 errorMessage = "Couldn't upload this tape. Please try again."
                 return
             }
@@ -492,9 +467,6 @@ struct ShareLinkSection: View {
 
     // MARK: - Bootstrapping
 
-    /// Pre-loads existing share state without triggering any uploads.
-    /// If the tape has never been shared, `api.getTape` returns 404 and we
-    /// leave the UI in its "pending bootstrap" state until the user acts.
     private func bootstrapShareState() async {
         guard let api = authManager.apiClient else { return }
         isBootstrapping = true

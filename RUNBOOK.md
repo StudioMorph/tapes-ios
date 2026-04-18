@@ -303,8 +303,9 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API contract (tapes, clips, collaborators, shares, manifest)
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator (progress overlay, completion dialogs); exposes `resultCreateResponse` with all four share IDs
 - `Tapes/Views/Share/ShareModalView.swift` — single entry point modal for sharing (Export, Save Clips, and inline `ShareLinkSection`)
-- `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI: `Viewing / Collaborating` role tabs, `Secured by email` toggle, link pill with copy + system share sheet, invite compose, authorised-users chips
-- `Tapes/Views/Share/SharedTapesView.swift` — Shared tab (renders real `TapeCardView` components)
+- `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI: `Secured by email` toggle, link pill with copy + system share sheet, invite compose, authorised-users chips. Role is determined by `tape.isCollabTape` (no segmented control).
+- `Tapes/Views/Share/SharedTapesView.swift` — Shared tab (view-only tapes only)
+- `Tapes/Views/Share/CollabTapesView.swift` — Collab tab (owner creation + received collaborative tapes)
 - `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — recipient download + tape builder (writes assets into Photos library + tape-specific album)
 - `Tapes/Core/Navigation/NavigationCoordinator.swift` — deep link handling
 
@@ -312,7 +313,7 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 
 1. User opens share link → app resolves share ID → downloads clips from R2 (presigned GET URLs).
 2. Progress overlay shown (identical to import from photo picker).
-3. Assets are saved to the Photos library and associated with a per-tape album (`"[Tape Name]"` for view-only, `"[Tape Name] - Collab"` for collaborative duplicates).
+3. Assets are saved to the Photos library and associated with a per-tape album (`"[Tape Name]"`).
 4. A real `Tape` with `ShareInfo` metadata is created and persisted locally, linked by `PHAsset.localIdentifier`.
 5. Tape appears in the "Shared" tab as a normal tape card.
 
@@ -328,8 +329,9 @@ Every tape has four share links, one per cell of the `role × protection` matrix
 
 ### Collaborative Tapes
 
-- When a tape is shared collaboratively, the owner's original tape in "My Tapes" stays untouched; a duplicate is forked into the "Shared with Me" tab and is the one that receives contributions and syncs.
-- Contributions (new clips + creative settings such as motion style, image duration, rotation, scale-mode override) are uploaded via `ShareUploadCoordinator` and merged into the forked tape on the owner's device.
+- Collaborative tapes are created natively in the **Collab tab** (marked `isCollabTape = true`). No forking — the original tape is the collaborative tape.
+- Tapes in My Tapes can only be shared as view-only. Tapes in the Collab tab can only be shared as collaborative.
+- Contributions (new clips + creative settings) are uploaded via `ShareUploadCoordinator` and land directly on the original tape.
 - APNs notifications fire on new invites and new contributions (topic: `StudioMorph.Tapes`).
 
 ### Configuration

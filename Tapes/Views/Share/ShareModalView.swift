@@ -7,20 +7,9 @@ struct ShareModalView: View {
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tapesStore: TapesStore
 
-    private var isCollaborativeShared: Bool {
-        tape.shareInfo?.mode == "collaborative"
-    }
-
-    /// True when this is the owner's own collaborative fork
-    /// (remoteTapeId == local id, set in forkTapeForCollaboration).
-    private var isOwnerCollabFork: Bool {
-        isCollaborativeShared &&
-        tape.shareInfo?.remoteTapeId == tape.id.uuidString.lowercased()
-    }
-
-    /// True when this is a receiver's collaborative tape (not the owner's fork).
-    private var isReceiverCollab: Bool {
-        isCollaborativeShared && !isOwnerCollabFork
+    /// True when the user is a contributor (received someone else's collaborative tape).
+    private var isContributor: Bool {
+        tape.shareInfo?.mode == "collaborative" && !tape.isCollabTape
     }
 
     private var unsyncedClips: [Clip] {
@@ -31,22 +20,30 @@ struct ShareModalView: View {
         !unsyncedClips.isEmpty
     }
 
-    /// The share section is visible for: unshared tapes (My Tapes) and
-    /// the owner's collaborative fork (so they can re-share / refresh the link).
+    /// Owner of a collab tape can share (tape they created in the Collab tab).
+    private var isOwnerCollabTape: Bool {
+        tape.isCollabTape && !isContributor
+    }
+
+    /// The share section is visible for:
+    /// - My Tapes (no shareInfo, not a collab tape) — view-only sharing
+    /// - Owner's collab tape — collaborative sharing
     private var canOwnShare: Bool {
-        tape.shareInfo == nil || isOwnerCollabFork
+        if isContributor { return false }
+        if tape.isCollabTape { return true }
+        return tape.shareInfo == nil || tape.shareInfo != nil
     }
 
     /// True when the upload coordinator is working on a contribute (not an initial share).
     private var isContributeUpload: Bool {
-        isReceiverCollab && uploadCoordinator.sourceTape?.id == tape.id
+        isContributor && uploadCoordinator.sourceTape?.id == tape.id
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.l) {
-                    if isReceiverCollab {
+                    if isContributor {
                         contributeSection
                     }
 

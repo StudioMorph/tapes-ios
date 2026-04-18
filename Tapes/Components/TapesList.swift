@@ -89,7 +89,7 @@ struct TapesList: View {
     @ViewBuilder
     private func tapeCards(tapeWidth: CGFloat, isLandscape: Bool) -> some View {
         ForEach($tapes) { $tape in
-            if tape.isShared { EmptyView() } else {
+            if tape.isShared || tape.isCollabTape { EmptyView() } else {
             let tapeID = tape.id
 
             let titleEditingConfig: TapeCardView.TitleEditingConfig? = {

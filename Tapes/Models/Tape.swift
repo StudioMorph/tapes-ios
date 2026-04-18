@@ -164,6 +164,9 @@ public struct Tape: Identifiable, Codable, Equatable {
     /// upload badge delta on My Tapes.
     public var lastUploadedClipCount: Int?
 
+    /// Tapes created in the Collab tab. These can only be shared as collaborative.
+    public var isCollabTape: Bool
+
     public init(
         id: UUID = UUID(),
         title: String = "New Tape",
@@ -184,7 +187,8 @@ public struct Tape: Identifiable, Codable, Equatable {
         livePhotosAsVideo: Bool = true,
         livePhotosMuted: Bool = true,
         shareInfo: ShareInfo? = nil,
-        lastUploadedClipCount: Int? = nil
+        lastUploadedClipCount: Int? = nil,
+        isCollabTape: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -206,6 +210,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         self.livePhotosMuted = livePhotosMuted
         self.shareInfo = shareInfo
         self.lastUploadedClipCount = lastUploadedClipCount
+        self.isCollabTape = isCollabTape
     }
     
     // MARK: - Coding Keys
@@ -221,6 +226,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case livePhotosMuted
         case shareInfo
         case lastUploadedClipCount
+        case isCollabTape
     }
     
     // MARK: - Custom Decoder for Backward Compatibility
@@ -249,6 +255,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         livePhotosMuted = try container.decodeIfPresent(Bool.self, forKey: .livePhotosMuted) ?? true
         shareInfo = try container.decodeIfPresent(ShareInfo.self, forKey: .shareInfo)
         lastUploadedClipCount = try container.decodeIfPresent(Int.self, forKey: .lastUploadedClipCount)
+        isCollabTape = try container.decodeIfPresent(Bool.self, forKey: .isCollabTape) ?? false
     }
     
     // MARK: - Computed Properties
