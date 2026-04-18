@@ -21,6 +21,7 @@ struct TapesList: View {
     let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: (UUID, String) -> Void
     let onTitleCommit: () -> Void
+    var onSyncUpload: ((Tape) -> Void)?
     @Binding var showInlineTitle: Bool
 
     private let columnSpacing: CGFloat = 16
@@ -122,7 +123,7 @@ struct TapesList: View {
             .overlay(alignment: .bottomTrailing) {
                 if tape.pendingUploadCount > 0 {
                     SyncBadge(count: tape.pendingUploadCount, direction: .upload) {
-                        onShare(tape)
+                        onSyncUpload?(tape)
                     }
                 }
             }
@@ -210,6 +211,7 @@ struct AmbientTutorialCarousel: View {
         onCameraCapture: { _ in },
         onTitleFocusRequest: { _, _ in },
         onTitleCommit: {},
+        onSyncUpload: { _ in },
         showInlineTitle: .constant(false)
     )
     .background(Tokens.Colors.primaryBackground)

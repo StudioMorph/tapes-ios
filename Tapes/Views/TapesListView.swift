@@ -17,6 +17,7 @@ struct TapesListView: View {
     @State private var hoveredTarget: DropTargetInfo? = nil
     @State private var showInlineTitle = false
     @State private var tapeToShare: Tape?
+    @State private var tapeToSyncUpload: Tape?
 
     var body: some View {
         NavigationStack {
@@ -40,6 +41,7 @@ struct TapesListView: View {
                         onCameraCapture: handleCameraCapture,
                         onTitleFocusRequest: handleTitleFocusRequest,
                         onTitleCommit: commitTitleEditing,
+                        onSyncUpload: { tape in tapeToSyncUpload = tape },
                         showInlineTitle: $showInlineTitle
                     )
                 }
@@ -155,6 +157,24 @@ struct TapesListView: View {
         .sheet(item: $tapeToShare) { tape in
             ShareModalView(tape: tape)
         }
+        .alert("Update everyone's tape",
+               isPresented: .init(
+                   get: { tapeToSyncUpload != nil },
+                   set: { if !$0 { tapeToSyncUpload = nil } }
+               )
+        ) {
+            Button("Update") {
+                if let tape = tapeToSyncUpload {
+                    triggerSyncUpload(tape)
+                }
+                tapeToSyncUpload = nil
+            }
+            Button("Cancel", role: .cancel) {
+                tapeToSyncUpload = nil
+            }
+        } message: {
+            Text("This will add your new content to everyone's tapes.")
+        }
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {
                 tapeToPreview = nil
@@ -250,6 +270,20 @@ struct TapesListView: View {
 
     private func handleShare(_ tape: Tape) {
         tapeToShare = tape
+    }
+
+    private func triggerSyncUpload(_ tape: Tape) {
+        guard let api = authManager.apiClient else { return }
+        let tapeId = tape.id.uuidString.lowercased()
+        shareUploadCoordinator.ensureTapeUploaded(
+            tape: tape,
+            intendedForCollaboration: false,
+            api: api
+        ) { _ in
+            Task {
+                try? await api.syncPush(tapeId: tapeId)
+            }
+        }
     }
 
     private func handleSettings(_ tape: Tape) {
