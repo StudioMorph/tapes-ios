@@ -46,6 +46,13 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
             do {
                 let resolution = try await api.resolveShare(shareId: shareId)
+
+                if resolution.userRole == "owner" {
+                    self.downloadError = "This is your tape.\nIt already exists on your device."
+                    self.isDownloading = false
+                    return
+                }
+
                 let manifest = try await api.getManifest(tapeId: resolution.tapeId)
 
                 let uploadedClips = manifest.clips.filter { $0.cloudUrl != nil }
@@ -382,16 +389,13 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             remoteTapeId: manifest.tapeId
         )
 
-        let isCollab = (mode ?? manifest.mode) == "collaborative"
-
         return Tape(
             title: manifest.title,
             transition: transitionType,
             transitionDuration: transitionDuration,
             clips: clips,
             hasReceivedFirstContent: true,
-            shareInfo: info,
-            isCollabTape: isCollab
+            shareInfo: info
         )
     }
 }

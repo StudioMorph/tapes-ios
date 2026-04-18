@@ -26,12 +26,13 @@ struct ShareModalView: View {
     }
 
     /// The share section is visible for:
-    /// - My Tapes (no shareInfo, not a collab tape) — view-only sharing
-    /// - Owner's collab tape — collaborative sharing
+    /// - My Tapes (not shared, not collab) — view-only sharing
+    /// - Owner's collab tape (isCollabTape) — collaborative sharing
+    /// Hidden for all received tapes (both view-only and collaborative).
     private var canOwnShare: Bool {
-        if isContributor { return false }
         if tape.isCollabTape { return true }
-        return tape.shareInfo == nil || tape.shareInfo != nil
+        if tape.isShared { return false }
+        return true
     }
 
     /// True when the upload coordinator is working on a contribute (not an initial share).
@@ -43,7 +44,7 @@ struct ShareModalView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Tokens.Spacing.l) {
-                    if isContributor {
+                    if isContributor || (isOwnerCollabTape && tape.shareInfo != nil) {
                         contributeSection
                     }
 

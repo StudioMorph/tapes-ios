@@ -170,13 +170,15 @@ Collaborative tapes are created natively in the **Collab tab** (marked `isCollab
 3. **ShareInfo persisted after first share** — `ShareLinkSection.finaliseShareInfo()` calls `TapesStore.setCollabShareInfo()` to store the server-provided `shareId` and `remoteTapeId` on the tape.
 4. **Tape receives contributions directly** — Contributors' clips land on the same tape. The owner sees contributions merged in.
 5. **No duplication on re-open** — If a user taps a share link for a tape they already have, `startDownload` skips clips that already exist locally.
+6. **Owner blocked from re-downloading** — If `resolveShare` returns `userRole == "owner"`, the download is aborted and a dialog is shown: "This is your tape. It already exists on your device."
+7. **Received tapes are never `isCollabTape`** — Downloaded collaborative tapes keep `isCollabTape = false`. Their collaborative nature is identified via `shareInfo.mode == "collaborative"`. This ensures the share modal only shows the contribute button (no share section) for contributors.
 
 ### Data flow
 
 ```
 [Collab tab]  →  Owner's collab tape (isCollabTape = true, uploaded under its own UUID)
                     ↓ shared via link
-[Collab tab on receiver's device]  →  Received collab tape (isCollabTape = true via download)
+[Collab tab on receiver's device]  →  Received collab tape (isCollabTape = false, identified by shareInfo.mode)
 ```
 
 ### My Tapes (view-only only)
@@ -275,7 +277,7 @@ A reusable `SyncBadge` component (in `DesignSystem/SyncBadge.swift`) shows a blu
 - `Tapes/Views/Share/CollabTapesView.swift` — Collab tab with empty-tape creation and owner/contributor sections.
 - `Tapes/Views/TapesListView.swift` — My Tapes list with upload badge and sync upload trigger.
 - `Tapes/ViewModels/TapesStore.swift` — `setCollabShareInfo()`, `collabTapes`, and empty collab tape management.
-- `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — downloads shared tapes; sets `isCollabTape` for collaborative downloads.
+- `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — downloads shared tapes; blocks owners from re-downloading their own tape (`userRole == "owner"` check).
 - `Tapes/Export/ExportCoordinator.swift` — sister pattern for background exports.
 - `Tapes/Core/Auth/AuthManager.swift` — Sign in with Apple, needed for share identity.
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API client for all backend calls.
