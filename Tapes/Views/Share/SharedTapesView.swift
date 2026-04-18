@@ -18,10 +18,17 @@ struct SharedTapesView: View {
     @State private var draftTitle: String = ""
 
     private var viewOnlyTapes: [Tape] {
-        tapesStore.sharedTapes.filter { tape in
-            guard let mode = tape.shareInfo?.mode else { return true }
-            return mode == "view_only"
-        }
+        tapesStore.sharedTapes
+            .filter { tape in
+                guard let mode = tape.shareInfo?.mode else { return true }
+                return mode == "view_only"
+            }
+            .sorted { a, b in
+                let aHas = syncChecker.pendingDownloads[a.id] != nil
+                let bHas = syncChecker.pendingDownloads[b.id] != nil
+                if aHas != bHas { return aHas }
+                return a.updatedAt > b.updatedAt
+            }
     }
 
     var body: some View {
@@ -171,6 +178,7 @@ struct SharedTapesView: View {
                 }
                 .padding(.horizontal, Tokens.Spacing.m)
                 .padding(.vertical, Tokens.Spacing.s)
+                .animation(.easeInOut(duration: 0.3), value: viewOnlyTapes.map(\.id))
             }
         }
     }

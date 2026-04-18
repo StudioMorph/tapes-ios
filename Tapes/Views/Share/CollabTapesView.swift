@@ -17,7 +17,14 @@ struct CollabTapesView: View {
     @State private var draftTitle: String = ""
 
     private var collabTapes: [Tape] {
-        tapesStore.sharedTapes.filter { $0.shareInfo?.mode == "collaborative" }
+        tapesStore.sharedTapes
+            .filter { $0.shareInfo?.mode == "collaborative" }
+            .sorted { a, b in
+                let aHas = syncChecker.pendingDownloads[a.id] != nil
+                let bHas = syncChecker.pendingDownloads[b.id] != nil
+                if aHas != bHas { return aHas }
+                return a.updatedAt > b.updatedAt
+            }
     }
 
     var body: some View {
@@ -154,6 +161,7 @@ struct CollabTapesView: View {
                 }
                 .padding(.horizontal, Tokens.Spacing.m)
                 .padding(.vertical, Tokens.Spacing.s)
+                .animation(.easeInOut(duration: 0.3), value: collabTapes.map(\.id))
             }
         }
     }
