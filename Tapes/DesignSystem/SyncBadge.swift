@@ -67,7 +67,7 @@ public struct SyncBadge: View {
         Image(systemName: direction.systemImage)
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(Tokens.Colors.systemBlue)
-            .frame(width: 28, height: 28)
+            .frame(minWidth: 44, minHeight: 28)
             .background(
                 UnevenRoundedRectangle(
                     topLeadingRadius: Tokens.Radius.card,
