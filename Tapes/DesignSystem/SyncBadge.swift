@@ -61,7 +61,7 @@ public struct SyncBadge: View {
             .foregroundStyle(.white)
             .padding(.horizontal, count > 9 ? 4 : 0)
             .frame(minWidth: 16, minHeight: 16)
-            .background(Capsule().fill(Tokens.Colors.systemBlue))
+            .background(Capsule().fill(direction == .download ? Tokens.Colors.systemRed : Tokens.Colors.systemBlue))
     }
 
     private var arrowTile: some View {
