@@ -68,6 +68,7 @@ public struct SyncBadge: View {
         Image(systemName: direction.systemImage)
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(Tokens.Colors.systemBlue)
+            .offset(y: animating ? direction.animationOffset : 0)
             .frame(minWidth: 44, minHeight: 28)
             .background(
                 UnevenRoundedRectangle(
@@ -78,7 +79,6 @@ public struct SyncBadge: View {
                 )
                 .fill(Tokens.Colors.secondaryBackground)
             )
-            .offset(y: animating ? direction.animationOffset : 0)
     }
 }
 
