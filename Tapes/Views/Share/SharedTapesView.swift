@@ -191,6 +191,7 @@ struct SharedTapesView: View {
                             )
                             .background(Tokens.Colors.primaryBackground)
                             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+                            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                             .overlay(alignment: .bottomTrailing) {
                                 if let count = syncChecker.pendingDownloads[tapeID], count > 0 {
                                     SyncBadge(count: count, direction: .download) {
@@ -198,7 +199,6 @@ struct SharedTapesView: View {
                                     }
                                 }
                             }
-                            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                             .compositingGroup()
                         }
                     }
