@@ -79,6 +79,7 @@ public struct SyncBadge: View {
                 )
                 .fill(Tokens.Colors.secondaryBackground)
             )
+            .shadow(color: Tokens.Colors.dropShadow, radius: 4, x: -4, y: -4)
     }
 }
 
