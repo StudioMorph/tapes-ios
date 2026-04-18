@@ -9,6 +9,17 @@ struct MainTabView: View {
     @StateObject private var shareUploadCoordinator = ShareUploadCoordinator()
     @StateObject private var syncChecker = TapeSyncChecker()
 
+    private var viewOnlyDownloadCount: Int {
+        let viewOnlyTapeIds = Set(
+            tapesStore.sharedTapes
+                .filter { $0.shareInfo?.mode == "view_only" }
+                .map { $0.id }
+        )
+        return syncChecker.pendingDownloads
+            .filter { viewOnlyTapeIds.contains($0.key) }
+            .count
+    }
+
     enum AppTab: Hashable {
         case myTapes
         case shared
@@ -24,6 +35,7 @@ struct MainTabView: View {
             Tab("Shared", systemImage: "person.2", value: AppTab.shared) {
                 SharedTapesView()
             }
+            .badge(viewOnlyDownloadCount)
 
             Tab("Account", systemImage: "person.circle", value: AppTab.account) {
                 AccountTabView(showOnboarding: $showOnboarding)
