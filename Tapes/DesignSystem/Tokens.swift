@@ -41,6 +41,13 @@ public struct Tokens {
         public static let systemRed = Color(hex: "#E50914")
         public static let systemBlue = Color.blue
         
+        // Shadows
+        public static let dropShadow = Color(UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark
+                ? UIColor.black.withAlphaComponent(0.15)
+                : UIColor.black.withAlphaComponent(0.07)
+        })
+
         // Legacy tokens for backward compatibility
         public static let bg = primaryBackground
         public static let card = secondaryBackground
