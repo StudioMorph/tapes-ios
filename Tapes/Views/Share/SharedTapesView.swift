@@ -45,6 +45,37 @@ struct SharedTapesView: View {
             }
             .navigationTitle("Shared")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                if tapesStore.jigglingTapeID != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                tapesStore.jigglingTapeID = nil
+                            }
+                        }
+                        .font(.body.weight(.semibold))
+                    }
+                } else {
+                    if downloadCoordinator.isDownloading && !downloadCoordinator.showProgressDialog {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                downloadCoordinator.showProgressDialogAgain()
+                            } label: {
+                                ZStack {
+                                    CircularProgressRing(
+                                        progress: downloadCoordinator.progress,
+                                        lineWidth: 2.5,
+                                        size: 22,
+                                        ringColor: .blue
+                                    )
+                                    Image(systemName: "arrow.down")
+                                        .font(.system(size: 11, weight: .semibold))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             .alert("Sign In Issue", isPresented: .init(
                 get: { authManager.authError != nil },
                 set: { if !$0 { authManager.authError = nil } }
@@ -165,6 +196,9 @@ struct SharedTapesView: View {
                                 }
                             }
                             .compositingGroup()
+                            .opacity(tapesStore.jigglingTapeID != nil && tapesStore.jigglingTapeID != tapeID ? 0.4 : 1)
+                            .disabled(tapesStore.jigglingTapeID != nil && tapesStore.jigglingTapeID != tapeID)
+                            .animation(.easeInOut(duration: 0.25), value: tapesStore.jigglingTapeID)
                         }
                     }
                 }

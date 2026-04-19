@@ -45,8 +45,11 @@ struct ShareModalView: View {
             }
         }
         .overlay {
-            if uploadCoordinator.isUploading {
+            if uploadCoordinator.showProgressDialog {
                 ShareUploadProgressDialog(coordinator: uploadCoordinator)
+            }
+            if uploadCoordinator.showCompletionDialog {
+                ShareUploadCompletionDialog(coordinator: uploadCoordinator)
             }
             if uploadCoordinator.uploadError != nil {
                 ShareUploadErrorAlert(coordinator: uploadCoordinator)

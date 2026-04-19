@@ -278,6 +278,22 @@ A reusable `SyncBadge` component (in `DesignSystem/SyncBadge.swift`) shows a cou
 - `CollabTapesView`: shows overlay only when `sourceTape` is a collab tape
 - `SharedTapesView`: never shows upload overlay (view-only receivers don't upload)
 
+### Progress dialog dismiss-to-toolbar pattern
+
+All upload and download progress dialogs follow a consistent pattern across tabs:
+1. **Full dialog** shown while processing (controlled by `showProgressDialog` / `showCompletionDialog`)
+2. **OK button** dismisses the full dialog (sets `showProgressDialog = false`)
+3. **Minimised toolbar icon** appears in the toolbar (condition: `isUploading && !showProgressDialog` for uploads, `isDownloading && !showProgressDialog` for downloads) — a `CircularProgressRing` with an arrow icon
+4. **Tap toolbar icon** calls `showProgressDialogAgain()` to restore the full dialog
+5. The background process continues independently regardless of dialog visibility
+
+Each tab manages its own toolbar icon independently:
+- `TapesListView`: upload toolbar icon (scoped with `isMyTapeUpload`)
+- `CollabTapesView`: upload toolbar icon (scoped with `isCollabUpload`) + download toolbar icon
+- `SharedTapesView`: download toolbar icon
+
+`ShareModalView` uses `showProgressDialog` (not `isUploading`) to control its overlay, ensuring the dialog dismisses correctly when OK is tapped.
+
 ## Related Files
 
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator; stores `sourceTape` and exposes `resultCreateResponse` (all four share IDs).

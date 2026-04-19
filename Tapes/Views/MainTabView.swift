@@ -73,6 +73,14 @@ struct MainTabView: View {
             if tab == .shared || tab == .collab {
                 UNUserNotificationCenter.current().setBadgeCount(0)
             }
+            if tapesStore.jigglingTapeID != nil {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    if tapesStore.isFloatingClip {
+                        tapesStore.returnFloatingClip()
+                    }
+                    tapesStore.jigglingTapeID = nil
+                }
+            }
         }
     }
 }

@@ -1,12 +1,13 @@
 import Foundation
 import Photos
-import UIKit
+import SwiftUI
 import os
 
 @MainActor
 public class SharedTapeDownloadCoordinator: ObservableObject {
 
     @Published var isDownloading = false
+    @Published var showProgressDialog = false
     @Published var totalCount = 0
     @Published var completedCount = 0
     @Published var failedCount = 0
@@ -35,6 +36,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         guard !isDownloading else { return }
 
         isDownloading = true
+        showProgressDialog = true
         totalCount = 0
         completedCount = 0
         failedCount = 0
@@ -61,6 +63,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                         ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                         : "This tape is empty.\nAsk the Tapes owner to add content and try again."
                     self.isDownloading = false
+                    self.showProgressDialog = false
                     return
                 }
 
@@ -76,6 +79,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 if clipsToDownload.isEmpty && isReturning {
                     self.downloadError = "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                     self.isDownloading = false
+                    self.showProgressDialog = false
                     return
                 }
 
@@ -105,6 +109,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                         ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                         : "This tape is empty.\nAsk the Tapes owner to add content and try again."
                     self.isDownloading = false
+                    self.showProgressDialog = false
                     return
                 }
 
@@ -162,12 +167,25 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
     func reset() {
         isDownloading = false
+        showProgressDialog = false
         totalCount = 0
         completedCount = 0
         failedCount = 0
         downloadError = nil
         resultTape = nil
         downloadTask = nil
+    }
+
+    func dismissProgressDialog() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showProgressDialog = false
+        }
+    }
+
+    func showProgressDialogAgain() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showProgressDialog = true
+        }
     }
 
     // MARK: - Single Clip Download

@@ -133,7 +133,7 @@ struct TapesListView: View {
                             }
                         }
                     }
-                    if shareUploadCoordinator.isUploading && !shareUploadCoordinator.showProgressDialog {
+                    if isMyTapeUpload && shareUploadCoordinator.isUploading && !shareUploadCoordinator.showProgressDialog {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button {
                                 shareUploadCoordinator.showProgressDialogAgain()

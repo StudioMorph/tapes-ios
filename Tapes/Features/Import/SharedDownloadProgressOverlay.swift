@@ -4,10 +4,13 @@ struct SharedDownloadProgressOverlay: View {
     @ObservedObject var coordinator: SharedTapeDownloadCoordinator
 
     var body: some View {
-        if coordinator.isDownloading {
+        if coordinator.isDownloading && coordinator.showProgressDialog {
             GlassAlertCard(
                 title: coordinator.progressLabel,
                 buttons: [
+                    GlassAlertButton(title: "OK", style: .secondary) {
+                        coordinator.dismissProgressDialog()
+                    },
                     GlassAlertButton(title: "Cancel", style: .destructive) {
                         coordinator.cancelDownload()
                     }
