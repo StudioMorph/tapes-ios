@@ -541,7 +541,7 @@ public class ShareUploadCoordinator: ObservableObject {
 
     private static func resolveClipData(_ clip: Clip) async throws -> Data {
         if clip.isLivePhoto, let assetId = clip.assetLocalId {
-            return try await exportPHAssetData(identifier: assetId, isVideo: false)
+            return try await exportLivePhotoImageResource(identifier: assetId)
         }
 
         if let url = clip.localURL, FileManager.default.fileExists(atPath: url.path) {
@@ -569,6 +569,51 @@ public class ShareUploadCoordinator: ObservableObject {
         }
 
         return try Data(contentsOf: result.url)
+    }
+
+    /// Exports the photo resource of a Live Photo using PHAssetResourceManager,
+    /// preserving all metadata including the content identifier needed for
+    /// reconstructing Live Photos on the receiving device.
+    private static func exportLivePhotoImageResource(identifier: String) async throws -> Data {
+        var phAsset: PHAsset?
+        for attempt in 0..<3 {
+            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
+            if let asset = fetchResult.firstObject {
+                phAsset = asset
+                break
+            }
+            if attempt < 2 {
+                try await Task.sleep(nanoseconds: UInt64((attempt + 1)) * 500_000_000)
+            }
+        }
+        guard let phAsset else {
+            throw APIError.validation("Photo library asset not found.")
+        }
+
+        let resources = PHAssetResource.assetResources(for: phAsset)
+        guard let photoResource = resources.first(where: { $0.type == .photo }) else {
+            throw APIError.validation("Live Photo has no photo resource.")
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("LivePhotoExport", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let dest = tempDir.appendingPathComponent("\(UUID().uuidString).\(photoResource.originalFilename.split(separator: ".").last ?? "jpg")")
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+            PHAssetResourceManager.default().writeData(for: photoResource, toFile: dest, options: options) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+
+        let data = try Data(contentsOf: dest)
+        try? FileManager.default.removeItem(at: dest)
+        return data
     }
 
     private static func exportPHAssetData(identifier: String, isVideo: Bool) async throws -> Data {

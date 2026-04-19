@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import UserNotifications
 
@@ -68,6 +69,10 @@ struct MainTabView: View {
             if newPhase == .active, let api = authManager.apiClient {
                 syncChecker.checkAll(tapes: tapesStore.tapes, api: api)
             }
+        }
+        .onReceive(Timer.publish(every: TapeSyncChecker.checkInterval, on: .main, in: .common).autoconnect()) { _ in
+            guard scenePhase == .active, let api = authManager.apiClient else { return }
+            syncChecker.checkAll(tapes: tapesStore.tapes, api: api)
         }
         .onChange(of: navigationCoordinator.selectedTab) { _, tab in
             if tab == .shared || tab == .collab {

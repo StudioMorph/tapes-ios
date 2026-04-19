@@ -124,9 +124,13 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
                 guard !Task.isCancelled, !clips.isEmpty else {
                     self.log.info("[Download] ABORT after loop: clips empty, failed=\(self.failedCount)")
-                    self.downloadError = isReturning
-                        ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
-                        : "This tape is empty.\nAsk the Tapes owner to add content and try again."
+                    if self.failedCount > 0 {
+                        self.downloadError = "\(self.failedCount) clip(s) failed to download.\nPlease try again later."
+                    } else {
+                        self.downloadError = isReturning
+                            ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
+                            : "This tape is empty.\nAsk the Tapes owner to add content and try again."
+                    }
                     self.isDownloading = false
                     self.showProgressDialog = false
                     return
@@ -228,7 +232,14 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         let isLivePhoto = manifestClip.isLivePhoto
         let clipType: ClipType = isLivePhoto ? .image : ((manifestClip.type == "photo" || manifestClip.type == "image") ? .image : .video)
 
-        let stableURL = Self.stableTempURL(clipId: manifestClip.clipId, ext: isLivePhoto ? "jpg" : (clipType == .video ? "mp4" : "jpg"))
+        let imageExt: String
+        if isLivePhoto {
+            imageExt = Self.detectImageExtension(at: tempURL)
+        } else {
+            imageExt = clipType == .video ? "mp4" : "jpg"
+        }
+
+        let stableURL = Self.stableTempURL(clipId: manifestClip.clipId, ext: imageExt)
         let stableDir = stableURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: stableDir, withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: stableURL.path) {
@@ -236,8 +247,13 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         }
         try FileManager.default.moveItem(at: tempURL, to: stableURL)
 
+        if isLivePhoto {
+            log.info("[DownloadClip] \(manifestClip.clipId) detected image format: .\(imageExt)")
+        }
+
         var movieStableURL: URL?
         if isLivePhoto, let movieUrlStr = manifestClip.livePhotoMovieUrl, let movieURL = URL(string: movieUrlStr) {
+            log.info("[DownloadClip] \(manifestClip.clipId) downloading movie from \(movieUrlStr)")
             let (movieTempURL, movieResp) = try await session.download(for: URLRequest(url: movieURL))
             guard let movieHttp = movieResp as? HTTPURLResponse, (200...299).contains(movieHttp.statusCode) else {
                 let code = (movieResp as? HTTPURLResponse)?.statusCode ?? 0
@@ -249,10 +265,19 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             }
             try FileManager.default.moveItem(at: movieTempURL, to: movieDest)
             movieStableURL = movieDest
+
+            let movieSize = (try? FileManager.default.attributesOfItem(atPath: movieDest.path)[.size] as? Int) ?? 0
+            log.info("[DownloadClip] \(manifestClip.clipId) movie saved: \(movieSize) bytes")
+        } else if isLivePhoto {
+            log.info("[DownloadClip] \(manifestClip.clipId) is live_photo but livePhotoMovieUrl=\(manifestClip.livePhotoMovieUrl ?? "nil")")
         }
+
+        let imageSize = (try? FileManager.default.attributesOfItem(atPath: stableURL.path)[.size] as? Int) ?? 0
+        log.info("[DownloadClip] \(manifestClip.clipId) image saved: \(imageSize) bytes, exists=\(FileManager.default.fileExists(atPath: stableURL.path))")
 
         let assetLocalId: String
         if isLivePhoto, let movieURL = movieStableURL {
+            log.info("[DownloadClip] \(manifestClip.clipId) saving Live Photo — image=\(stableURL.lastPathComponent) movie=\(movieURL.lastPathComponent)")
             assetLocalId = try await Self.saveLivePhotoToLibrary(imageURL: stableURL, movieURL: movieURL)
             try? FileManager.default.removeItem(at: movieURL)
         } else {
@@ -317,6 +342,33 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         return tmp.appendingPathComponent("\(clipId).\(ext)")
     }
 
+    /// Reads the first bytes of a file to detect HEIC vs JPEG format.
+    private static func detectImageExtension(at url: URL) -> String {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return "jpg" }
+        defer { try? handle.close() }
+        guard let header = try? handle.read(upToCount: 12), header.count >= 12 else { return "jpg" }
+
+        // HEIC/HEIF: bytes 4-11 contain "ftypheic", "ftypheis", "ftypmif1", etc.
+        if header.count >= 8 {
+            let ftypRange = header[4..<8]
+            if ftypRange.elementsEqual("ftyp".utf8) {
+                return "heic"
+            }
+        }
+
+        // JPEG: starts with FF D8 FF
+        if header[0] == 0xFF, header[1] == 0xD8, header[2] == 0xFF {
+            return "jpg"
+        }
+
+        // PNG: starts with 89 50 4E 47
+        if header[0] == 0x89, header[1] == 0x50, header[2] == 0x4E, header[3] == 0x47 {
+            return "png"
+        }
+
+        return "jpg"
+    }
+
     private static func saveToPhotosLibrary(fileURL: URL, clipType: ClipType) async throws -> String {
         var placeholderId: String?
 
@@ -340,15 +392,30 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
     }
 
     private static func saveLivePhotoToLibrary(imageURL: URL, movieURL: URL) async throws -> String {
+        let log = Logger(subsystem: "com.studiomorph.tapes", category: "SharedDownload")
+
+        let imageExists = FileManager.default.fileExists(atPath: imageURL.path)
+        let movieExists = FileManager.default.fileExists(atPath: movieURL.path)
+        let imageBytes = (try? FileManager.default.attributesOfItem(atPath: imageURL.path)[.size] as? Int) ?? 0
+        let movieBytes = (try? FileManager.default.attributesOfItem(atPath: movieURL.path)[.size] as? Int) ?? 0
+
+        log.info("[SaveLivePhoto] imageExists=\(imageExists) imageBytes=\(imageBytes) movieExists=\(movieExists) movieBytes=\(movieBytes)")
+
+        if imageBytes == 0 {
+            log.error("[SaveLivePhoto] image file is 0 bytes at \(imageURL.path)")
+        }
+        if movieBytes == 0 {
+            log.error("[SaveLivePhoto] movie file is 0 bytes at \(movieURL.path)")
+        }
+
         var placeholderId: String?
 
         try await PHPhotoLibrary.shared().performChanges {
             let request = PHAssetCreationRequest.forAsset()
 
-            let imageData = try? Data(contentsOf: imageURL)
-            if let imageData {
-                request.addResource(with: .photo, data: imageData, options: nil)
-            }
+            let imageOptions = PHAssetResourceCreationOptions()
+            imageOptions.shouldMoveFile = false
+            request.addResource(with: .photo, fileURL: imageURL, options: imageOptions)
 
             let movieOptions = PHAssetResourceCreationOptions()
             movieOptions.shouldMoveFile = false
