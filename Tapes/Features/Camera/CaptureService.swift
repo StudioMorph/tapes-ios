@@ -505,7 +505,8 @@ final class CaptureService: NSObject, ObservableObject {
             }
 
             if self.livePhotoEnabled,
-               self.photoOutput.isLivePhotoCaptureSupported {
+               self.photoOutput.isLivePhotoCaptureSupported,
+               self.photoOutput.isLivePhotoCaptureEnabled {
                 let movieURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent(UUID().uuidString)
                     .appendingPathExtension("mov")

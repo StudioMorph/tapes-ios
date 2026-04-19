@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct MainTabView: View {
     @Binding var showOnboarding: Bool
@@ -13,8 +14,20 @@ struct MainTabView: View {
         guard !syncChecker.pendingDownloads.isEmpty else { return 0 }
         var count = 0
         for tape in tapesStore.tapes where tape.isShared && !tape.isCollabTape {
-            if let mode = tape.shareInfo?.mode, mode == "view_only",
+            if (tape.shareInfo?.mode ?? "view_only") == "view_only",
                syncChecker.pendingDownloads[tape.id] != nil {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    private var collabDownloadCount: Int {
+        guard !syncChecker.pendingDownloads.isEmpty else { return 0 }
+        var count = 0
+        for tape in tapesStore.tapes {
+            let isCollab = tape.isCollabTape || (tape.isShared && tape.shareInfo?.mode == "collaborative")
+            if isCollab, syncChecker.pendingDownloads[tape.id] != nil {
                 count += 1
             }
         }
@@ -42,6 +55,7 @@ struct MainTabView: View {
             Tab("Collab", systemImage: "person.2.wave.2", value: AppTab.collab) {
                 CollabTapesView()
             }
+            .badge(collabDownloadCount)
 
             Tab("Account", systemImage: "person.circle", value: AppTab.account) {
                 AccountTabView(showOnboarding: $showOnboarding)
@@ -53,6 +67,11 @@ struct MainTabView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, let api = authManager.apiClient {
                 syncChecker.checkAll(tapes: tapesStore.tapes, api: api)
+            }
+        }
+        .onChange(of: navigationCoordinator.selectedTab) { _, tab in
+            if tab == .shared || tab == .collab {
+                UNUserNotificationCenter.current().setBadgeCount(0)
             }
         }
     }
