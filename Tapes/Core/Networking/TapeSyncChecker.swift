@@ -54,9 +54,14 @@ public class TapeSyncChecker: ObservableObject {
                 let manifest = try await api.getManifest(tapeId: remoteTapeId)
                 let serverClipIds = Set(manifest.clips.filter { $0.cloudUrl != nil }.map { $0.clipId.lowercased() })
                 let localClipIds = Set(tape.clips.map { $0.id.uuidString.lowercased() })
-                let newCount = serverClipIds.subtracting(localClipIds).count
+                let missing = serverClipIds.subtracting(localClipIds)
+                let newCount = missing.count
 
+                log.info("[SyncCheck] tape=\(tape.id) remote=\(remoteTapeId) server=\(serverClipIds.count) local=\(localClipIds.count) missing=\(newCount)")
                 if newCount > 0 {
+                    for clipId in missing {
+                        log.info("[SyncCheck]   missing clip: \(clipId)")
+                    }
                     pendingDownloads[tape.id] = newCount
                 } else {
                     pendingDownloads.removeValue(forKey: tape.id)

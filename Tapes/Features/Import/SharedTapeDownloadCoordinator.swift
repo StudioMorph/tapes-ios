@@ -58,7 +58,10 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 let existingTape = tapeStore.sharedTape(forRemoteId: tapeId)
                 let isReturning = existingTape != nil
 
+                self.log.info("[Download] shareId=\(shareId) tapeId=\(tapeId) manifestTotal=\(manifest.clips.count) withCloudUrl=\(uploadedClips.count) isReturning=\(isReturning)")
+
                 if uploadedClips.isEmpty {
+                    self.log.info("[Download] ABORT: uploadedClips is empty")
                     self.downloadError = isReturning
                         ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                         : "This tape is empty.\nAsk the Tapes owner to add content and try again."
@@ -70,17 +73,30 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 let existingClipIds: Set<String>
                 if let existing = existingTape {
                     existingClipIds = Set(existing.clips.map { $0.id.uuidString.lowercased() })
+                    self.log.info("[Download] localClips=\(existingClipIds.count)")
                 } else {
                     existingClipIds = []
+                    self.log.info("[Download] no existing tape found for remoteTapeId=\(tapeId)")
                 }
 
                 let clipsToDownload = uploadedClips.filter { !existingClipIds.contains($0.clipId.lowercased()) }
+                self.log.info("[Download] clipsToDownload=\(clipsToDownload.count)")
 
                 if clipsToDownload.isEmpty && isReturning {
+                    self.log.info("[Download] ABORT: clipsToDownload empty — all \(uploadedClips.count) server clips already in local tape")
+                    let serverIds = Set(uploadedClips.map { $0.clipId.lowercased() })
+                    let extraLocal = existingClipIds.subtracting(serverIds)
+                    if !extraLocal.isEmpty {
+                        self.log.info("[Download] local has \(extraLocal.count) clip(s) NOT on server")
+                    }
                     self.downloadError = "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                     self.isDownloading = false
                     self.showProgressDialog = false
                     return
+                }
+
+                for clip in clipsToDownload {
+                    self.log.info("[Download] will download: \(clip.clipId) type=\(clip.type) hasUrl=\(clip.cloudUrl != nil)")
                 }
 
                 self.totalCount = clipsToDownload.count
@@ -104,7 +120,10 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                     }
                 }
 
+                self.log.info("[Download] loop done: succeeded=\(clips.count) failed=\(self.failedCount) cancelled=\(Task.isCancelled)")
+
                 guard !Task.isCancelled, !clips.isEmpty else {
+                    self.log.info("[Download] ABORT after loop: clips empty, failed=\(self.failedCount)")
                     self.downloadError = isReturning
                         ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                         : "This tape is empty.\nAsk the Tapes owner to add content and try again."

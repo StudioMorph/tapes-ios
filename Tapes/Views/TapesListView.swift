@@ -98,7 +98,8 @@ struct TapesListView: View {
             }
             .onChange(of: shareUploadCoordinator.lastUploadedClipCount) { _, count in
                 guard let count,
-                      let source = shareUploadCoordinator.sourceTape else { return }
+                      let source = shareUploadCoordinator.sourceTape,
+                      !source.isCollabTape else { return }
                 tapesStore.setLastUploadedClipCount(count, for: source.id)
             }
             .toolbar {

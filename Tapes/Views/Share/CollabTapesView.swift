@@ -160,6 +160,12 @@ struct CollabTapesView: View {
                     Text(msg)
                 }
             }
+            .onChange(of: uploadCoordinator.lastUploadedClipCount) { _, count in
+                guard let count,
+                      let source = uploadCoordinator.sourceTape,
+                      source.isCollabTape else { return }
+                tapesStore.setLastUploadedClipCount(count, for: source.id)
+            }
         }
         .environmentObject(importCoordinator)
         .sheet(item: $tapeToShare) { tape in
