@@ -75,6 +75,7 @@ struct CollabTapesView: View {
                 }
 
                 SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
+                ImportProgressOverlay(coordinator: importCoordinator)
 
                 if isCollabUpload {
                     if uploadCoordinator.showProgressDialog {
