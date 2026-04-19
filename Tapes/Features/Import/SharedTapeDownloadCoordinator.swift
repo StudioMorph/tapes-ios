@@ -278,7 +278,12 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         let assetLocalId: String
         if isLivePhoto, let movieURL = movieStableURL {
             log.info("[DownloadClip] \(manifestClip.clipId) saving Live Photo — image=\(stableURL.lastPathComponent) movie=\(movieURL.lastPathComponent)")
-            assetLocalId = try await Self.saveLivePhotoToLibrary(imageURL: stableURL, movieURL: movieURL)
+            do {
+                assetLocalId = try await Self.saveLivePhotoToLibrary(imageURL: stableURL, movieURL: movieURL)
+            } catch {
+                log.warning("[DownloadClip] \(manifestClip.clipId) Live Photo save failed (\(error.localizedDescription)), falling back to regular photo")
+                assetLocalId = try await Self.saveToPhotosLibrary(fileURL: stableURL, clipType: .image)
+            }
             try? FileManager.default.removeItem(at: movieURL)
         } else {
             assetLocalId = try await Self.saveToPhotosLibrary(fileURL: stableURL, clipType: clipType)
