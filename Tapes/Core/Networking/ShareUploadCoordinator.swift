@@ -177,7 +177,10 @@ public class ShareUploadCoordinator: ObservableObject {
                         expiresAt: nil,
                         tapeSettings: tapeSettings
                     )
-                    self.pendingCreateResponse = response
+                    // NB: intentionally NOT caching here. The cache invariant is
+                    // "tape + all clips are confirmed uploaded". A partial failure
+                    // must leave pendingCreateResponse nil so the next retry
+                    // re-computes the delta from scratch.
                 }
 
                 // 2. Compute delta: compare local clips vs server clips
@@ -245,6 +248,7 @@ public class ShareUploadCoordinator: ObservableObject {
 
                     if !newFailures.isEmpty {
                         self.uploadError = "\(newFailures.count) clip(s) failed to upload."
+                        self.pendingCreateResponse = nil
                         self.finishUpload(success: false)
                         return
                     }
@@ -287,6 +291,7 @@ public class ShareUploadCoordinator: ObservableObject {
             } catch {
                 TapesLog.upload.error("Ensure upload failed: \(error.localizedDescription)")
                 self.uploadError = error.localizedDescription
+                self.pendingCreateResponse = nil
                 self.finishUpload(success: false)
             }
         }
