@@ -8,7 +8,7 @@
 import Foundation
 import OSLog
 
-private let log = Logger(subsystem: "com.tapes.app", category: "MubertAPI")
+private let log = TapesLog.music
 
 actor MubertAPIClient {
 
@@ -194,10 +194,8 @@ actor MubertAPIClient {
 
         if httpResponse.statusCode == 401 {
             let responseBody = String(data: data, encoding: .utf8) ?? "(empty)"
-            log.warning("API returned 401 — falling back to mock. Body: \(responseBody)")
-            let url = try await downloadMockTrack(mood: mood, tapeID: tapeID)
-            onProgress(1.0)
-            return url
+            log.error("Mubert 401 — credentials rejected. Body: \(responseBody, privacy: .public)")
+            throw APIError.notConfigured
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
@@ -299,51 +297,4 @@ actor MubertAPIClient {
         return localURL
     }
 
-    // MARK: - Mock Fallback
-
-    private func downloadMockTrack(mood: Mood, tapeID: UUID) async throws -> URL {
-        log.warning("Using mock audio track (API unavailable)")
-        let cacheDir = trackCacheDir()
-        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-
-        let localURL = cacheDir.appendingPathComponent("\(tapeID.uuidString).mp3")
-
-        let toneWav = generateToneWav(durationSeconds: Self.loopTrackDuration, frequency: 220)
-        try toneWav.write(to: localURL)
-        return localURL
-    }
-
-    /// Generates a quiet sine-wave tone WAV so the mock fallback is audible during development.
-    private func generateToneWav(durationSeconds: Int, frequency: Double) -> Data {
-        let sampleRate: UInt32 = 44100
-        let channels: UInt16 = 1
-        let bitsPerSample: UInt16 = 16
-        let numSamples = UInt32(durationSeconds) * sampleRate
-        let dataSize = numSamples * UInt32(channels) * UInt32(bitsPerSample / 8)
-        let fileSize = 36 + dataSize
-
-        var data = Data()
-        data.append(contentsOf: "RIFF".utf8)
-        data.append(contentsOf: withUnsafeBytes(of: fileSize.littleEndian) { Array($0) })
-        data.append(contentsOf: "WAVE".utf8)
-        data.append(contentsOf: "fmt ".utf8)
-        data.append(contentsOf: withUnsafeBytes(of: UInt32(16).littleEndian) { Array($0) })
-        data.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian) { Array($0) })
-        data.append(contentsOf: withUnsafeBytes(of: channels.littleEndian) { Array($0) })
-        data.append(contentsOf: withUnsafeBytes(of: sampleRate.littleEndian) { Array($0) })
-        let byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
-        data.append(contentsOf: withUnsafeBytes(of: byteRate.littleEndian) { Array($0) })
-        let blockAlign = channels * (bitsPerSample / 8)
-        data.append(contentsOf: withUnsafeBytes(of: blockAlign.littleEndian) { Array($0) })
-        data.append(contentsOf: withUnsafeBytes(of: bitsPerSample.littleEndian) { Array($0) })
-        data.append(contentsOf: "data".utf8)
-        data.append(contentsOf: withUnsafeBytes(of: dataSize.littleEndian) { Array($0) })
-
-        let amplitude: Double = 3000
-        for i in 0..<Int(numSamples) {
-            let sample = Int16(amplitude * sin(2.0 * .pi * frequency * Double(i) / Double(sampleRate)))
-            withUnsafeBytes(of: sample.littleEndian) { data.append(contentsOf: $0) }
-        }
-        return data
-    }
 }

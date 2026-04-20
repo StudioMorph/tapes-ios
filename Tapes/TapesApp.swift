@@ -14,11 +14,63 @@ struct TapesApp: App {
     private let apiClient = TapesAPIClient()
 
     init() {
+        AppearanceConfigurator.setupNavigationBar()
         cleanupTempImports()
+        Self.cleanupLegacyMockMusicTracks()
+        Self.applyMediaFileProtection()
         if #available(iOS 26, *) {
             ExportCoordinator.registerBackgroundExportHandler()
             ShareUploadCoordinator.registerBackgroundUploadHandler()
         }
+    }
+
+    /// One-shot cleanup for sine-wave WAV files that the old Mubert 401
+    /// fallback wrote with a `.mp3` extension. Runs once per device.
+    private static func cleanupLegacyMockMusicTracks() {
+        let defaults = UserDefaults.standard
+        let flagKey = "tapes_cleaned_mock_music_v1"
+        guard !defaults.bool(forKey: flagKey) else { return }
+
+        let cacheDir = FileManager.default
+            .urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("mubert_tracks", isDirectory: true)
+
+        try? FileManager.default.removeItem(at: cacheDir)
+        defaults.set(true, forKey: flagKey)
+    }
+
+    /// Applies `.completeUntilFirstUserAuthentication` to `tapes.json` and the
+    /// `clip_media/` directory plus its contents. Runs once per device. New
+    /// writes from `TapePersistenceActor` also set this class explicitly.
+    private static func applyMediaFileProtection() {
+        let defaults = UserDefaults.standard
+        let flagKey = "tapes_applied_file_protection_v1"
+        guard !defaults.bool(forKey: flagKey) else { return }
+
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let mediaDir = docs.appendingPathComponent("clip_media", isDirectory: true)
+        let tapesJson = docs.appendingPathComponent("tapes.json")
+
+        let attrs: [FileAttributeKey: Any] = [
+            .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication
+        ]
+
+        try? fm.setAttributes(attrs, ofItemAtPath: docs.path)
+        if fm.fileExists(atPath: mediaDir.path) {
+            try? fm.setAttributes(attrs, ofItemAtPath: mediaDir.path)
+            if let contents = try? fm.contentsOfDirectory(atPath: mediaDir.path) {
+                for file in contents {
+                    let path = mediaDir.appendingPathComponent(file).path
+                    try? fm.setAttributes(attrs, ofItemAtPath: path)
+                }
+            }
+        }
+        if fm.fileExists(atPath: tapesJson.path) {
+            try? fm.setAttributes(attrs, ofItemAtPath: tapesJson.path)
+        }
+
+        defaults.set(true, forKey: flagKey)
     }
 
     @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark

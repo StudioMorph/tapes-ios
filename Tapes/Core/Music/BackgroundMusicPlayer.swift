@@ -9,7 +9,7 @@ import AVFoundation
 import OSLog
 import SwiftUI
 
-private let log = Logger(subsystem: "com.tapes.app", category: "BackgroundMusic")
+private let log = TapesLog.music
 
 @MainActor
 final class BackgroundMusicPlayer: ObservableObject {

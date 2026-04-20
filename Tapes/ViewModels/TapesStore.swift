@@ -11,10 +11,21 @@ import AVFoundation
 private actor TapePersistenceActor {
     private let mediaDir: URL
 
+    /// File protection we apply to everything this actor writes. Accessible
+    /// after first unlock following reboot — not while the device has never
+    /// been unlocked this boot. Needed so background push handlers can still
+    /// read `tapes.json` while the screen is locked.
+    private static let protection: Data.WritingOptions = .completeFileProtectionUntilFirstUserAuthentication
+
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.mediaDir = docs.appendingPathComponent("clip_media", isDirectory: true)
         try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
+        // Directory-level protection: new files in the directory inherit this class.
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: mediaDir.path
+        )
     }
 
     func save(_ tapes: [Tape], to url: URL) {
@@ -37,7 +48,7 @@ private actor TapePersistenceActor {
 
         do {
             let data = try JSONEncoder().encode(stripped)
-            try data.write(to: url)
+            try data.write(to: url, options: [.atomic, Self.protection])
         } catch {
             TapesLog.store.error("Failed to save tapes: \(error.localizedDescription)")
         }
@@ -93,11 +104,11 @@ private actor TapePersistenceActor {
     private func saveBlobFiles(for clip: Clip) {
         if let thumb = clip.thumbnail {
             let url = mediaDir.appendingPathComponent("\(clip.id)_thumb.jpg")
-            try? thumb.write(to: url)
+            try? thumb.write(to: url, options: [Self.protection])
         }
         if let img = clip.imageData {
             let url = mediaDir.appendingPathComponent("\(clip.id)_image.dat")
-            try? img.write(to: url)
+            try? img.write(to: url, options: [Self.protection])
         }
     }
 
@@ -305,10 +316,10 @@ public class TapesStore: ObservableObject {
     // MARK: - Selected Tape Management
     
     public func selectTape(_ tape: Tape) {
-        print("🔧 TapesStore.selectTape called for: \(tape.title)")
+        TapesLog.store.debug("selectTape called for tape \(tape.id.uuidString, privacy: .public) title=\(tape.title, privacy: .private(mask: .hash))")
         selectedTape = tape
         showingSettingsSheet = true
-        print("🔧 showingSettingsSheet set to: \(showingSettingsSheet)")
+        TapesLog.store.debug("showingSettingsSheet set to \(self.showingSettingsSheet, privacy: .public)")
     }
     
     public func selectTape(by id: UUID) {
