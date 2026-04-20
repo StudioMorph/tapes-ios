@@ -20,7 +20,10 @@ public enum PickedMedia {
 
 private let log = Logger(subsystem: "com.studiomorph.tapes", category: "MediaPicker")
 
-/// Copy the file we get from PHPicker into our own temp location (so it survives after the callback).
+/// Copy the PHPicker-provided file into our sandbox. Uses Application Support
+/// so the file survives across launches — iOS can purge `tmp/` under storage
+/// pressure and we also deliberately wipe `tmp/Imports/` on app launch. Files
+/// here are excluded from iCloud backup (videos are large and disposable).
 func loadMovieURL(from result: PHPickerResult) async throws -> URL {
     let provider = result.itemProvider
     guard provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) else {
@@ -29,25 +32,26 @@ func loadMovieURL(from result: PHPickerResult) async throws -> URL {
 
     return try await withCheckedThrowingContinuation { cont in
         provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, err in
-            if let err = err { 
+            if let err = err {
                 log.error("❌ Movie load failed: \(String(describing: err), privacy: .public)")
                 cont.resume(throwing: MediaLoaderError.loadFailed(err))
-                return 
+                return
             }
-            guard let src = url else { 
+            guard let src = url else {
                 log.error("❌ No URL returned for movie")
                 cont.resume(throwing: MediaLoaderError.noURL)
-                return 
+                return
             }
 
-            // Destination inside our sandbox tmp
-            let importsDir = FileManager.default.temporaryDirectory.appendingPathComponent("Imports", isDirectory: true)
-            try? FileManager.default.createDirectory(at: importsDir, withIntermediateDirectories: true)
+            guard let importsDir = persistentImportsDirectory() else {
+                log.error("❌ Could not resolve persistent imports directory")
+                cont.resume(throwing: MediaLoaderError.noURL)
+                return
+            }
             let ext = src.pathExtension.isEmpty ? "mov" : src.pathExtension
             let dest = importsDir.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
 
             do {
-                // Remove if exists (rare)
                 if FileManager.default.fileExists(atPath: dest.path) {
                     try FileManager.default.removeItem(at: dest)
                 }
@@ -60,6 +64,29 @@ func loadMovieURL(from result: PHPickerResult) async throws -> URL {
             }
         }
     }
+}
+
+/// Persistent destination for picker imports and camera captures.
+/// `Application Support/Imports/`, excluded from iCloud backup.
+func persistentImportsDirectory() -> URL? {
+    let fm = FileManager.default
+    guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        return nil
+    }
+    let dir = appSupport.appendingPathComponent("Imports", isDirectory: true)
+    if !fm.fileExists(atPath: dir.path) {
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            var mutable = dir
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? mutable.setResourceValues(values)
+        } catch {
+            log.error("❌ Failed to create Imports directory: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+    return dir
 }
 
 func loadImage(from result: PHPickerResult) async throws -> UIImage {

@@ -563,7 +563,7 @@ final class CaptureService: NSObject, ObservableObject {
             }
             guard !self.movieOutput.isRecording else { return }
 
-            let outputURL = FileManager.default.temporaryDirectory
+            let outputURL = (persistentImportsDirectory() ?? FileManager.default.temporaryDirectory)
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension("mov")
 
