@@ -102,6 +102,14 @@ struct TapesListView: View {
                       !source.isCollabTape else { return }
                 tapesStore.setLastUploadedClipCount(count, for: source.id)
             }
+            .onChange(of: shareUploadCoordinator.lastSyncedClipIds) { _, ids in
+                guard !ids.isEmpty,
+                      let source = shareUploadCoordinator.sourceTape,
+                      !source.isCollabTape else { return }
+                for clipId in ids {
+                    tapesStore.markClipSynced(clipId, inTape: source.id)
+                }
+            }
             .toolbar {
                 if tapesStore.jigglingTapeID != nil {
                     ToolbarItem(placement: .topBarTrailing) {

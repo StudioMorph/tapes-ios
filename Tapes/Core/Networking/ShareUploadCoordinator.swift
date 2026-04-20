@@ -38,6 +38,11 @@ public class ShareUploadCoordinator: ObservableObject {
     @Published var resultCreateResponse: TapesAPIClient.CreateTapeResponse?
     /// Count of local (non-placeholder) clips after the last successful upload.
     @Published var lastUploadedClipCount: Int?
+    /// IDs of local clips that are confirmed present on the server after the
+    /// last successful upload. Observers (TapesListView, CollabTapesView) mark
+    /// each one `isSynced = true` on the local tape, so subsequent contribute
+    /// flows don't try to re-upload already-synced clips.
+    @Published var lastSyncedClipIds: [UUID] = []
 
     // MARK: - Internal State
 
@@ -271,6 +276,11 @@ public class ShareUploadCoordinator: ObservableObject {
                 self.resultCreateResponse = finalResponse
                 self.resultRemoteTapeId = tapeId
                 self.lastUploadedClipCount = localClips.count
+                // After a successful ensureTapeUploaded run, every local clip
+                // is confirmed present on the server (either just uploaded or
+                // already there from a prior run). Broadcast the full set so
+                // observers can clear `isSynced = false` on all of them.
+                self.lastSyncedClipIds = localClips.map(\.id)
 
                 self.finishUpload(success: true)
 

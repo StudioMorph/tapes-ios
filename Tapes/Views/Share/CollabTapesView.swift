@@ -166,6 +166,14 @@ struct CollabTapesView: View {
                       source.isCollabTape else { return }
                 tapesStore.setLastUploadedClipCount(count, for: source.id)
             }
+            .onChange(of: uploadCoordinator.lastSyncedClipIds) { _, ids in
+                guard !ids.isEmpty,
+                      let source = uploadCoordinator.sourceTape,
+                      source.isCollabTape else { return }
+                for clipId in ids {
+                    tapesStore.markClipSynced(clipId, inTape: source.id)
+                }
+            }
         }
         .environmentObject(importCoordinator)
         .sheet(item: $tapeToShare) { tape in
