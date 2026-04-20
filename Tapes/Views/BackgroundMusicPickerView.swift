@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BackgroundMusicPickerView: View {
     @Binding var tape: Tape
+    @EnvironmentObject private var authManager: AuthManager
     @StateObject private var trackGen = TrackGenerationManager()
 
     var body: some View {
@@ -22,7 +23,10 @@ struct BackgroundMusicPickerView: View {
                             ),
                             onSelect: { selectMood(mood) },
                             onPreview: { trackGen.togglePreview(volume: tape.musicVolume) },
-                            onRegenerate: { trackGen.regenerate(mood: mood, tapeID: tape.id) },
+                            onRegenerate: {
+                                guard let api = authManager.apiClient else { return }
+                                trackGen.regenerate(mood: mood, tapeID: tape.id, api: api)
+                            },
                             onVolumeChanged: {
                                 trackGen.updatePreviewVolume(tape.musicVolume)
                             }
@@ -57,8 +61,8 @@ struct BackgroundMusicPickerView: View {
         }
         provideHapticFeedback()
 
-        if mood != .none {
-            trackGen.generate(mood: mood, tapeID: tape.id)
+        if mood != .none, let api = authManager.apiClient {
+            trackGen.generate(mood: mood, tapeID: tape.id, api: api)
         }
     }
 
@@ -73,5 +77,6 @@ struct BackgroundMusicPickerView: View {
 #Preview {
     NavigationView {
         BackgroundMusicPickerView(tape: .constant(Tape.sampleTapes[0]))
+            .environmentObject(AuthManager())
     }
 }

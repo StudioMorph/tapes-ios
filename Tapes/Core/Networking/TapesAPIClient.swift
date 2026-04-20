@@ -479,6 +479,31 @@ actor TapesAPIClient {
         try await get(path: "/users/me")
     }
 
+    // MARK: - Music (Mubert proxy)
+
+    struct MusicGenerateResponse: Decodable {
+        let trackId: String
+        let status: String
+        let url: String?
+
+        enum CodingKeys: String, CodingKey {
+            case trackId = "track_id"
+            case status, url
+        }
+    }
+
+    func generateMusicTrack(moodPlaylist: String, duration: Int) async throws -> MusicGenerateResponse {
+        let body: [String: Any] = [
+            "mood_playlist": moodPlaylist,
+            "duration": duration,
+        ]
+        return try await postRaw(path: "/music/generate", body: body)
+    }
+
+    func pollMusicTrack(trackId: String) async throws -> MusicGenerateResponse {
+        try await get(path: "/music/tracks/\(trackId)")
+    }
+
     // MARK: - HTTP Primitives
 
     private func get<T: Decodable>(path: String) async throws -> T {

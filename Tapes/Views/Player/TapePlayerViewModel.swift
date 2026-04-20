@@ -122,7 +122,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     // MARK: - Public API
 
-    func prepare() async {
+    func prepare(api: TapesAPIClient? = nil) async {
         guard !isLoading, !tape.clips.isEmpty else { return }
 
         resetState()
@@ -135,7 +135,7 @@ final class TapePlayerViewModel: ObservableObject {
         // Start music generation concurrently with video loading
         let musicTask: Task<Void, Never>? = hasMood ? Task {
             await backgroundMusic.prepare(
-                mood: tape.musicMood, tapeID: tape.id, volume: tape.musicVolume
+                mood: tape.musicMood, tapeID: tape.id, volume: tape.musicVolume, api: api
             )
         } : nil
 

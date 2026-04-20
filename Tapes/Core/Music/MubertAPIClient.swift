@@ -14,9 +14,8 @@ actor MubertAPIClient {
 
     static let shared = MubertAPIClient()
 
-    private let baseURL = "https://music-api.mubert.com/api/v3/public/tracks"
-    private let customerID = "a148eef0-a5b0-476a-841f-8cec671079bf"
-    private let accessToken = "rSM2ABBePwoeu4AC7Z4OePkj2rXggDpDI2YuRmT2Y7HPdwtuLqxWHwzM9sPN0NF1"
+    // Mubert credentials live on the backend only. All requests go through
+    // the /music/* proxy routes on the Tapes API.
 
     // MARK: - Moods
 
@@ -104,22 +103,6 @@ actor MubertAPIClient {
         }
     }
 
-    // MARK: - Response
-
-    struct TrackResponse: Decodable {
-        let data: TrackData?
-    }
-
-    struct TrackData: Decodable {
-        let id: String
-        let generations: [Generation]?
-    }
-
-    struct Generation: Decodable {
-        let status: String
-        let url: String?
-    }
-
     // MARK: - Errors
 
     enum APIError: LocalizedError {
@@ -147,11 +130,13 @@ actor MubertAPIClient {
 
     static let loopTrackDuration = 30
 
-    /// Generates a background music track for the given mood and tape.
-    /// Reports progress via the callback (0.0–1.0). Tracks are cached per-tape.
+    /// Generates a background music track for the given mood and tape via the
+    /// Tapes API proxy. Mubert credentials never touch the device. Reports
+    /// progress via the callback (0.0–1.0). Tracks are cached per-tape.
     func generateTrack(
         mood: Mood,
         tapeID: UUID,
+        api: TapesAPIClient,
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws -> URL {
         guard mood != .none else { throw APIError.noMoodSelected }
@@ -162,64 +147,32 @@ actor MubertAPIClient {
             return cached
         }
 
-        let trackDuration = Self.loopTrackDuration
-
-        let body: [String: Any] = [
-            "playlist_index": mood.playlistIndex,
-            "duration": trackDuration,
-            "bitrate": 128,
-            "format": "mp3",
-            "intensity": "medium",
-            "mode": "track"
-        ]
-
         onProgress(0.05)
         log.info("Requesting track: mood=\(mood.rawValue) playlist=\(mood.playlistIndex) tape=\(tapeID.uuidString.prefix(8))")
 
-        var request = URLRequest(url: URL(string: baseURL)!)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(customerID, forHTTPHeaderField: "customer-id")
-        request.setValue(accessToken, forHTTPHeaderField: "access-token")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
+        let response: TapesAPIClient.MusicGenerateResponse
+        do {
+            response = try await api.generateMusicTrack(
+                moodPlaylist: mood.playlistIndex,
+                duration: Self.loopTrackDuration
+            )
+        } catch {
+            log.error("Music proxy generate failed: \(error.localizedDescription, privacy: .public)")
+            throw APIError.serverError(error.localizedDescription)
         }
 
-        log.info("API response status: \(httpResponse.statusCode)")
         onProgress(0.1)
 
-        if httpResponse.statusCode == 401 {
-            let responseBody = String(data: data, encoding: .utf8) ?? "(empty)"
-            log.error("Mubert 401 — credentials rejected. Body: \(responseBody, privacy: .public)")
-            throw APIError.notConfigured
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-            log.error("API error \(httpResponse.statusCode): \(message)")
-            throw APIError.serverError(message)
-        }
-
-        let trackResponse = try JSONDecoder().decode(TrackResponse.self, from: data)
-        guard let trackID = trackResponse.data?.id else {
-            throw APIError.invalidResponse
-        }
-
-        if let gen = trackResponse.data?.generations?.first,
-           gen.status == "done", let urlStr = gen.url, let url = URL(string: urlStr) {
-            log.info("Track immediately ready: \(urlStr)")
+        if response.status == "done", let urlStr = response.url, let url = URL(string: urlStr) {
+            log.info("Track immediately ready")
             onProgress(0.9)
             let local = try await downloadTrack(from: url, tapeID: tapeID)
             onProgress(1.0)
             return local
         }
 
-        log.info("Track processing, polling id=\(trackID)")
-        return try await pollForTrack(id: trackID, tapeID: tapeID, onProgress: onProgress)
+        log.info("Track processing, polling id=\(response.trackId)")
+        return try await pollForTrack(id: response.trackId, tapeID: tapeID, api: api, onProgress: onProgress)
     }
 
     // MARK: - Polling
@@ -227,34 +180,30 @@ actor MubertAPIClient {
     private func pollForTrack(
         id: String,
         tapeID: UUID,
+        api: TapesAPIClient,
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws -> URL {
-        let pollURL = URL(string: "\(baseURL)/\(id)")!
-
         for attempt in 0..<Self.maxPollAttempts {
             try await Task.sleep(nanoseconds: Self.pollInterval)
 
             let fraction = 0.1 + 0.8 * (Double(attempt + 1) / Double(Self.maxPollAttempts))
             onProgress(fraction)
 
-            var request = URLRequest(url: pollURL)
-            request.httpMethod = "GET"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(customerID, forHTTPHeaderField: "customer-id")
-            request.setValue(accessToken, forHTTPHeaderField: "access-token")
+            let response: TapesAPIClient.MusicGenerateResponse
+            do {
+                response = try await api.pollMusicTrack(trackId: id)
+            } catch {
+                log.error("Music proxy poll failed: \(error.localizedDescription, privacy: .public)")
+                throw APIError.serverError(error.localizedDescription)
+            }
 
-            let (data, _) = try await URLSession.shared.data(for: request)
-            let trackResponse = try JSONDecoder().decode(TrackResponse.self, from: data)
-
-            if let gen = trackResponse.data?.generations?.first {
-                log.info("Poll \(attempt + 1)/\(Self.maxPollAttempts): status=\(gen.status)")
-                if gen.status == "done", let urlStr = gen.url, let url = URL(string: urlStr) {
-                    log.info("Track ready: \(urlStr)")
-                    onProgress(0.95)
-                    let local = try await downloadTrack(from: url, tapeID: tapeID)
-                    onProgress(1.0)
-                    return local
-                }
+            log.info("Poll \(attempt + 1)/\(Self.maxPollAttempts): status=\(response.status, privacy: .public)")
+            if response.status == "done", let urlStr = response.url, let url = URL(string: urlStr) {
+                log.info("Track ready")
+                onProgress(0.95)
+                let local = try await downloadTrack(from: url, tapeID: tapeID)
+                onProgress(1.0)
+                return local
             }
         }
 

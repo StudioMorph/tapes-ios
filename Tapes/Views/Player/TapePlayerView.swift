@@ -4,6 +4,7 @@ import AVKit
 
 struct TapePlayerView: View {
     @StateObject private var vm: TapePlayerViewModel
+    @EnvironmentObject private var authManager: AuthManager
     @Environment(\.scenePhase) private var scenePhase
     let onDismiss: () -> Void
     let onSave: ((Tape) -> Void)?
@@ -26,7 +27,7 @@ struct TapePlayerView: View {
             .overlay { toastLayer }
             .overlay { loadingLayer }
             .onAppear {
-                Task { await vm.prepare() }
+                Task { await vm.prepare(api: authManager.apiClient) }
                 vm.resetControlsTimer()
             }
             .onDisappear {

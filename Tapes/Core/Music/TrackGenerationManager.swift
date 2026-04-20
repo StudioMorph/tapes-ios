@@ -2,7 +2,7 @@ import AVFoundation
 import OSLog
 import SwiftUI
 
-private let log = Logger(subsystem: "com.tapes.app", category: "TrackGeneration")
+private let log = TapesLog.music
 
 @MainActor
 final class TrackGenerationManager: ObservableObject {
@@ -25,7 +25,7 @@ final class TrackGenerationManager: ObservableObject {
 
     // MARK: - Generate
 
-    func generate(mood: MubertAPIClient.Mood, tapeID: UUID) {
+    func generate(mood: MubertAPIClient.Mood, tapeID: UUID, api: TapesAPIClient) {
         cancel()
         self.tapeID = tapeID
 
@@ -43,6 +43,7 @@ final class TrackGenerationManager: ObservableObject {
                 let url = try await MubertAPIClient.shared.generateTrack(
                     mood: mood,
                     tapeID: tapeID,
+                    api: api,
                     onProgress: { [weak self] fraction in
                         Task { @MainActor [weak self] in
                             self?.progress = fraction
@@ -66,13 +67,13 @@ final class TrackGenerationManager: ObservableObject {
 
     // MARK: - Regenerate
 
-    func regenerate(mood: MubertAPIClient.Mood, tapeID: UUID) {
+    func regenerate(mood: MubertAPIClient.Mood, tapeID: UUID, api: TapesAPIClient) {
         stopPreview()
         Task {
             await MubertAPIClient.shared.clearCache(for: tapeID)
         }
         cachedTrackURL = nil
-        generate(mood: mood, tapeID: tapeID)
+        generate(mood: mood, tapeID: tapeID, api: api)
     }
 
     // MARK: - Cancel
