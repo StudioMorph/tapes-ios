@@ -8,6 +8,8 @@ final class PushNotificationManager: NSObject, ObservableObject {
 
     var apiClient: TapesAPIClient?
     var navigationCoordinator: NavigationCoordinator?
+    var syncChecker: TapeSyncChecker?
+    var tapesProvider: (() -> [Tape])?
 
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Push")
 
@@ -57,6 +59,35 @@ final class PushNotificationManager: NSObject, ObservableObject {
         log.error("Remote notification registration failed: \(error.localizedDescription)")
     }
 
+    // MARK: - Background Push (content-available)
+
+    func handleBackgroundPush(
+        userInfo: [AnyHashable: Any],
+        completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        let action = userInfo["action"] as? String
+        let remoteTapeId = userInfo["tape_id"] as? String
+
+        log.info("[BackgroundPush] action=\(action ?? "none") tape=\(remoteTapeId ?? "none")")
+
+        guard let api = apiClient,
+              let checker = syncChecker,
+              let tapes = tapesProvider?() else {
+            log.warning("[BackgroundPush] dependencies not ready, skipping")
+            completionHandler(.noData)
+            return
+        }
+
+        Task { @MainActor in
+            if let remoteTapeId {
+                checker.updateFromPush(remoteTapeId: remoteTapeId, tapes: tapes, api: api)
+            } else {
+                checker.refresh(tapes: tapes, api: api)
+            }
+            completionHandler(.newData)
+        }
+    }
+
     // MARK: - Categories
 
     private func registerCategories() {
@@ -98,7 +129,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
         ])
     }
 
-    // MARK: - Payload Handling
+    // MARK: - Payload Handling (user tapped notification)
 
     private func handleNotificationPayload(_ userInfo: [AnyHashable: Any]) {
         guard let nav = navigationCoordinator else {
@@ -135,6 +166,17 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let userInfo = notification.request.content.userInfo
+        if userInfo["action"] as? String == "sync_update",
+           let api = apiClient,
+           let checker = syncChecker,
+           let tapes = tapesProvider?() {
+            Task { @MainActor in
+                if let remoteTapeId = userInfo["tape_id"] as? String {
+                    checker.updateFromPush(remoteTapeId: remoteTapeId, tapes: tapes, api: api)
+                }
+            }
+        }
         completionHandler([.banner, .badge, .sound])
     }
 

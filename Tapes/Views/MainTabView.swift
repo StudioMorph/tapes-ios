@@ -65,6 +65,12 @@ struct MainTabView: View {
         .tint(Tokens.Colors.systemBlue)
         .environmentObject(shareUploadCoordinator)
         .environmentObject(syncChecker)
+        .task {
+            PushNotificationManager.shared.syncChecker = syncChecker
+            PushNotificationManager.shared.tapesProvider = { [weak tapesStore] in
+                tapesStore?.tapes ?? []
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, let api = authManager.apiClient {
                 syncChecker.checkAll(tapes: tapesStore.tapes, api: api)

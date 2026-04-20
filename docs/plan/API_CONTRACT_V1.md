@@ -338,6 +338,33 @@ Resolve a share link or deep link. Called when a recipient taps a link or opens 
 
 ### Sync
 
+#### `POST /sync/status`
+
+Lightweight sync check. Returns pending download counts for the authenticated user's tapes. One request replaces per-tape manifest polling.
+
+**Request:**
+```json
+{
+  "tape_ids": ["uuid1", "uuid2"]
+}
+```
+
+`tape_ids` is optional. If omitted, returns all tapes with pending downloads for the user.
+
+**Response: `200 OK`**
+```json
+{
+  "tapes": {
+    "uuid1": 3,
+    "uuid2": 1
+  }
+}
+```
+
+Only tapes with pending downloads (`> 0`) are included. Empty object `{}` means nothing to download.
+
+---
+
 #### `POST /tapes/:tape_id/sync-push`
 
 Owner triggers a Sync Push. Sends push notification to all collaborators who haven't fully downloaded. Max once per 24 hours per tape.

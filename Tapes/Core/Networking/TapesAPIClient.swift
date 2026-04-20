@@ -280,7 +280,7 @@ actor TapesAPIClient {
     struct DownloadConfirmResponse: Decodable {
         let clipId: String
         let allDownloaded: Bool
-        let assetDeleted: Bool
+        let assetDeleted: Bool?
 
         enum CodingKeys: String, CodingKey {
             case clipId = "clip_id"
@@ -407,6 +407,16 @@ actor TapesAPIClient {
 
     func syncPush(tapeId: String) async throws -> SyncPushResponse {
         try await postEmpty(path: "/tapes/\(tapeId)/sync-push")
+    }
+
+    struct SyncStatusResponse: Decodable {
+        let tapes: [String: Int]
+    }
+
+    func syncStatus(tapeIds: [String]) async throws -> [String: Int] {
+        let body = ["tape_ids": tapeIds]
+        let response: SyncStatusResponse = try await post(path: "/sync/status", body: body)
+        return response.tapes
     }
 
     // MARK: - Validate

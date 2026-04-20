@@ -300,8 +300,10 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 ### Key Modules
 
 - `Tapes/Core/Auth/AuthManager.swift` — Apple ID auth + server JWT exchange
-- `Tapes/Core/Networking/TapesAPIClient.swift` — API contract (tapes, clips, collaborators, shares, manifest)
+- `Tapes/Core/Networking/TapesAPIClient.swift` — API contract (tapes, clips, collaborators, shares, manifest, sync status)
+- `Tapes/Core/Networking/TapeSyncChecker.swift` — event-driven sync: uses `POST /sync/status` (one lightweight request) instead of per-tape manifest polling. Push notifications trigger instant badge updates; 5-minute timer as fallback.
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator (progress overlay, completion dialogs); exposes `resultCreateResponse` with all four share IDs
+- `Tapes/Core/Notifications/PushNotificationManager.swift` — APNs registration, visible + silent push handling, wired to `TapeSyncChecker` for background badge updates
 - `Tapes/Views/Share/ShareModalView.swift` — single entry point modal for sharing (Export, Save Clips, and inline `ShareLinkSection`)
 - `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI: `Secured by email` toggle, link pill with copy + system share sheet, invite compose, authorised-users chips. Role is determined by `tape.isCollabTape` (no segmented control).
 - `Tapes/Views/Share/SharedTapesView.swift` — Shared tab (view-only tapes only)
@@ -333,6 +335,14 @@ Every tape has four share links, one per cell of the `role × protection` matrix
 - Tapes in My Tapes can only be shared as view-only. Tapes in the Collab tab can only be shared as collaborative.
 - Contributions (new clips + creative settings) are uploaded via `ShareUploadCoordinator` and land directly on the original tape.
 - APNs notifications fire on new invites and new contributions (topic: `StudioMorph.Tapes`).
+
+### Sync Architecture
+
+The sync system uses a three-layer event-driven architecture:
+
+1. **Push (real-time):** Server sends APNs push with `content-available: 1` on every `POST /clips/:id/uploaded`. iOS handles it in `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` and triggers an immediate `POST /sync/status` check. Badges update within seconds.
+2. **Lightweight status check (fallback):** `POST /sync/status` accepts an array of tape IDs and returns only those with pending downloads, using the authoritative `clip_download_tracking` table. One request replaces N manifest fetches. Runs every 5 minutes as a fallback for missed pushes.
+3. **Full manifest (download-only):** `GET /tapes/:id/manifest` is only called when the user taps a badge to actually download clips. Never for badge computation.
 
 ### Configuration
 
