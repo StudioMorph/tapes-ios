@@ -5,12 +5,12 @@ actor TapesAPIClient {
 
     // MARK: - Configuration
 
-    /// Must match the host used for `PUBLIC_SHARE_BASE` / Universal Links (see `docs/features/UniversalLinks.md`).
-    #if DEBUG
+    /// Must match the host used for `PUBLIC_SHARE_BASE` and the `applinks:` entry
+    /// in `Tapes.entitlements`. Universal links will only resolve into the app
+    /// when both agree. Keep DEBUG and Release on the same host until we stand
+    /// up `api.tapes.app` as a real route with its own AASA file.
+    /// See `docs/plan/UniversalLinksDomain.md`.
     private let baseURL = URL(string: "https://tapes-api.hi-7d5.workers.dev")!
-    #else
-    private let baseURL = URL(string: "https://api.tapes.app")!
-    #endif
 
     private static let tokenKey = "tapes_api_token"
     private let session: URLSession
