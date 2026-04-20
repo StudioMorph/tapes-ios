@@ -23,6 +23,7 @@ struct ClipTrimView: View {
     @State private var videoNaturalSize: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
     @StateObject private var musicPlayer = BackgroundMusicPlayer()
+    @EnvironmentObject private var authManager: AuthManager
 
     private var hasBackgroundMusic: Bool { tape.musicMood != .none }
 
@@ -285,7 +286,8 @@ struct ClipTrimView: View {
         await musicPlayer.prepare(
             mood: tape.musicMood,
             tapeID: tape.id,
-            volume: Float(clipMusicVolume)
+            volume: Float(clipMusicVolume),
+            api: authManager.apiClient
         )
     }
 

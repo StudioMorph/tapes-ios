@@ -7,6 +7,7 @@ struct ImageClipSettingsView: View {
     let clipID: UUID
     let onDismiss: () -> Void
     @EnvironmentObject var tapesStore: TapesStore
+    @EnvironmentObject private var authManager: AuthManager
 
     @State private var selectedMotion: MotionStyle
     @State private var duration: Double
@@ -107,7 +108,8 @@ struct ImageClipSettingsView: View {
                 await bgMusic.prepare(
                     mood: tape.musicMood,
                     tapeID: tape.id,
-                    volume: Float(clipMusicVolume)
+                    volume: Float(clipMusicVolume),
+                    api: authManager.apiClient
                 )
                 bgMusic.syncPlay()
             }
