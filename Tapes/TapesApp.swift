@@ -14,7 +14,6 @@ struct TapesApp: App {
     private let apiClient = TapesAPIClient()
 
     init() {
-        AppearanceConfigurator.setupNavigationBar()
         cleanupTempImports()
         Self.cleanupLegacyMockMusicTracks()
         Self.applyMediaFileProtection()
