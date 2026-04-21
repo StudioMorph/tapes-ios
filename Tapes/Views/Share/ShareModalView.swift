@@ -46,7 +46,9 @@ struct ShareModalView: View {
         }
         .overlay {
             if uploadCoordinator.showProgressDialog {
-                ShareUploadProgressDialog(coordinator: uploadCoordinator)
+                ShareUploadProgressDialog(coordinator: uploadCoordinator) {
+                    dismiss()
+                }
             }
             if uploadCoordinator.showCompletionDialog {
                 ShareUploadCompletionDialog(coordinator: uploadCoordinator)

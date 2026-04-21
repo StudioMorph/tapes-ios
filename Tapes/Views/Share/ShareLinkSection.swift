@@ -338,8 +338,13 @@ struct ShareLinkSection: View {
 
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
             if let url = URL(string: "\(base)/t/\(response.shareId(for: currentVariant))") {
-                UIPasteboard.general.string = url.absoluteString
-                flashCopiedToast()
+                if uploadCoordinator.userDismissedModal {
+                    uploadCoordinator.completedShareURL = url
+                    uploadCoordinator.showPostUploadDialog = true
+                } else {
+                    UIPasteboard.general.string = url.absoluteString
+                    flashCopiedToast()
+                }
             }
         }
     }
@@ -362,7 +367,12 @@ struct ShareLinkSection: View {
 
             let base = response.shareUrl.components(separatedBy: "/t/").first ?? ""
             if let url = URL(string: "\(base)/t/\(response.shareId(for: currentVariant))") {
-                shareActivityURL = url
+                if uploadCoordinator.userDismissedModal {
+                    uploadCoordinator.completedShareURL = url
+                    uploadCoordinator.showPostUploadDialog = true
+                } else {
+                    shareActivityURL = url
+                }
             }
         }
     }

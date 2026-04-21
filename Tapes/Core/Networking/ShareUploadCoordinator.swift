@@ -44,6 +44,20 @@ public class ShareUploadCoordinator: ObservableObject {
     /// flows don't try to re-upload already-synced clips.
     @Published var lastSyncedClipIds: [UUID] = []
 
+    /// Set when the user dismisses the share modal while an upload is in
+    /// progress. The upload continues in the background; when it finishes
+    /// this triggers the post-upload "Link ready to share" dialog instead
+    /// of opening the share sheet inside the (now-closed) modal.
+    @Published var userDismissedModal = false
+
+    /// Share URL available after a successful upload for the post-modal
+    /// completion dialog. Set by the `onCompleted` callback when the modal
+    /// was dismissed mid-upload.
+    @Published var completedShareURL: URL?
+
+    /// Show the post-modal "Link ready to share" dialog on the main view.
+    @Published var showPostUploadDialog = false
+
     // MARK: - Internal State
 
     private var uploadTask: Task<Void, Never>?
@@ -147,6 +161,9 @@ public class ShareUploadCoordinator: ObservableObject {
         if intendedForCollaboration { resultMode = .collaborating }
         showProgressDialog = false
         showCompletionDialog = false
+        showPostUploadDialog = false
+        userDismissedModal = false
+        completedShareURL = nil
         uploadStartTime = Date()
         sourceTape = tape
 
@@ -158,7 +175,7 @@ public class ShareUploadCoordinator: ObservableObject {
             self.pendingTapeId = tapeId
 
             do {
-                // 1. Ensure the tape record exists on the server
+                // 1. Ensure the tape record exists on the server (with silent retries)
                 let response: TapesAPIClient.CreateTapeResponse
                 if let cached = self.pendingCreateResponse, cached.tapeId.lowercased() == tapeId {
                     response = cached
@@ -175,17 +192,15 @@ public class ShareUploadCoordinator: ObservableObject {
                         ] as [String: Any]
                     ]
 
-                    response = try await api.createTape(
-                        tapeId: tapeId,
-                        title: tape.title,
-                        mode: apiMode,
-                        expiresAt: nil,
-                        tapeSettings: tapeSettings
-                    )
-                    // NB: intentionally NOT caching here. The cache invariant is
-                    // "tape + all clips are confirmed uploaded". A partial failure
-                    // must leave pendingCreateResponse nil so the next retry
-                    // re-computes the delta from scratch.
+                    response = try await Self.withRetry(maxAttempts: 3) {
+                        try await api.createTape(
+                            tapeId: tapeId,
+                            title: tape.title,
+                            mode: apiMode,
+                            expiresAt: nil,
+                            tapeSettings: tapeSettings
+                        )
+                    }
                 }
 
                 // 2. Compute delta: compare local clips vs server clips
@@ -195,7 +210,9 @@ public class ShareUploadCoordinator: ObservableObject {
                 var serverClipIds: Set<String> = []
                 if response.clipsUploaded == true {
                     do {
-                        let manifest = try await api.getManifest(tapeId: tapeId)
+                        let manifest = try await Self.withRetry(maxAttempts: 3) {
+                            try await api.getManifest(tapeId: tapeId)
+                        }
                         serverClipIds = Set(manifest.clips.map { $0.clipId.lowercased() })
                     } catch {
                         TapesLog.upload.warning("Could not fetch manifest for delta; uploading all clips: \(error.localizedDescription)")
@@ -227,7 +244,9 @@ public class ShareUploadCoordinator: ObservableObject {
                         }
 
                         do {
-                            try await Self.uploadClip(clip, tapeId: tapeId, api: api)
+                            try await Self.withRetry(maxAttempts: 3) {
+                                try await Self.uploadClip(clip, tapeId: tapeId, api: api)
+                            }
                             self.completedClips += 1
                         } catch {
                             TapesLog.upload.error("Clip \(index) failed: \(error.localizedDescription)")
@@ -444,9 +463,26 @@ public class ShareUploadCoordinator: ObservableObject {
         }
     }
 
+    /// Dismiss the progress dialog AND signal that the share modal should
+    /// close. The upload continues in the background; when it completes the
+    /// post-upload dialog will appear on the main view instead.
+    func dismissToBackground() {
+        userDismissedModal = true
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showProgressDialog = false
+        }
+    }
+
     func dismissCompletionDialog() {
         withAnimation(.easeInOut(duration: 0.2)) {
             showCompletionDialog = false
+        }
+    }
+
+    func dismissPostUploadDialog() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showPostUploadDialog = false
+            completedShareURL = nil
         }
     }
 
@@ -734,6 +770,27 @@ public class ShareUploadCoordinator: ObservableObject {
             }
         }
 
+        throw lastError
+    }
+
+    // MARK: - Retry Helper
+
+    private static func withRetry<T>(
+        maxAttempts: Int = 3,
+        operation: () async throws -> T
+    ) async throws -> T {
+        var lastError: Error!
+        for attempt in 0..<maxAttempts {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                if attempt < maxAttempts - 1 {
+                    let delay = pow(2.0, Double(attempt))
+                    try? await Task.sleep(for: .seconds(delay))
+                }
+            }
+        }
         throw lastError
     }
 

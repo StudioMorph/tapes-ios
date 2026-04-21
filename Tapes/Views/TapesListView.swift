@@ -368,6 +368,9 @@ struct TapesListView: View {
                 if shareUploadCoordinator.uploadError != nil {
                     ShareUploadErrorAlert(coordinator: shareUploadCoordinator)
                 }
+                if shareUploadCoordinator.showPostUploadDialog {
+                    SharePostUploadDialog(coordinator: shareUploadCoordinator)
+                }
             }
             if showingDeleteSuccessToast {
                 DeleteSuccessToast(isVisible: $showingDeleteSuccessToast)

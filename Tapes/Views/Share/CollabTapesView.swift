@@ -87,6 +87,9 @@ struct CollabTapesView: View {
                     if uploadCoordinator.uploadError != nil {
                         ShareUploadErrorAlert(coordinator: uploadCoordinator)
                     }
+                    if uploadCoordinator.showPostUploadDialog {
+                        SharePostUploadDialog(coordinator: uploadCoordinator)
+                    }
                 }
             }
             .navigationTitle("Collab")
