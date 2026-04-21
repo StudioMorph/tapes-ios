@@ -349,7 +349,10 @@ struct CollabTapesView: View {
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
         .overlay(alignment: .bottomTrailing) {
             let total = syncCount(for: tape)
-            if total > 0, tape.shareInfo != nil {
+            let isActive = syncCoordinator.isSyncing
+                || (uploadCoordinator.isUploading && uploadCoordinator.sourceTape?.id == tape.id)
+                || downloadCoordinator.isDownloading
+            if total > 0, tape.shareInfo != nil, !isActive {
                 SyncBadge(count: total, direction: .sync) {
                     handleSync(tape: tape)
                 }

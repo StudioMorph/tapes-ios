@@ -17,8 +17,6 @@ struct TapesListView: View {
     @State private var hoveredTarget: DropTargetInfo? = nil
     @State private var showInlineTitle = false
     @State private var tapeToShare: Tape?
-    @State private var tapeToSyncUpload: Tape?
-
     private var isMyTapeUpload: Bool {
         guard let source = shareUploadCoordinator.sourceTape else { return false }
         return !source.isCollabTape && source.shareInfo?.mode != "collaborative"
@@ -46,7 +44,7 @@ struct TapesListView: View {
                         onCameraCapture: handleCameraCapture,
                         onTitleFocusRequest: handleTitleFocusRequest,
                         onTitleCommit: commitTitleEditing,
-                        onSyncUpload: { tape in tapeToSyncUpload = tape },
+                        onSyncUpload: { tape in triggerSyncUpload(tape) },
                         showInlineTitle: $showInlineTitle
                     )
                 }
@@ -169,24 +167,6 @@ struct TapesListView: View {
         }
         .sheet(item: $tapeToShare) { tape in
             ShareModalView(tape: tape)
-        }
-        .alert("Update everyone's tape",
-               isPresented: .init(
-                   get: { tapeToSyncUpload != nil },
-                   set: { if !$0 { tapeToSyncUpload = nil } }
-               )
-        ) {
-            Button("Update") {
-                if let tape = tapeToSyncUpload {
-                    triggerSyncUpload(tape)
-                }
-                tapeToSyncUpload = nil
-            }
-            Button("Cancel", role: .cancel) {
-                tapeToSyncUpload = nil
-            }
-        } message: {
-            Text("This will add your new content to everyone's tapes.")
         }
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {

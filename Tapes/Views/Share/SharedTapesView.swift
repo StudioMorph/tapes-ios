@@ -218,7 +218,7 @@ struct SharedTapesView: View {
                             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
                             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                             .overlay(alignment: .bottomTrailing) {
-                                if let count = syncChecker.pendingDownloads[tapeID], count > 0 {
+                                if let count = syncChecker.pendingDownloads[tapeID], count > 0, !downloadCoordinator.isDownloading {
                                     SyncBadge(count: count, direction: .download) {
                                         handleDownload(tape: tape)
                                     }

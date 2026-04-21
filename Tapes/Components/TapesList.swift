@@ -9,6 +9,7 @@ import SwiftUI
 
 struct TapesList: View {
     @EnvironmentObject private var tapeStore: TapesStore
+    @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @Binding var tapes: [Tape]
@@ -121,7 +122,8 @@ struct TapesList: View {
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             .overlay(alignment: .bottomTrailing) {
-                if tape.pendingUploadCount > 0 {
+                let isUploadingThisTape = uploadCoordinator.isUploading && uploadCoordinator.sourceTape?.id == tape.id
+                if tape.pendingUploadCount > 0, !isUploadingThisTape {
                     SyncBadge(count: tape.pendingUploadCount, direction: .upload) {
                         onSyncUpload?(tape)
                     }
