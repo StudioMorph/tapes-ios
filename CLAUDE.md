@@ -57,11 +57,15 @@ I follow these rules every session. If I break one, point it out immediately.
 These are invariants. Follow them in new code; preserve them in refactors.
 
 - **`TapesStore` is the single source of truth** for local tape state. All reads/writes of tapes go through it. Persistence to `tapes.json` is debounced and runs off the main thread via `TapePersistenceActor`.
-- **No singletons.** The one exception is `PushNotificationManager.shared` (legacy, planned for refactor post-launch). Prefer DI / environment / constructor injection.
+- **No new singletons.** Prefer DI / environment / constructor injection for anything new. Existing singletons and static backdoors in the codebase (documented here so they aren't accidentally multiplied):
+  - `PushNotificationManager.shared` — legacy, flagged for post-launch refactor.
+  - `MubertAPIClient.shared` — actor with per-tape cache state; acceptable for its narrow scope.
+  - `CastManager.shared` — legacy AirPlay detector.
+  - `ExportCoordinator.current` and `ShareUploadCoordinator.current` — static weak refs that exist solely so iOS 26+ `BGContinuedProcessingTask` handlers registered at launch can find the live coordinator. Not general-purpose access; don't treat them as such.
 - **Sparse Clip JSON encoding.** Default field values (`motionStyle == .kenBurns`, `imageDuration == 4.0`, `isPlaceholder == false`, etc.) are deliberately omitted from encoded JSON. Decoder applies defaults for missing keys. When adding new `Clip` fields, follow the same pattern.
 - **Placeholder clips are never persisted.** `Tape.removingPlaceholders()` runs before every save.
 - **Four share IDs per tape, permanent.** `share_id_view_open`, `share_id_view_protected`, `share_id_collab_open`, `share_id_collab_protected`. Minted once by `POST /tapes`. Never regenerated.
-- **R2 asset retention is 7 days from the last write.** Each contribution resets the timer. Hourly cron handles cleanup.
+- **R2 asset retention depends on tape mode.** Collaborative tapes: 7 days from the last write (each contribution resets the timer). View-only tapes: 3 days. See `clips.ts` `confirmUpload`. Hourly cron handles cleanup via `tapes.shared_assets_expire_at`.
 - **`lastUploadedClipCount` semantics.** `nil` means "never shared." A number means "this many clips were on the server at the last check." Delta `localCount - lastUploadedClipCount` drives the upload badge. Preserve this invariant across all code paths that update it.
 - **PHAsset-first for clip media.** Clips should always have an `assetLocalId` pointing at the Photos library. `localURL` is a convenience fallback. Picker imports and camera captures now write to `Application Support/Imports/` (not `tmp/`) so `localURL` survives relaunches.
 - **File protection.** `tapes.json` and `clip_media/*` are written with `.completeUntilFirstUserAuthentication`. New persistence code should preserve this.
@@ -92,7 +96,6 @@ These are invariants. Follow them in new code; preserve them in refactors.
 The following credentials exist and must never appear in any file, log, commit message, or chat message. Refer to them by name only.
 
 - Cloudflare R2 access key ID and secret.
-- Supabase keys (if any).
 - Mubert customer ID and access token — now on the Worker as secrets; no longer in the iOS binary.
 - APNs P8 key, Key ID, Team ID.
 - Apple `APPLE_TEAM_ID` (`24P36542C4`) — not secret strictly (visible in any IPA), but still not something to paste around casually.
