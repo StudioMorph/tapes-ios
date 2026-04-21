@@ -4,9 +4,13 @@ struct ShareUploadProgressDialog: View {
     @ObservedObject var coordinator: ShareUploadCoordinator
     var onDismissToBackground: (() -> Void)?
 
+    private var isUpdate: Bool {
+        coordinator.sourceTape?.lastUploadedClipCount != nil
+    }
+
     var body: some View {
         GlassAlertCard(
-            title: "Sharing Tape…",
+            title: isUpdate ? "Updating Shared Tape…" : "Sharing Tape…",
             buttons: [
                 GlassAlertButton(title: "Cancel", style: .destructive) {
                     coordinator.cancelUpload()
@@ -57,16 +61,31 @@ struct ShareUploadProgressDialog: View {
 struct ShareUploadCompletionDialog: View {
     @ObservedObject var coordinator: ShareUploadCoordinator
 
+    private var isUpdate: Bool {
+        coordinator.sourceTape?.lastUploadedClipCount != nil
+    }
+
     var body: some View {
         GlassAlertCard(
-            systemImage: "checkmark.circle",
-            title: "Tape Shared",
-            message: "Your tape has been uploaded and shared successfully.",
+            title: isUpdate ? "Shared Tape Updated" : "Tape Shared",
             buttons: [
                 GlassAlertButton(title: "Done", style: .primary) {
                     coordinator.dismissCompletionDialog()
                 }
-            ]
+            ],
+            icon: {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundStyle(.green)
+            },
+            message: {
+                Text(isUpdate
+                     ? "All users have been notified."
+                     : "Your tape has been uploaded and shared successfully.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.primary)
+                    .multilineTextAlignment(.center)
+            }
         )
     }
 }
