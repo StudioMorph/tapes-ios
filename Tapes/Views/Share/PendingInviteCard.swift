@@ -26,6 +26,7 @@ struct PendingInviteCard: View {
                     loadButton
                 }
             }
+            .frame(maxWidth: .infinity)
             .padding(Tokens.Spacing.m)
             .background(
                 RoundedRectangle(cornerRadius: Tokens.Radius.thumb, style: .continuous)
@@ -34,11 +35,15 @@ struct PendingInviteCard: View {
             .padding(.horizontal, Tokens.Spacing.m)
             .padding(.vertical, Tokens.Spacing.m)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+            RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.secondaryBackground)
         )
+        .background(Tokens.Colors.primaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .compositingGroup()
     }
 
     // MARK: - Subviews

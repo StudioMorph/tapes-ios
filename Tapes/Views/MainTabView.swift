@@ -44,7 +44,7 @@ struct MainTabView: View {
                     for item in serverTapes {
                         let alreadyLocal = tapesStore.sharedTape(forRemoteId: item.tapeId) != nil
                         let alreadyPending = pendingInviteStore.contains(tapeId: item.tapeId)
-                        guard !alreadyLocal, !alreadyPending,
+                        guard item.status == "invited", !alreadyLocal, !alreadyPending,
                               let shareId = item.shareId else { continue }
                         pendingInviteStore.add(PendingInvite(
                             tapeId: item.tapeId,
