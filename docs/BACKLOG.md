@@ -31,3 +31,29 @@ Items to revisit when time allows. Not urgent, not blocking — just worth doing
 **Depends on**: Backlog item #2 (settings view).
 
 ---
+
+## Infrastructure
+
+### 4. Pre-TestFlight: protected deploy flow (staging Worker)
+
+**Context**: There is currently no staging environment. Every `wrangler deploy` replaces production instantly. During pre-TestFlight internal testing that's acceptable — the only users affected are Jose and Isabel on their own devices. Once external testers or App Store users exist, a bad deploy is visible within seconds and there is no checkpoint to catch it first.
+
+**Trigger**: Must be completed before TestFlight submission.
+
+**Plan summary** (approved, awaiting implementation):
+
+- Second Cloudflare Worker at `tapes-api-staging.hi-7d5.workers.dev`, separate D1 database `tapes-db-staging`, separate R2 bucket `tapes-media-staging`. Separate `JWT_SECRET` and rate-limit namespace IDs (`2001..2004`). Shared Apple/APNs/Mubert/CF credentials (same accounts).
+- `wrangler.jsonc` restructured into explicit `env.staging` and `env.production` blocks. `wrangler deploy` with no `--env` flag must error out — every deploy is a conscious choice of target.
+- iOS `TapesAPIClient.baseURL` reintroduces a `#if DEBUG` split: DEBUG builds hit staging, Release hits prod. `Tapes.entitlements` adds `applinks:tapes-api-staging.hi-7d5.workers.dev` alongside the existing prod host.
+- Deploy flow becomes: apply migration to staging → deploy staging → smoke-test → apply migration to prod → deploy prod → verify on device.
+
+**Known limitations**:
+- Staging starts empty — schema changes whose behaviour depends on populated data still only surface on prod.
+- Testing the DEBUG build on device wipes local tape data on each install swap (cloud-backed tapes come back on next sign-in; purely local tapes do not).
+- Isabel's device needs its own DEBUG install to participate in cross-device staging tests.
+
+**Files likely involved**: `tapes-api/wrangler.jsonc`, `tapes-api/src/types/env.ts` (no new fields), `tapes-ios/Tapes/Core/Networking/TapesAPIClient.swift`, `tapes-ios/Tapes/Tapes.entitlements`.
+
+**Detailed plan**: to be written at `tapes-api/docs/plan/StagingWorkerSetup.md` when we execute.
+
+---
