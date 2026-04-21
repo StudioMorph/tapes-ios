@@ -57,3 +57,15 @@ Items to revisit when time allows. Not urgent, not blocking — just worth doing
 **Detailed plan**: to be written at `tapes-api/docs/plan/StagingWorkerSetup.md` when we execute.
 
 ---
+
+### 5. R2 content deduplication across tapes
+
+**Context**: When the same photo or video is added to multiple tapes, the media bytes are uploaded to R2 separately each time. Each tape creates clips with unique UUIDs, so the server treats them as independent objects — no cross-tape awareness of duplicate content.
+
+**Impact**: Redundant upload bandwidth and R2 storage costs. Noticeable when a user creates several tapes from the same photo library selection.
+
+**Approach**: Content-addressable storage — hash the media file before upload, check if the hash already exists in R2, reuse the existing object if so. Requires reference counting so the expiry/cleanup cron knows when an R2 object is safe to delete (i.e., no remaining clips reference it).
+
+**Files likely involved**: `ShareUploadCoordinator.swift` (iOS — hash before upload), `tapes-api/src/routes/clips.ts` (server — dedup check on `createClip`/`confirmUpload`), `tapes-api/src/routes/scheduled.ts` (cleanup — reference counting).
+
+---

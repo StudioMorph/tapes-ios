@@ -545,7 +545,6 @@ Can be replayed from Account → "Hot Tips".
 - **`getSharedTapes()` / `validateTape()`:** API methods implemented on both client and server but never called from the app UI.
 - **Mubert credentials:** Customer ID and access token are hardcoded in `MubertAPIClient.swift` — credential exposure risk.
 - **Two missing clips (tape 96BF122C):** The SyncChecker consistently reports 2 missing clips for this tape — likely legacy Live Photos uploaded with stripped metadata before the upload fix.
-- **R2 content deduplication:** The same photo/video uploaded to multiple tapes creates separate R2 objects each time. A content-addressable approach (hash media before upload, reuse existing R2 objects) would eliminate redundant uploads and storage. Requires reference counting for safe cleanup.
 
 ### Planned Future Features
 
