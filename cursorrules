@@ -3,7 +3,7 @@
 # Mission
 - Build the **TAPES** MVP for iOS following `cursor_prompt.md` (and docs if present).
 - Platform: **iOS 16+**, Swift 5.9+, **SwiftUI** only.
-- Default bundle id: `com.studiomorph.Tapes`.
+- Default bundle id: `StudioMorph.Tapes`.
 
 # Architecture
 - No third‑party dependencies. Use **AVFoundation**, **Photos**, **AVKit**.

@@ -3,8 +3,8 @@
 You are an expert iOS engineer. Follow this plan step‑by‑step to scaffold and implement the TAPES MVP using SwiftUI + AVFoundation. Work **task by task** and keep PR-sized commits.
 
 ## Project constraints
-- Platform: **iOS 16+**, Swift 5.9+, **SwiftUI**.
-- Bundle id: **com.studiomorph.Tapes**.
+- Platform: **iOS 18+**, Swift 5.9+, **SwiftUI**.
+- Bundle id: **StudioMorph.Tapes**.
 - Keep code modular: `Models/`, `Views/`, `ViewModels/`, `Services/`, `Export/`, `Components/`, `Theme/`.
 - Use native frameworks only (no 3rd‑party deps).
 

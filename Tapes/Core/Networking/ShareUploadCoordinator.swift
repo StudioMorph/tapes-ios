@@ -318,9 +318,11 @@ public class ShareUploadCoordinator: ObservableObject {
 
     /// Primes the coordinator with a server-known response (e.g. from
     /// `GET /tapes/:id` when the modal opens on a previously-shared tape).
+    /// Only sets `resultCreateResponse` (for URL display), NOT
+    /// `pendingCreateResponse`, so `ensureTapeUploaded` always verifies
+    /// upload status with the server instead of trusting the bootstrap.
     func seedCreateResponse(_ response: TapesAPIClient.CreateTapeResponse, for tape: Tape) {
         guard response.tapeId.lowercased() == tape.id.uuidString.lowercased() else { return }
-        pendingCreateResponse = response
         resultCreateResponse = response
         resultRemoteTapeId = response.tapeId
     }
