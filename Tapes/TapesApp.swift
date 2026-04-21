@@ -20,6 +20,8 @@ struct TapesApp: App {
         if #available(iOS 26, *) {
             ExportCoordinator.registerBackgroundExportHandler()
             ShareUploadCoordinator.registerBackgroundUploadHandler()
+            SharedTapeDownloadCoordinator.registerBackgroundDownloadHandler()
+            CollabSyncCoordinator.registerBackgroundSyncHandler()
         }
     }
 

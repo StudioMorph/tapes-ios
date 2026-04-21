@@ -8,9 +8,19 @@ struct ShareUploadProgressDialog: View {
         coordinator.sourceTape?.lastUploadedClipCount != nil
     }
 
+    private var isContribution: Bool {
+        coordinator.resultMode == .collaborating && coordinator.sourceTape?.isShared == true
+    }
+
+    private var title: String {
+        if isContribution { return "Contributing…" }
+        if isUpdate { return "Updating Shared Tape…" }
+        return "Sharing Tape…"
+    }
+
     var body: some View {
         GlassAlertCard(
-            title: isUpdate ? "Updating Shared Tape…" : "Sharing Tape…",
+            title: title,
             buttons: [
                 GlassAlertButton(title: "Cancel", style: .destructive) {
                     coordinator.cancelUpload()
@@ -47,7 +57,7 @@ struct ShareUploadProgressDialog: View {
                             .foregroundStyle(Color.secondary)
                     }
 
-                    Text("You can leave the app — we'll notify you when it's done.")
+                    Text("You can leave the app.\nWe'll notify you when it's done.")
                         .font(.system(size: 15))
                         .foregroundStyle(Color.primary)
                         .multilineTextAlignment(.center)

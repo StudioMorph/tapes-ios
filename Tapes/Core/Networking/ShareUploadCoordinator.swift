@@ -58,6 +58,11 @@ public class ShareUploadCoordinator: ObservableObject {
     /// Show the post-modal "Link ready to share" dialog on the main view.
     @Published var showPostUploadDialog = false
 
+    /// When `true`, an external coordinator (e.g. `CollabSyncCoordinator`)
+    /// owns the UI lifecycle. Dialog flags, completion feedback, and
+    /// `BGContinuedProcessingTask` submission are suppressed.
+    var isManagedBySync = false
+
     // MARK: - Internal State
 
     private var uploadTask: Task<Void, Never>?
@@ -226,9 +231,9 @@ public class ShareUploadCoordinator: ObservableObject {
 
                 if hasWork {
                     self.totalClips = clipsToUpload.count + clipIdsToDelete.count
-                    self.showProgressDialog = true
+                    if !self.isManagedBySync { self.showProgressDialog = true }
 
-                    if #available(iOS 26, *) {
+                    if !self.isManagedBySync, #available(iOS 26, *) {
                         self.submitContinuedProcessingTask()
                     }
 
@@ -303,7 +308,7 @@ public class ShareUploadCoordinator: ObservableObject {
 
                 self.finishUpload(success: true)
 
-                if hasWork {
+                if hasWork && !self.isManagedBySync {
                     if UIApplication.shared.applicationState == .active {
                         self.playCompletionFeedback()
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -370,19 +375,18 @@ public class ShareUploadCoordinator: ObservableObject {
         failedClipIndices = []
         statusMessage = "Contributing clips…"
         uploadError = nil
-        showProgressDialog = true
+        if !isManagedBySync { showProgressDialog = true }
         showCompletionDialog = false
         uploadStartTime = Date()
         resultMode = .collaborating
 
-        if #available(iOS 26, *) {
+        if !isManagedBySync, #available(iOS 26, *) {
             submitContinuedProcessingTask()
         }
 
         uploadTask = Task { [weak self] in
             guard let self else { return }
 
-            var syncedIds: [UUID] = []
             var newFailures: Set<Int> = []
 
             for (index, clip) in unsyncedClips.enumerated() {
@@ -395,9 +399,11 @@ public class ShareUploadCoordinator: ObservableObject {
                 }
 
                 do {
-                    try await Self.uploadClip(clip, tapeId: remoteTapeId, api: api)
+                    try await Self.withRetry(maxAttempts: 3) {
+                        try await Self.uploadClip(clip, tapeId: remoteTapeId, api: api)
+                    }
                     self.completedClips += 1
-                    syncedIds.append(clip.id)
+                    await MainActor.run { markSynced([clip.id]) }
                 } catch {
                     TapesLog.upload.error("Contribute clip \(index) failed: \(error.localizedDescription)")
                     newFailures.insert(index)
@@ -412,20 +418,18 @@ public class ShareUploadCoordinator: ObservableObject {
                 return
             }
 
-            await MainActor.run {
-                markSynced(syncedIds)
-            }
-
             self.finishUpload(success: true)
 
-            if UIApplication.shared.applicationState == .active {
-                self.playCompletionFeedback()
-                withAnimation(.easeInOut(duration: 0.2)) {
+            if !self.isManagedBySync {
+                if UIApplication.shared.applicationState == .active {
+                    self.playCompletionFeedback()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        self.showCompletionDialog = true
+                    }
+                } else {
+                    self.sendContributionNotification()
                     self.showCompletionDialog = true
                 }
-            } else {
-                self.sendContributionNotification()
-                self.showCompletionDialog = true
             }
         }
     }

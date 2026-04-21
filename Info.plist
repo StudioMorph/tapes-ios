@@ -8,6 +8,8 @@
 	<array>
 		<string>StudioMorph.Tapes.export</string>
 		<string>StudioMorph.Tapes.upload</string>
+		<string>StudioMorph.Tapes.download</string>
+		<string>StudioMorph.Tapes.collabSync</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

@@ -10,6 +10,7 @@ struct SharedTapesView: View {
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @EnvironmentObject private var syncChecker: TapeSyncChecker
     @EnvironmentObject private var pendingInviteStore: PendingInviteStore
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
@@ -113,6 +114,9 @@ struct SharedTapesView: View {
                     navigationCoordinator.clearPendingTape()
                     handleIncomingShare(shareId: shareId)
                 }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                downloadCoordinator.handleScenePhaseChange(newPhase)
             }
             .onChange(of: downloadCoordinator.resultTape?.id) { _, newId in
                 guard newId != nil,

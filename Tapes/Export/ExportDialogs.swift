@@ -98,7 +98,7 @@ struct ExportProgressDialog: View {
                             .foregroundStyle(Color.primary)
                     }
 
-                    Text("You can leave the app — we'll notify you when it's done.")
+                    Text("You can leave the app.\nWe'll notify you when it's done.")
                         .font(.system(size: 15))
                         .foregroundStyle(Color.primary)
                         .multilineTextAlignment(.center)

@@ -1,6 +1,9 @@
 import Foundation
 import Photos
 import SwiftUI
+import BackgroundTasks
+import AudioToolbox
+import UserNotifications
 import os
 
 @MainActor
@@ -17,6 +20,48 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
     @Published private(set) var resultTape: Tape?
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "SharedDownload")
 
+    /// When `true`, an external coordinator (e.g. `CollabSyncCoordinator`)
+    /// owns the UI lifecycle. Dialog flags, completion feedback, and
+    /// `BGContinuedProcessingTask` submission are suppressed.
+    var isManagedBySync = false
+
+    // MARK: - Background Task Support
+
+    static let bgTaskIdentifier = "StudioMorph.Tapes.download"
+    static weak var current: SharedTapeDownloadCoordinator?
+
+    private var _continuedTask: AnyObject?
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private var downloadStartTime: Date?
+
+    @available(iOS 26, *)
+    private var continuedTask: BGContinuedProcessingTask? {
+        get { _continuedTask as? BGContinuedProcessingTask }
+        set { _continuedTask = newValue }
+    }
+
+    init() {
+        Self.current = self
+    }
+
+    @available(iOS 26, *)
+    static func registerBackgroundDownloadHandler() {
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: bgTaskIdentifier,
+            using: .main
+        ) { task in
+            guard let task = task as? BGContinuedProcessingTask else { return }
+            task.progress.totalUnitCount = 100
+
+            current?._continuedTask = task
+            task.expirationHandler = {
+                Task { @MainActor in
+                    current?.handleBackgroundTaskExpiration()
+                }
+            }
+        }
+    }
+
     var processedCount: Int { completedCount + failedCount }
 
     var progress: Double {
@@ -25,7 +70,25 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
     }
 
     var progressLabel: String {
-        "Downloading \(processedCount)/\(totalCount)"
+        if completedCount == 0 && failedCount == 0 {
+            return "Preparing…"
+        }
+        return "Downloading \(processedCount)/\(totalCount)"
+    }
+
+    var formattedTimeRemaining: String? {
+        guard let startTime = downloadStartTime, progress > 0.05 else { return nil }
+        let elapsed = Date().timeIntervalSince(startTime)
+        let estimatedTotal = elapsed / progress
+        let remaining = estimatedTotal - elapsed
+        guard remaining > 0 && remaining < 3600 else { return nil }
+
+        let minutes = Int(remaining) / 60
+        let seconds = Int(remaining) % 60
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s remaining"
+        }
+        return "\(seconds)s remaining"
     }
 
     func startDownload(
@@ -36,12 +99,17 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         guard !isDownloading else { return }
 
         isDownloading = true
-        showProgressDialog = true
+        if !isManagedBySync { showProgressDialog = true }
         totalCount = 0
         completedCount = 0
         failedCount = 0
         downloadError = nil
         resultTape = nil
+        downloadStartTime = Date()
+
+        if !isManagedBySync, #available(iOS 26, *) {
+            submitContinuedProcessingTask()
+        }
 
         downloadTask = Task { [weak self] in
             guard let self else { return }
@@ -65,7 +133,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                     self.downloadError = isReturning
                         ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                         : "This tape is empty.\nAsk the Tapes owner to add content and try again."
-                    self.isDownloading = false
+                    self.finishDownload(success: false)
                     self.showProgressDialog = false
                     return
                 }
@@ -90,7 +158,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                         self.log.info("[Download] local has \(extraLocal.count) clip(s) NOT on server")
                     }
                     self.downloadError = "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
-                    self.isDownloading = false
+                    self.finishDownload(success: false)
                     self.showProgressDialog = false
                     return
                 }
@@ -118,6 +186,10 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                         self.log.error("Failed to download clip \(manifestClip.clipId): \(error.localizedDescription)")
                         self.failedCount += 1
                     }
+
+                    if #available(iOS 26, *) {
+                        self.updateContinuedTaskProgress()
+                    }
                 }
 
                 self.log.info("[Download] loop done: succeeded=\(clips.count) failed=\(self.failedCount) cancelled=\(Task.isCancelled)")
@@ -131,7 +203,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                             ? "Tape has no updates.\nAsk the Tapes owner to update tape and try again."
                             : "This tape is empty.\nAsk the Tapes owner to add content and try again."
                     }
-                    self.isDownloading = false
+                    self.finishDownload(success: false)
                     self.showProgressDialog = false
                     return
                 }
@@ -143,10 +215,6 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                         self.resultTape = updated
                     }
                 } else {
-                    // The link's role (view vs collaborate) takes precedence
-                    // over the tape-level mode so view-only links to a
-                    // collaborative tape still land the recipient in the
-                    // Viewing segment.
                     let resolvedMode: String = {
                         if let access = resolution.accessMode {
                             return access == "collaborate" ? "collaborative" : "view_only"
@@ -166,12 +234,28 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                     self.resultTape = tape
                 }
 
-                self.isDownloading = false
+                self.finishDownload(success: true)
 
             } catch {
                 self.log.error("Share resolution failed: \(error.localizedDescription)")
                 self.downloadError = error.localizedDescription
-                self.isDownloading = false
+                self.finishDownload(success: false)
+            }
+        }
+    }
+
+    private func finishDownload(success: Bool) {
+        isDownloading = false
+        endBackgroundTask()
+
+        if !isManagedBySync, #available(iOS 26, *) {
+            completeContinuedTask(success: success)
+        }
+
+        if success && !isManagedBySync {
+            playCompletionFeedback()
+            if UIApplication.shared.applicationState != .active {
+                sendCompletionNotification()
             }
         }
     }
@@ -179,6 +263,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
     func cancelDownload() {
         downloadTask?.cancel()
         downloadTask = nil
+        finishDownload(success: false)
         reset()
     }
 
@@ -453,6 +538,97 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             result = image
         }
         return result
+    }
+
+    // MARK: - Scene Phase
+
+    func handleScenePhaseChange(_ phase: ScenePhase) {
+        if phase == .background && isDownloading {
+            beginBackgroundTask()
+        }
+    }
+
+    // MARK: - BGContinuedProcessingTask Lifecycle
+
+    @available(iOS 26, *)
+    private func submitContinuedProcessingTask() {
+        let request = BGContinuedProcessingTaskRequest(
+            identifier: Self.bgTaskIdentifier,
+            title: "Downloading Tape",
+            subtitle: "Starting…"
+        )
+        request.strategy = .fail
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            log.info("BGContinuedProcessingTask submitted for download")
+        } catch {
+            log.error("BGContinuedProcessingTask submit failed: \(error.localizedDescription)")
+            beginBackgroundTask()
+        }
+    }
+
+    @available(iOS 26, *)
+    private func completeContinuedTask(success: Bool) {
+        guard let task = continuedTask else { return }
+        task.progress.completedUnitCount = 100
+        task.setTaskCompleted(success: success)
+        self.continuedTask = nil
+    }
+
+    @available(iOS 26, *)
+    private func updateContinuedTaskProgress() {
+        guard let task = continuedTask else { return }
+        task.progress.completedUnitCount = Int64(progress * 100)
+        let subtitle = formattedTimeRemaining ?? progressLabel
+        task.updateTitle("Downloading Tape", subtitle: subtitle)
+    }
+
+    private func handleBackgroundTaskExpiration() {
+        if #available(iOS 26, *) {
+            continuedTask?.setTaskCompleted(success: false)
+            continuedTask = nil
+        }
+        beginBackgroundTask()
+    }
+
+    // MARK: - Background Task (fallback)
+
+    private func beginBackgroundTask() {
+        guard backgroundTaskID == .invalid else { return }
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
+            self?.endBackgroundTask()
+        }
+    }
+
+    private func endBackgroundTask() {
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
+    }
+
+    // MARK: - Completion Feedback
+
+    private func playCompletionFeedback() {
+        AudioServicesPlaySystemSound(1007)
+        let gen = UIImpactFeedbackGenerator(style: .medium)
+        gen.prepare()
+        gen.impactOccurred()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            gen.impactOccurred()
+        }
+    }
+
+    private func sendCompletionNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "Tape Downloaded"
+        content.body = "Your shared tape has been downloaded successfully."
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let id = "download-complete-\(UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
     }
 
     // MARK: - Build Tape

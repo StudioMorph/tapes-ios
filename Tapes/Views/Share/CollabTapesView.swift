@@ -6,10 +6,12 @@ struct CollabTapesView: View {
     @EnvironmentObject private var tapesStore: TapesStore
     @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
     @StateObject private var downloadCoordinator = SharedTapeDownloadCoordinator()
+    @StateObject private var syncCoordinator = CollabSyncCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @EnvironmentObject private var syncChecker: TapeSyncChecker
     @EnvironmentObject private var pendingInviteStore: PendingInviteStore
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
@@ -76,79 +78,11 @@ struct CollabTapesView: View {
                     collabTapeList
                 }
 
-                SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
-                ImportProgressOverlay(coordinator: importCoordinator)
-
-                if let invite = inviteToDismiss {
-                    dismissConfirmationOverlay(invite: invite)
-                }
-
-                if isCollabUpload {
-                    if uploadCoordinator.showProgressDialog {
-                        ShareUploadProgressDialog(coordinator: uploadCoordinator)
-                    }
-                    if uploadCoordinator.showCompletionDialog {
-                        ShareUploadCompletionDialog(coordinator: uploadCoordinator)
-                    }
-                    if uploadCoordinator.uploadError != nil {
-                        ShareUploadErrorAlert(coordinator: uploadCoordinator)
-                    }
-                    if uploadCoordinator.showPostUploadDialog {
-                        SharePostUploadDialog(coordinator: uploadCoordinator)
-                    }
-                }
+                dialogOverlays
             }
             .navigationTitle("Collab")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                if tapesStore.jigglingTapeID != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                tapesStore.jigglingTapeID = nil
-                            }
-                        }
-                        .font(.body.weight(.semibold))
-                    }
-                } else {
-                    if isCollabUpload && uploadCoordinator.isUploading && !uploadCoordinator.showProgressDialog {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                uploadCoordinator.showProgressDialogAgain()
-                            } label: {
-                                ZStack {
-                                    CircularProgressRing(
-                                        progress: uploadCoordinator.progress,
-                                        lineWidth: 2.5,
-                                        size: 22,
-                                        ringColor: .blue
-                                    )
-                                    Image(systemName: "arrow.up")
-                                        .font(.system(size: 11, weight: .semibold))
-                                }
-                            }
-                        }
-                    }
-                    if downloadCoordinator.isDownloading && !downloadCoordinator.showProgressDialog {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                downloadCoordinator.showProgressDialogAgain()
-                            } label: {
-                                ZStack {
-                                    CircularProgressRing(
-                                        progress: downloadCoordinator.progress,
-                                        lineWidth: 2.5,
-                                        size: 22,
-                                        ringColor: .blue
-                                    )
-                                    Image(systemName: "arrow.down")
-                                        .font(.system(size: 11, weight: .semibold))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            .toolbar { toolbarContent }
             .alert("Sign In Issue", isPresented: .init(
                 get: { authManager.authError != nil },
                 set: { if !$0 { authManager.authError = nil } }
@@ -168,6 +102,10 @@ struct CollabTapesView: View {
                 if let msg = downloadCoordinator.downloadError {
                     Text(msg)
                 }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                downloadCoordinator.handleScenePhaseChange(newPhase)
+                syncCoordinator.handleScenePhaseChange(newPhase)
             }
             .onChange(of: uploadCoordinator.lastUploadedClipCount) { _, count in
                 guard let count,
@@ -208,6 +146,117 @@ struct CollabTapesView: View {
         .fullScreenCover(isPresented: $cameraCoordinator.isPresented) {
             CameraView(coordinator: cameraCoordinator)
                 .ignoresSafeArea(.all, edges: .all)
+        }
+    }
+
+    // MARK: - Overlays
+
+    @ViewBuilder
+    private var dialogOverlays: some View {
+        if !syncCoordinator.isSyncing {
+            SharedDownloadProgressOverlay(coordinator: downloadCoordinator, title: "Receiving Contributions…")
+        }
+        ImportProgressOverlay(coordinator: importCoordinator)
+
+        if let invite = inviteToDismiss {
+            dismissConfirmationOverlay(invite: invite)
+        }
+
+        syncDialogOverlays
+        uploadDialogOverlays
+    }
+
+    @ViewBuilder
+    private var syncDialogOverlays: some View {
+        if syncCoordinator.isSyncing && syncCoordinator.showProgressDialog {
+            CollabSyncProgressDialog(coordinator: syncCoordinator)
+        }
+        if syncCoordinator.showCompletionDialog {
+            CollabSyncCompletionDialog(coordinator: syncCoordinator)
+        }
+        if syncCoordinator.syncError != nil && !syncCoordinator.isSyncing {
+            CollabSyncErrorAlert(coordinator: syncCoordinator)
+        }
+    }
+
+    @ViewBuilder
+    private var uploadDialogOverlays: some View {
+        if isCollabUpload && !syncCoordinator.isSyncing {
+            if uploadCoordinator.showProgressDialog {
+                ShareUploadProgressDialog(coordinator: uploadCoordinator)
+            }
+            if uploadCoordinator.showCompletionDialog {
+                ShareUploadCompletionDialog(coordinator: uploadCoordinator)
+            }
+            if uploadCoordinator.uploadError != nil {
+                ShareUploadErrorAlert(coordinator: uploadCoordinator)
+            }
+            if uploadCoordinator.showPostUploadDialog {
+                SharePostUploadDialog(coordinator: uploadCoordinator)
+            }
+        }
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if tapesStore.jigglingTapeID != nil {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        tapesStore.jigglingTapeID = nil
+                    }
+                }
+                .font(.body.weight(.semibold))
+            }
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                backgroundProgressButton
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var backgroundProgressButton: some View {
+        if syncCoordinator.isSyncing && !syncCoordinator.showProgressDialog {
+            progressRingButton(
+                progress: syncCoordinator.progress,
+                icon: "arrow.triangle.2.circlepath",
+                iconSize: 10
+            ) { syncCoordinator.showProgressDialogAgain() }
+        } else if isCollabUpload && uploadCoordinator.isUploading && !uploadCoordinator.showProgressDialog {
+            progressRingButton(
+                progress: uploadCoordinator.progress,
+                icon: "arrow.up",
+                iconSize: 11
+            ) { uploadCoordinator.showProgressDialogAgain() }
+        } else if downloadCoordinator.isDownloading && !downloadCoordinator.showProgressDialog {
+            progressRingButton(
+                progress: downloadCoordinator.progress,
+                icon: "arrow.down",
+                iconSize: 11
+            ) { downloadCoordinator.showProgressDialogAgain() }
+        }
+    }
+
+    private func progressRingButton(
+        progress: Double,
+        icon: String,
+        iconSize: CGFloat,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            ZStack {
+                CircularProgressRing(
+                    progress: progress,
+                    lineWidth: 2.5,
+                    size: 22,
+                    ringColor: .blue
+                )
+                Image(systemName: icon)
+                    .font(.system(size: iconSize, weight: .semibold))
+            }
         }
     }
 
@@ -412,38 +461,35 @@ struct CollabTapesView: View {
 
         syncChecker.clearDownload(for: tape.id)
 
-        if hasUploads {
-            let uploadAction: (Tape) -> Void = { tape in
-                if tape.isCollabTape {
-                    self.uploadCoordinator.ensureTapeUploaded(
-                        tape: tape,
-                        intendedForCollaboration: true,
-                        api: api
-                    ) { _ in
-                        if hasDownloads, let shareId = tape.shareInfo?.shareId {
-                            self.downloadCoordinator.startDownload(
-                                shareId: shareId,
-                                api: api,
-                                tapeStore: self.tapesStore
-                            )
-                        }
+        if hasUploads && hasDownloads {
+            syncCoordinator.startSync(
+                tape: tape,
+                hasUploads: true,
+                hasDownloads: true,
+                uploadCoordinator: uploadCoordinator,
+                downloadCoordinator: downloadCoordinator,
+                api: api,
+                tapesStore: tapesStore,
+                markClipsSynced: { syncedIds in
+                    for clipId in syncedIds {
+                        self.tapesStore.markClipSynced(clipId, inTape: tape.id)
                     }
-                } else {
-                    self.uploadCoordinator.contributeClips(tape: tape, api: api) { syncedIds in
-                        for clipId in syncedIds {
-                            self.tapesStore.markClipSynced(clipId, inTape: tape.id)
-                        }
-                        if hasDownloads, let shareId = tape.shareInfo?.shareId {
-                            self.downloadCoordinator.startDownload(
-                                shareId: shareId,
-                                api: api,
-                                tapeStore: self.tapesStore
-                            )
-                        }
+                }
+            )
+        } else if hasUploads {
+            if tape.isCollabTape {
+                uploadCoordinator.ensureTapeUploaded(
+                    tape: tape,
+                    intendedForCollaboration: true,
+                    api: api
+                )
+            } else {
+                uploadCoordinator.contributeClips(tape: tape, api: api) { syncedIds in
+                    for clipId in syncedIds {
+                        self.tapesStore.markClipSynced(clipId, inTape: tape.id)
                     }
                 }
             }
-            uploadAction(tape)
         } else if hasDownloads, let shareId = tape.shareInfo?.shareId {
             downloadCoordinator.startDownload(
                 shareId: shareId,
