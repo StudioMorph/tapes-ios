@@ -491,6 +491,29 @@ iOS                          Workers API                    R2
 
 ---
 
+## Invites
+
+### `DELETE /invites/:tape_id/decline`
+
+Marks the current user's collaborator row as `declined` for the given tape. The invite will not resurface in `GET /tapes/shared` or via push notifications.
+
+**Response:** `204 No Content`
+
+**Error:** `404` if no pending invite exists.
+
+---
+
+## `GET /tapes/shared` (Updated)
+
+Now returns both `active` and `invited` collaborator rows (excludes `declined` and `revoked`). Each row includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `share_id` | `string` | The share ID for the variant the user was invited to |
+| `status` | `string` | `active` or `invited` |
+
+---
+
 ## Scheduled Jobs (Cron Triggers)
 
 | Job | Cron | Handler |

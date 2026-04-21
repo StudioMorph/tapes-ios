@@ -10,6 +10,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
     var navigationCoordinator: NavigationCoordinator?
     var syncChecker: TapeSyncChecker?
     var tapesProvider: (() -> [Tape])?
+    var pendingInviteStore: PendingInviteStore?
 
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Push")
 
@@ -70,6 +71,14 @@ final class PushNotificationManager: NSObject, ObservableObject {
 
         log.info("[BackgroundPush] action=\(action ?? "none") tape=\(remoteTapeId ?? "none")")
 
+        if action == "tape_invite" {
+            Task { @MainActor in
+                self.handleInvitePush(userInfo: userInfo)
+                completionHandler(.newData)
+            }
+            return
+        }
+
         guard let api = apiClient,
               let checker = syncChecker,
               let tapes = tapesProvider?() else {
@@ -129,6 +138,32 @@ final class PushNotificationManager: NSObject, ObservableObject {
         ])
     }
 
+    // MARK: - Invite Push Handling
+
+    @MainActor
+    private func handleInvitePush(userInfo: [AnyHashable: Any]) {
+        guard let tapeId = userInfo["tape_id"] as? String,
+              let title = userInfo["tape_title"] as? String,
+              let ownerName = userInfo["owner_name"] as? String,
+              let shareId = userInfo["share_id"] as? String,
+              let mode = userInfo["mode"] as? String else {
+            log.warning("[InvitePush] missing required fields in payload")
+            return
+        }
+
+        let invite = PendingInvite(
+            tapeId: tapeId,
+            title: title,
+            ownerName: ownerName,
+            shareId: shareId,
+            mode: mode,
+            receivedAt: Date()
+        )
+
+        pendingInviteStore?.add(invite)
+        log.info("[InvitePush] persisted invite for '\(title)' from \(ownerName)")
+    }
+
     // MARK: - Payload Handling (user tapped notification)
 
     private func handleNotificationPayload(_ userInfo: [AnyHashable: Any]) {
@@ -167,10 +202,16 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let userInfo = notification.request.content.userInfo
-        if userInfo["action"] as? String == "sync_update",
-           let api = apiClient,
-           let checker = syncChecker,
-           let tapes = tapesProvider?() {
+        let action = userInfo["action"] as? String
+
+        if action == "tape_invite" {
+            Task { @MainActor in
+                self.handleInvitePush(userInfo: userInfo)
+            }
+        } else if action == "sync_update",
+                  let api = apiClient,
+                  let checker = syncChecker,
+                  let tapes = tapesProvider?() {
             Task { @MainActor in
                 if let remoteTapeId = userInfo["tape_id"] as? String {
                     checker.updateFromPush(remoteTapeId: remoteTapeId, tapes: tapes, api: api)

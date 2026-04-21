@@ -303,7 +303,8 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API contract (tapes, clips, collaborators, shares, manifest, sync status)
 - `Tapes/Core/Networking/TapeSyncChecker.swift` — event-driven sync: uses `POST /sync/status` (one lightweight request) instead of per-tape manifest polling. Push notifications trigger instant badge updates; 5-minute timer as fallback.
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator (progress overlay, completion dialogs); exposes `resultCreateResponse` with all four share IDs
-- `Tapes/Core/Notifications/PushNotificationManager.swift` — APNs registration, visible + silent push handling, wired to `TapeSyncChecker` for background badge updates
+- `Tapes/Core/Notifications/PushNotificationManager.swift` — APNs registration, visible + silent push handling, wired to `TapeSyncChecker` for background badge updates. Also handles `tape_invite` pushes to persist `PendingInvite` placeholders.
+- `Tapes/Core/Persistence/PendingInviteStore.swift` — persists pending tape invites (push-driven + cold-start fallback via `GET /tapes/shared`). Invites appear as placeholder cards in the Shared/Collab tabs.
 - `Tapes/Views/Share/ShareModalView.swift` — single entry point modal for sharing (Export, Save Clips, and inline `ShareLinkSection`)
 - `Tapes/Views/Share/ShareLinkSection.swift` — inline sharing UI: `Secured by email` toggle, link pill with copy + system share sheet, invite compose, authorised-users chips. Role is determined by `tape.isCollabTape` (no segmented control).
 - `Tapes/Views/Share/SharedTapesView.swift` — Shared tab (view-only tapes only)

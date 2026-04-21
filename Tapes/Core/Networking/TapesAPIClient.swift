@@ -466,6 +466,12 @@ actor TapesAPIClient {
         try await get(path: "/tapes/shared")
     }
 
+    // MARK: - Invites
+
+    func declineInvite(tapeId: String) async throws {
+        try await delete(path: "/invites/\(tapeId)/decline")
+    }
+
     // MARK: - Device Token
 
     func updateDeviceToken(_ token: String) async throws {

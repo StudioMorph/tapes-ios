@@ -10,10 +10,10 @@ struct MainTabView: View {
     @EnvironmentObject private var authManager: AuthManager
     @StateObject private var shareUploadCoordinator = ShareUploadCoordinator()
     @StateObject private var syncChecker = TapeSyncChecker()
+    @StateObject private var pendingInviteStore = PendingInviteStore()
 
     private var viewOnlyDownloadCount: Int {
-        guard !syncChecker.pendingDownloads.isEmpty else { return 0 }
-        var count = 0
+        var count = pendingInviteStore.viewOnlyInvites.count
         for tape in tapesStore.tapes where tape.isShared && !tape.isCollabTape {
             if (tape.shareInfo?.mode ?? "view_only") == "view_only",
                syncChecker.pendingDownloads[tape.id] != nil {
@@ -24,8 +24,7 @@ struct MainTabView: View {
     }
 
     private var collabDownloadCount: Int {
-        guard !syncChecker.pendingDownloads.isEmpty else { return 0 }
-        var count = 0
+        var count = pendingInviteStore.collaborativeInvites.count
         for tape in tapesStore.tapes {
             let isCollab = tape.isCollabTape || (tape.isShared && tape.shareInfo?.mode == "collaborative")
             if isCollab, syncChecker.pendingDownloads[tape.id] != nil {
@@ -33,6 +32,34 @@ struct MainTabView: View {
             }
         }
         return count
+    }
+
+    /// Cold-start fallback: fetches tapes shared with the user from the server
+    /// and creates pending invites for any not yet in the local store.
+    private func catchUpMissedInvites(api: TapesAPIClient) {
+        Task {
+            do {
+                let serverTapes = try await api.getSharedTapes()
+                await MainActor.run {
+                    for item in serverTapes {
+                        let alreadyLocal = tapesStore.sharedTape(forRemoteId: item.tapeId) != nil
+                        let alreadyPending = pendingInviteStore.contains(tapeId: item.tapeId)
+                        guard !alreadyLocal, !alreadyPending,
+                              let shareId = item.shareId else { continue }
+                        pendingInviteStore.add(PendingInvite(
+                            tapeId: item.tapeId,
+                            title: item.title,
+                            ownerName: item.ownerName,
+                            shareId: shareId,
+                            mode: item.mode,
+                            receivedAt: item.sharedAt ?? Date()
+                        ))
+                    }
+                }
+            } catch {
+                // Fallback is best-effort; don't surface errors.
+            }
+        }
     }
 
     enum AppTab: Hashable {
@@ -65,8 +92,10 @@ struct MainTabView: View {
         .tint(Tokens.Colors.systemBlue)
         .environmentObject(shareUploadCoordinator)
         .environmentObject(syncChecker)
+        .environmentObject(pendingInviteStore)
         .task {
             PushNotificationManager.shared.syncChecker = syncChecker
+            PushNotificationManager.shared.pendingInviteStore = pendingInviteStore
             PushNotificationManager.shared.tapesProvider = { [weak tapesStore] in
                 tapesStore?.tapes ?? []
             }
@@ -74,6 +103,7 @@ struct MainTabView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, let api = authManager.apiClient {
                 syncChecker.checkAll(tapes: tapesStore.tapes, api: api)
+                catchUpMissedInvites(api: api)
             }
         }
         .onReceive(Timer.publish(every: TapeSyncChecker.checkInterval, on: .main, in: .common).autoconnect()) { _ in

@@ -9,12 +9,14 @@ struct SharedTapesView: View {
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @EnvironmentObject private var syncChecker: TapeSyncChecker
+    @EnvironmentObject private var pendingInviteStore: PendingInviteStore
 
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
     @State private var tapeToSettings: Tape?
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
+    @State private var inviteToDismiss: PendingInvite?
 
     private var viewOnlyTapes: [Tape] {
         tapesStore.tapes
@@ -35,13 +37,17 @@ struct SharedTapesView: View {
 
                 if !authManager.isSignedIn {
                     signInPrompt
-                } else if viewOnlyTapes.isEmpty {
+                } else if viewOnlyTapes.isEmpty && pendingInviteStore.viewOnlyInvites.isEmpty {
                     emptyState
                 } else {
                     sharedTapeList
                 }
 
                 SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
+
+                if let invite = inviteToDismiss {
+                    dismissConfirmationOverlay(invite: invite)
+                }
             }
             .navigationTitle("Shared")
             .navigationBarTitleDisplayMode(.large)
@@ -110,9 +116,15 @@ struct SharedTapesView: View {
             }
             .onChange(of: downloadCoordinator.resultTape?.id) { _, newId in
                 guard newId != nil,
-                      let tape = downloadCoordinator.resultTape,
-                      tape.shareInfo?.mode == "collaborative" else { return }
-                navigationCoordinator.selectedTab = .collab
+                      let tape = downloadCoordinator.resultTape else { return }
+
+                if let remoteTapeId = tape.shareInfo?.remoteTapeId {
+                    pendingInviteStore.remove(tapeId: remoteTapeId)
+                }
+
+                if tape.shareInfo?.mode == "collaborative" {
+                    navigationCoordinator.selectedTab = .collab
+                }
             }
         }
         .environmentObject(importCoordinator)
@@ -150,6 +162,14 @@ struct SharedTapesView: View {
 
             ScrollView {
                 LazyVStack(spacing: Tokens.Spacing.m) {
+                    ForEach(pendingInviteStore.viewOnlyInvites) { invite in
+                        PendingInviteCard(
+                            invite: invite,
+                            onLoad: { handleLoadInvite(invite) },
+                            onDismiss: { inviteToDismiss = invite }
+                        )
+                    }
+
                     ForEach(viewOnlyTapes) { tape in
                         if let binding = tapesStore.bindingForTape(id: tape.id) {
                             let tapeID = tape.id
@@ -292,6 +312,45 @@ struct SharedTapesView: View {
         )
     }
 
+    // MARK: - Handle Load Invite
+
+    private func handleLoadInvite(_ invite: PendingInvite) {
+        pendingInviteStore.remove(tapeId: invite.tapeId)
+        handleIncomingShare(shareId: invite.shareId)
+    }
+
+    // MARK: - Dismiss Confirmation
+
+    @ViewBuilder
+    private func dismissConfirmationOverlay(invite: PendingInvite) -> some View {
+        GlassAlertCard(
+            title: "Dismiss Shared Tape?",
+            buttons: [
+                GlassAlertButton(title: "Cancel", style: .secondary) {
+                    withAnimation { inviteToDismiss = nil }
+                },
+                GlassAlertButton(title: "Dismiss", style: .destructive) {
+                    withAnimation { inviteToDismiss = nil }
+                    pendingInviteStore.remove(tapeId: invite.tapeId)
+                    if let api = authManager.apiClient {
+                        Task { try? await api.declineInvite(tapeId: invite.tapeId) }
+                    }
+                },
+            ],
+            icon: {
+                Image(systemName: "xmark.circle")
+                    .font(.system(size: 48, weight: .semibold))
+                    .foregroundStyle(Tokens.Colors.systemRed)
+            },
+            message: {
+                Text("This tape will be removed. The only way to get it back is to ask the owner to share it with you again.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+            }
+        )
+    }
+
     // MARK: - Handle Badge Download
 
     private func handleDownload(tape: Tape) {
@@ -314,4 +373,5 @@ struct SharedTapesView: View {
         .environmentObject(NavigationCoordinator())
         .environmentObject(ShareUploadCoordinator())
         .environmentObject(TapeSyncChecker())
+        .environmentObject(PendingInviteStore())
 }

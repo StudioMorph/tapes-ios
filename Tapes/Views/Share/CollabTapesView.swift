@@ -9,12 +9,14 @@ struct CollabTapesView: View {
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @EnvironmentObject private var syncChecker: TapeSyncChecker
+    @EnvironmentObject private var pendingInviteStore: PendingInviteStore
 
     @State private var tapeToPreview: Tape?
     @State private var tapeToShare: Tape?
     @State private var tapeToSettings: Tape?
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
+    @State private var inviteToDismiss: PendingInvite?
 
     private var ownerCollabTapes: [Tape] {
         tapesStore.tapes
@@ -76,6 +78,10 @@ struct CollabTapesView: View {
 
                 SharedDownloadProgressOverlay(coordinator: downloadCoordinator)
                 ImportProgressOverlay(coordinator: importCoordinator)
+
+                if let invite = inviteToDismiss {
+                    dismissConfirmationOverlay(invite: invite)
+                }
 
                 if isCollabUpload {
                     if uploadCoordinator.showProgressDialog {
@@ -219,12 +225,20 @@ struct CollabTapesView: View {
                         }
                     }
 
-                    if !receivedCollabTapes.isEmpty {
+                    if !pendingInviteStore.collaborativeInvites.isEmpty || !receivedCollabTapes.isEmpty {
                         Text("Collaborating")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Tokens.Colors.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, Tokens.Spacing.s)
+
+                        ForEach(pendingInviteStore.collaborativeInvites) { invite in
+                            PendingInviteCard(
+                                invite: invite,
+                                onLoad: { handleLoadInvite(invite) },
+                                onDismiss: { inviteToDismiss = invite }
+                            )
+                        }
 
                         ForEach(receivedCollabTapes) { tape in
                             if let binding = tapesStore.bindingForTape(id: tape.id) {
@@ -339,6 +353,50 @@ struct CollabTapesView: View {
         draftTitle = ""
     }
 
+    // MARK: - Handle Load Invite
+
+    private func handleLoadInvite(_ invite: PendingInvite) {
+        guard let api = authManager.apiClient else { return }
+        pendingInviteStore.remove(tapeId: invite.tapeId)
+        downloadCoordinator.startDownload(
+            shareId: invite.shareId,
+            api: api,
+            tapeStore: tapesStore
+        )
+    }
+
+    // MARK: - Dismiss Confirmation
+
+    @ViewBuilder
+    private func dismissConfirmationOverlay(invite: PendingInvite) -> some View {
+        GlassAlertCard(
+            title: "Dismiss Shared Tape?",
+            buttons: [
+                GlassAlertButton(title: "Cancel", style: .secondary) {
+                    withAnimation { inviteToDismiss = nil }
+                },
+                GlassAlertButton(title: "Dismiss", style: .destructive) {
+                    withAnimation { inviteToDismiss = nil }
+                    pendingInviteStore.remove(tapeId: invite.tapeId)
+                    if let api = authManager.apiClient {
+                        Task { try? await api.declineInvite(tapeId: invite.tapeId) }
+                    }
+                },
+            ],
+            icon: {
+                Image(systemName: "xmark.circle")
+                    .font(.system(size: 48, weight: .semibold))
+                    .foregroundStyle(Tokens.Colors.systemRed)
+            },
+            message: {
+                Text("This tape will be removed. The only way to get it back is to ask the owner to share it with you again.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+            }
+        )
+    }
+
     // MARK: - Handle Bidirectional Sync
 
     private func handleSync(tape: Tape) {
@@ -404,4 +462,5 @@ struct CollabTapesView: View {
         .environmentObject(NavigationCoordinator())
         .environmentObject(ShareUploadCoordinator())
         .environmentObject(TapeSyncChecker())
+        .environmentObject(PendingInviteStore())
 }
