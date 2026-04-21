@@ -326,7 +326,12 @@ struct CollabTapesView: View {
             isShareDisabled: false,
             onShare: { tapeToShare = tape },
             onSettings: { tapeToSettings = tape },
-            onPlay: { tapeToPreview = tape },
+            onPlay: {
+                tapesStore.clearUnseenContent(for: tape.id)
+                var cleared = tape
+                cleared.hasUnseenContent = false
+                tapeToPreview = cleared
+            },
             onThumbnailDelete: { clip in
                 tapesStore.deleteClip(from: tapeID, clip: clip)
             },

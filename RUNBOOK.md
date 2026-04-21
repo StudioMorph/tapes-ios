@@ -314,6 +314,10 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - `Tapes/Features/Import/SharedTapeDownloadCoordinator.swift` — recipient download + tape builder (writes assets into Photos library + tape-specific album)
 - `Tapes/Core/Navigation/NavigationCoordinator.swift` — deep link handling
 
+### Unseen Content Indicator
+
+When incoming clips are merged into an existing tape (`TapesStore.mergeClipsIntoSharedTape`), `hasUnseenContent` is set to `true`. `TapeCardView` renders an 8pt blue dot before the title. Playing the tape clears the flag.
+
 ### Recipient Flow
 
 1. User opens share link → app resolves share ID → downloads clips from R2 (presigned GET URLs).

@@ -45,6 +45,7 @@ A tape is the top-level container. Key properties:
 | `shareInfo` | If non-nil, the tape is shared (contains `shareId`, `remoteTapeId`, `mode`, `ownerName`, `expiresAt`) |
 | `lastUploadedClipCount` | Tracks how many clips were on the server after the last upload — drives the upload badge |
 | `isCollabTape` | If true, this tape lives in the Collab tab and can only be shared as collaborative |
+| `hasUnseenContent` | Set when new clips are downloaded from another user; cleared when the tape is played |
 
 **Computed:**
 - `duration` — sum of all clip durations + transition overlaps
@@ -361,6 +362,10 @@ Every tape has four permanent share links:
 | My Tapes | Upload badge (blue, arrow up) | Local clips exceed `lastUploadedClipCount` |
 | Shared | Download badge (red, arrow down) | Server has clips the user hasn't downloaded |
 | Collab | Sync badge (bidirectional) | Pending uploads + pending downloads combined |
+
+### Unseen Content Indicator (Blue Dot)
+
+When new clips are downloaded from another user (via `mergeClipsIntoSharedTape`), the tape's `hasUnseenContent` flag is set to `true`. A small blue dot (8pt circle, `Tokens.Colors.systemBlue`) appears inline before the tape title in `TapeCardView`, separated by 4pt from the title text. The dot disappears as soon as playback is triggered for that tape, clearing the flag via `clearUnseenContent(for:)`.
 
 ### Tab Badges
 

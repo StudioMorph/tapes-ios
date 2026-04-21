@@ -304,7 +304,10 @@ struct TapesListView: View {
     }
     
     private func handlePlay(_ tape: Tape) {
-        tapeToPreview = tape
+        tapesStore.clearUnseenContent(for: tape.id)
+        var cleared = tape
+        cleared.hasUnseenContent = false
+        tapeToPreview = cleared
     }
 
     private func handleCameraCapture(completion: @escaping ([PickedMedia]) -> Void) {

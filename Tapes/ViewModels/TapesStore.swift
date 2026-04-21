@@ -625,6 +625,7 @@ extension TapesStore {
         guard !uniqueNewClips.isEmpty else { return }
 
         tapes[idx].clips.append(contentsOf: uniqueNewClips)
+        tapes[idx].hasUnseenContent = true
         tapes[idx].updatedAt = Date()
         autoSave()
     }
@@ -633,6 +634,19 @@ extension TapesStore {
         guard let tapeIdx = tapes.firstIndex(where: { $0.id == tapeId }),
               let clipIdx = tapes[tapeIdx].clips.firstIndex(where: { $0.id == clipId }) else { return }
         tapes[tapeIdx].clips[clipIdx].isSynced = true
+        autoSave()
+    }
+
+    public func markUnseenContent(for tapeId: UUID) {
+        guard let idx = tapes.firstIndex(where: { $0.id == tapeId }) else { return }
+        tapes[idx].hasUnseenContent = true
+        autoSave()
+    }
+
+    public func clearUnseenContent(for tapeId: UUID) {
+        guard let idx = tapes.firstIndex(where: { $0.id == tapeId }) else { return }
+        guard tapes[idx].hasUnseenContent else { return }
+        tapes[idx].hasUnseenContent = false
         autoSave()
     }
 

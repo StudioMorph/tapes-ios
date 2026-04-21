@@ -114,7 +114,6 @@ struct TapeCardView: View {
                 .foregroundColor(Tokens.Colors.primaryText)
                 .disableAutocorrection(true)
                 .submitLabel(.done)
-                .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                 .onSubmit { config.onCommit() }
                 .onAppear {
                     // Focus the field when editing starts
@@ -128,7 +127,6 @@ struct TapeCardView: View {
                 .foregroundColor(Tokens.Colors.primaryText)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
         }
     }
 
@@ -163,9 +161,15 @@ struct TapeCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Title row
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                // Left group: Title (hug) + 4 + pencil
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+            HStack(alignment: .center, spacing: 0) {
+                // Left group: unseen dot + Title (hug) + 4 + pencil
+                HStack(alignment: .center, spacing: 4) {
+                    if tape.hasUnseenContent {
+                        Circle()
+                            .fill(Tokens.Colors.systemBlue)
+                            .frame(width: 8, height: 8)
+                            .padding(.trailing, 4)
+                    }
                     titleTextView
                         .onTapGesture {
                             guard titleEditingConfig == nil else { return }
@@ -174,7 +178,6 @@ struct TapeCardView: View {
                     Image(systemName: "pencil")
                         .font(Tokens.Typography.headline)
                         .foregroundColor(Tokens.Colors.primaryText)
-                        .alignmentGuide(.firstTextBaseline) { d in d[.firstTextBaseline] }
                         .onTapGesture {
                             guard titleEditingConfig == nil else { return }
                             beginEditingTitle()
@@ -186,7 +189,7 @@ struct TapeCardView: View {
                 Spacer(minLength: 32)
                 
                 // Right group: share 16 settings 16 play
-                HStack(spacing: 16) {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(isShareIconDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)

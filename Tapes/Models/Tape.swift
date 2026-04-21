@@ -164,6 +164,9 @@ public struct Tape: Identifiable, Codable, Equatable {
     /// upload badge delta on My Tapes.
     public var lastUploadedClipCount: Int?
 
+    /// Set when new clips are downloaded from another user. Cleared on playback.
+    public var hasUnseenContent: Bool = false
+
     /// Tapes created in the Collab tab. These can only be shared as collaborative.
     public var isCollabTape: Bool
 
@@ -226,6 +229,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case livePhotosMuted
         case shareInfo
         case lastUploadedClipCount
+        case hasUnseenContent
         case isCollabTape
     }
     
@@ -255,6 +259,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         livePhotosMuted = try container.decodeIfPresent(Bool.self, forKey: .livePhotosMuted) ?? true
         shareInfo = try container.decodeIfPresent(ShareInfo.self, forKey: .shareInfo)
         lastUploadedClipCount = try container.decodeIfPresent(Int.self, forKey: .lastUploadedClipCount)
+        hasUnseenContent = try container.decodeIfPresent(Bool.self, forKey: .hasUnseenContent) ?? false
         isCollabTape = try container.decodeIfPresent(Bool.self, forKey: .isCollabTape) ?? false
     }
     

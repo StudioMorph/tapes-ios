@@ -198,7 +198,12 @@ struct SharedTapesView: View {
                                 isShareDisabled: true,
                                 onShare: { tapeToShare = tape },
                                 onSettings: { tapeToSettings = tape },
-                                onPlay: { tapeToPreview = tape },
+                                onPlay: {
+                                    tapesStore.clearUnseenContent(for: tape.id)
+                                    var cleared = tape
+                                    cleared.hasUnseenContent = false
+                                    tapeToPreview = cleared
+                                },
                                 onThumbnailDelete: { _ in },
                                 onCameraCapture: { completion in
                                     cameraCoordinator.presentCamera(completion: completion)
