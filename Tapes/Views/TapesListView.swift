@@ -17,6 +17,7 @@ struct TapesListView: View {
     @State private var hoveredTarget: DropTargetInfo? = nil
     @State private var showInlineTitle = false
     @State private var tapeToShare: Tape?
+    @State private var pendingMergeTape: Tape?
     private var isMyTapeUpload: Bool {
         guard let source = shareUploadCoordinator.sourceTape else { return false }
         return !source.isCollabTape && source.shareInfo?.mode != "collaborative"
@@ -165,8 +166,15 @@ struct TapesListView: View {
         .sheet(isPresented: $tapesStore.showingSettingsSheet) {
             settingsSheet
         }
-        .sheet(item: $tapeToShare) { tape in
-            ShareModalView(tape: tape)
+        .sheet(item: $tapeToShare, onDismiss: {
+            if let tape = pendingMergeTape {
+                pendingMergeTape = nil
+                handleMergeAndSave(tape)
+            }
+        }) { shareTape in
+            if let binding = tapesStore.bindingForTape(id: shareTape.id) {
+                ShareModalView(tape: binding, pendingMergeTape: $pendingMergeTape)
+            }
         }
         .fullScreenCover(item: $tapeToPreview) { tape in
             TapePlayerView(tape: tape, onDismiss: {
@@ -322,9 +330,6 @@ struct TapesListView: View {
                 },
                 onTapeDeleted: {
                     showingDeleteSuccessToast = true
-                },
-                onMergeAndSave: { tape in
-                    handleMergeAndSave(tape)
                 }
             )
         }

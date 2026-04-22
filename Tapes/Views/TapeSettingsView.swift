@@ -4,7 +4,6 @@ struct TapeSettingsView: View {
     @Binding var tape: Tape
     let onDismiss: () -> Void
     let onTapeDeleted: (() -> Void)?
-    let onMergeAndSave: ((Tape) -> Void)?
     @EnvironmentObject var tapesStore: TapesStore
     @State private var showingDeleteConfirmation = false
     @State private var isDeleting = false
@@ -14,13 +13,11 @@ struct TapeSettingsView: View {
     init(
         tape: Binding<Tape>,
         onDismiss: @escaping () -> Void = {},
-        onTapeDeleted: (() -> Void)? = nil,
-        onMergeAndSave: ((Tape) -> Void)? = nil
+        onTapeDeleted: (() -> Void)? = nil
     ) {
         self._tape = tape
         self.onDismiss = onDismiss
         self.onTapeDeleted = onTapeDeleted
-        self.onMergeAndSave = onMergeAndSave
     }
     
     var body: some View {
@@ -36,11 +33,8 @@ struct TapeSettingsView: View {
                     livePhotosSection
                         .accessibilitySortPriority(3)
 
-                    mergeAndSaveSection
-                        .accessibilitySortPriority(4)
-
                     destructiveActionSection
-                        .accessibilitySortPriority(5)
+                        .accessibilitySortPriority(4)
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
@@ -257,109 +251,6 @@ struct TapeSettingsView: View {
             updated.clips[i].livePhotoMuted = nil
         }
         tape = updated
-    }
-
-    private var mergeAndSaveSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
-            SectionHeader(title: "Merge and Save")
-
-            if tape.duration > Tokens.Timing.maxTapeDuration || tape.clips.count > Tokens.Timing.maxTapeClipCount {
-                HStack(spacing: Tokens.Spacing.m) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Tokens.Colors.secondaryText)
-
-                    Text("Merge and export are only available for tapes under \(Int(Tokens.Timing.maxTapeDuration / 60)) minutes or with fewer than \(Tokens.Timing.maxTapeClipCount) clips.")
-                        .font(Tokens.Typography.caption)
-                        .foregroundColor(Tokens.Colors.secondaryText)
-                }
-                .padding(.vertical, Tokens.Spacing.m)
-                .padding(.horizontal, Tokens.Spacing.m)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Tokens.Colors.secondaryBackground)
-                .cornerRadius(Tokens.Radius.card)
-            } else {
-                VStack(spacing: Tokens.Spacing.s) {
-                    ForEach(ExportOrientation.allCases) { orientation in
-                        exportOrientationCell(orientation)
-                    }
-                }
-            }
-        }
-    }
-
-    private func exportOrientationCell(_ orientation: ExportOrientation) -> some View {
-        let isSelected = tape.exportOrientation == orientation
-
-        return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                tape.exportOrientation = orientation
-            }
-            provideHapticFeedback()
-        } label: {
-            VStack(spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
-                        HStack(spacing: Tokens.Spacing.s) {
-                            Image(systemName: orientation.icon)
-                                .font(.system(size: 17, weight: .medium))
-                                .foregroundColor(Tokens.Colors.primaryText)
-                                .frame(width: 24)
-
-                            Text(orientation.displayName)
-                                .font(Tokens.Typography.headline)
-                                .foregroundColor(Tokens.Colors.primaryText)
-                        }
-
-                        Text(orientation.description)
-                            .font(Tokens.Typography.caption)
-                            .foregroundColor(Tokens.Colors.secondaryText)
-                            .padding(.leading, 24 + Tokens.Spacing.s)
-                    }
-
-                    Spacer()
-
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(Tokens.Typography.title)
-                    }
-                }
-
-                if isSelected {
-                    Toggle(isOn: $tape.blurExportBackground) {
-                        Text("Background Blur")
-                            .font(.subheadline)
-                            .foregroundColor(Tokens.Colors.primaryText)
-                    }
-                    .tint(Color(red: 0, green: 0.533, blue: 1))
-                    .padding(.top, Tokens.Spacing.l)
-
-                    Button {
-                        let tapeSnapshot = tape
-                        onDismiss()
-                        onMergeAndSave?(tapeSnapshot)
-                    } label: {
-                        Text("Save and Merge")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .buttonBorderShape(.capsule)
-                    .tint(Color(red: 0, green: 0.533, blue: 1))
-                    .padding(.top, Tokens.Spacing.l)
-                }
-            }
-            .padding(.vertical, Tokens.Spacing.m)
-            .padding(.horizontal, Tokens.Spacing.m)
-            .background(Tokens.Colors.secondaryBackground)
-            .cornerRadius(Tokens.Radius.card)
-        }
-        .buttonStyle(.plain)
-        .frame(minHeight: Tokens.HitTarget.minimum)
-        .accessibilityLabel(orientation.displayName)
-        .accessibilityHint(orientation.description)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var destructiveActionSection: some View {

@@ -132,16 +132,17 @@ struct SharedTapesView: View {
             }
         }
         .environmentObject(importCoordinator)
-        .sheet(item: $tapeToShare) { tape in
-            ShareModalView(tape: tape)
+        .sheet(item: $tapeToShare) { shareTape in
+            if let binding = tapesStore.bindingForTape(id: shareTape.id) {
+                ShareModalView(tape: binding, pendingMergeTape: .constant(nil))
+            }
         }
         .sheet(item: $tapeToSettings) { settingsTape in
             if let binding = tapesStore.bindingForTape(id: settingsTape.id) {
                 TapeSettingsView(
                     tape: binding,
                     onDismiss: { tapeToSettings = nil },
-                    onTapeDeleted: { tapeToSettings = nil },
-                    onMergeAndSave: { _ in }
+                    onTapeDeleted: { tapeToSettings = nil }
                 )
             }
         }

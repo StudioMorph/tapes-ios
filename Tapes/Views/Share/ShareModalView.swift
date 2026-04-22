@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct ShareModalView: View {
-    let tape: Tape
+    @Binding var tape: Tape
+    @Binding var pendingMergeTape: Tape?
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
 
@@ -23,7 +24,7 @@ struct ShareModalView: View {
                         ShareLinkSection(tape: tape)
                     }
 
-                    exportSection
+                    mergeAndSaveSection
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.top, Tokens.Spacing.l)
@@ -59,76 +60,121 @@ struct ShareModalView: View {
         }
     }
 
-    // MARK: - Export
+    // MARK: - Merge and Save
 
-    private var exportSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.m) {
-            SectionHeader(title: "Export Tape")
+    private var mergeAndSaveSection: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
+            SectionHeader(title: "Merge and Save")
 
-            shareOptionRow(
-                icon: "square.and.arrow.down",
-                title: "Export as Video",
-                subtitle: "Save a single video to your Photos library",
-                action: {
-                    dismiss()
-                    // TODO: Trigger export coordinator
+            if tape.duration > Tokens.Timing.maxTapeDuration || tape.clips.count > Tokens.Timing.maxTapeClipCount {
+                HStack(spacing: Tokens.Spacing.m) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(Tokens.Colors.secondaryText)
+
+                    Text("Merge and export are only available for tapes under \(Int(Tokens.Timing.maxTapeDuration / 60)) minutes or with fewer than \(Tokens.Timing.maxTapeClipCount) clips.")
+                        .font(Tokens.Typography.caption)
+                        .foregroundColor(Tokens.Colors.secondaryText)
                 }
-            )
+                .padding(.vertical, Tokens.Spacing.m)
+                .padding(.horizontal, Tokens.Spacing.m)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Tokens.Colors.secondaryBackground)
+                .cornerRadius(Tokens.Radius.card)
+            } else {
+                VStack(spacing: Tokens.Spacing.s) {
+                    ForEach(ExportOrientation.allCases) { orientation in
+                        exportOrientationCell(orientation)
+                    }
+                }
+            }
         }
     }
 
-    // MARK: - Option Row
+    private func exportOrientationCell(_ orientation: ExportOrientation) -> some View {
+        let isSelected = tape.exportOrientation == orientation
 
-    private func shareOptionRow(
-        icon: String,
-        title: String,
-        subtitle: String,
-        disabled: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: Tokens.Spacing.m) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(disabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
-                    .frame(width: 32)
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                tape.exportOrientation = orientation
+            }
+            provideHapticFeedback()
+        } label: {
+            VStack(spacing: 0) {
+                HStack {
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+                        HStack(spacing: Tokens.Spacing.s) {
+                            Image(systemName: orientation.icon)
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundColor(Tokens.Colors.primaryText)
+                                .frame(width: 24)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(disabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                            Text(orientation.displayName)
+                                .font(Tokens.Typography.headline)
+                                .foregroundColor(Tokens.Colors.primaryText)
+                        }
 
-                    Text(subtitle)
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Colors.secondaryText)
+                        Text(orientation.description)
+                            .font(Tokens.Typography.caption)
+                            .foregroundColor(Tokens.Colors.secondaryText)
+                            .padding(.leading, 24 + Tokens.Spacing.s)
+                    }
+
+                    Spacer()
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(Tokens.Typography.title)
+                    }
                 }
 
-                Spacer()
+                if isSelected {
+                    Toggle(isOn: $tape.blurExportBackground) {
+                        Text("Background Blur")
+                            .font(.subheadline)
+                            .foregroundColor(Tokens.Colors.primaryText)
+                    }
+                    .tint(Color(red: 0, green: 0.533, blue: 1))
+                    .padding(.top, Tokens.Spacing.l)
 
-                if disabled {
-                    Text("Together")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Tokens.Colors.systemBlue)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Tokens.Colors.systemBlue.opacity(0.15))
-                        .clipShape(Capsule())
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Tokens.Colors.tertiaryText)
+                    Button {
+                        pendingMergeTape = tape
+                        dismiss()
+                    } label: {
+                        Text("Save and Merge")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .buttonBorderShape(.capsule)
+                    .tint(Color(red: 0, green: 0.533, blue: 1))
+                    .padding(.top, Tokens.Spacing.l)
                 }
             }
-            .padding(Tokens.Spacing.m)
+            .padding(.vertical, Tokens.Spacing.m)
+            .padding(.horizontal, Tokens.Spacing.m)
             .background(Tokens.Colors.secondaryBackground)
-            .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
+            .cornerRadius(Tokens.Radius.card)
         }
         .buttonStyle(.plain)
-        .disabled(disabled)
+        .frame(minHeight: Tokens.HitTarget.minimum)
+        .accessibilityLabel(orientation.displayName)
+        .accessibilityHint(orientation.description)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    // MARK: - Helpers
+
+    private func provideHapticFeedback() {
+        #if os(iOS)
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        #endif
     }
 }
 
 #Preview {
-    ShareModalView(tape: Tape.sampleTapes[1])
+    ShareModalView(tape: .constant(Tape.sampleTapes[1]), pendingMergeTape: .constant(nil))
         .environmentObject(ShareUploadCoordinator())
 }
