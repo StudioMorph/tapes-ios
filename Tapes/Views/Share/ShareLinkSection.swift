@@ -76,11 +76,15 @@ struct ShareLinkSection: View {
 
             VStack(spacing: Tokens.Spacing.m) {
                 securedToggle
-                linkBlock
+
                 if securedByEmail {
                     emailInputRow
+                        .transition(.opacity)
                     authorisedUsersList
+                        .transition(.opacity)
                 }
+
+                linkBlock
 
                 if let error = errorMessage {
                     Text(error)
@@ -90,6 +94,7 @@ struct ShareLinkSection: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .animation(.easeInOut(duration: 0.3), value: securedByEmail)
             .padding(Tokens.Spacing.m)
             .background(Tokens.Colors.secondaryBackground)
             .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
