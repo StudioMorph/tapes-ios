@@ -610,10 +610,12 @@ private struct FlowLayout: Layout {
         var lineWidth: CGFloat = 0
         var totalHeight: CGFloat = 0
         var lineHeight: CGFloat = 0
+        var maxUsedWidth: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if lineWidth + size.width > maxWidth {
+            if lineWidth + size.width > maxWidth && lineWidth > 0 {
+                maxUsedWidth = max(maxUsedWidth, lineWidth - spacing)
                 totalHeight += lineHeight + spacing
                 lineWidth = size.width + spacing
                 lineHeight = size.height
@@ -623,8 +625,8 @@ private struct FlowLayout: Layout {
             }
         }
         totalHeight += lineHeight
-        let used = min(lineWidth, maxWidth == .infinity ? lineWidth : maxWidth)
-        return CGSize(width: used, height: totalHeight)
+        maxUsedWidth = max(maxUsedWidth, lineWidth - spacing)
+        return CGSize(width: min(maxUsedWidth, maxWidth), height: totalHeight)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
