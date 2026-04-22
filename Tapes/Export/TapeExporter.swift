@@ -40,6 +40,12 @@ public final class TapeExportSession: @unchecked Sendable {
         var allAudioParams = components.audioMix?.inputParameters ?? []
         let totalDuration = components.timeline.totalDuration
 
+        log.info("Composition built: videoTracks=\(composition.tracks(withMediaType: .video).count), audioTracks=\(composition.tracks(withMediaType: .audio).count), audioMixParams=\(allAudioParams.count), musicMood=\(tape.musicMood.rawValue)")
+        for (i, clip) in tape.clips.enumerated() {
+            let kind = clip.isLivePhoto ? "livePhoto" : (clip.assetLocalId != nil ? "photo/video" : "image")
+            log.info("  clip[\(i)] kind=\(kind), isLivePhoto=\(clip.isLivePhoto), duration=\(clip.duration)s, assetId=\(clip.assetLocalId ?? "nil")")
+        }
+
         if tape.musicMood != .none {
             let musicURL = await MubertAPIClient.shared.cachedTrackURL(for: tape.id)
             if let musicURL {
@@ -161,8 +167,37 @@ public final class TapeExportSession: @unchecked Sendable {
         let assetReader = try AVAssetReader(asset: asset)
         self.reader = assetReader
 
+        let videoTracks = asset.tracks(withMediaType: .video)
+        let audioTracks = asset.tracks(withMediaType: .audio)
+        log.info("Composition has \(videoTracks.count) video track(s), \(audioTracks.count) audio track(s)")
+
+        for (i, vt) in videoTracks.enumerated() {
+            let fds = vt.formatDescriptions as? [CMFormatDescription] ?? []
+            log.info("  videoTrack[\(i)] id=\(vt.trackID), segments=\(vt.segments.count), formatDescriptions=\(fds.count)")
+        }
+        for (i, at) in audioTracks.enumerated() {
+            let fds = at.formatDescriptions as? [CMFormatDescription] ?? []
+            let fdDetails = fds.map { fd -> String in
+                let mediaType = CMFormatDescriptionGetMediaType(fd)
+                let mediaSubType = CMFormatDescriptionGetMediaSubType(fd)
+                let fourCC = String(format: "%c%c%c%c",
+                    (mediaSubType >> 24) & 0xFF,
+                    (mediaSubType >> 16) & 0xFF,
+                    (mediaSubType >> 8) & 0xFF,
+                    mediaSubType & 0xFF)
+                if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(fd)?.pointee {
+                    return "type=\(mediaType) subtype=\(fourCC) sampleRate=\(asbd.mSampleRate) channels=\(asbd.mChannelsPerFrame) bitsPerCh=\(asbd.mBitsPerChannel) formatID=\(asbd.mFormatID)"
+                }
+                return "type=\(mediaType) subtype=\(fourCC) (no ASBD)"
+            }
+            let tr = at.timeRange
+            let trDesc = "start=\(CMTimeGetSeconds(tr.start))s, dur=\(CMTimeGetSeconds(tr.duration))s"
+            log.info("  audioTrack[\(i)] id=\(at.trackID), segments=\(at.segments.count), timeRange=[\(trDesc)], formatDescriptions=\(fdDetails)")
+        }
+        log.info("  audioMix.inputParameters count=\(audioMix.inputParameters.count)")
+
         let videoOutput = AVAssetReaderVideoCompositionOutput(
-            videoTracks: asset.tracks(withMediaType: .video),
+            videoTracks: videoTracks,
             videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         )
         videoOutput.videoComposition = videoComposition
@@ -172,10 +207,12 @@ public final class TapeExportSession: @unchecked Sendable {
         assetReader.add(videoOutput)
 
         var audioOutput: AVAssetReaderAudioMixOutput?
-        let audioTracks = asset.tracks(withMediaType: .audio)
-        if !audioTracks.isEmpty {
+        let populatedAudioTracks = audioTracks.filter { !(($0.formatDescriptions as? [CMFormatDescription]) ?? []).isEmpty }
+        log.info("  Populated audio tracks (with format descriptions): \(populatedAudioTracks.count) of \(audioTracks.count)")
+
+        if !populatedAudioTracks.isEmpty {
             let ao = AVAssetReaderAudioMixOutput(
-                audioTracks: audioTracks,
+                audioTracks: populatedAudioTracks,
                 audioSettings: [
                     AVFormatIDKey: kAudioFormatLinearPCM,
                     AVLinearPCMBitDepthKey: 16,
@@ -185,10 +222,16 @@ public final class TapeExportSession: @unchecked Sendable {
                 ]
             )
             ao.audioMix = audioMix
-            if assetReader.canAdd(ao) {
+            let canAddAudio = assetReader.canAdd(ao)
+            log.info("  canAdd audioMixOutput=\(canAddAudio)")
+            if canAddAudio {
                 assetReader.add(ao)
                 audioOutput = ao
+            } else {
+                log.warning("  Skipping audio output — reader cannot add it")
             }
+        } else {
+            log.info("  No populated audio tracks, skipping audio reader")
         }
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
@@ -225,8 +268,12 @@ public final class TapeExportSession: @unchecked Sendable {
             }
         }
 
+        log.info("About to call assetReader.startReading(), status=\(assetReader.status.rawValue)")
         guard assetReader.startReading() else {
-            let message = assetReader.error?.localizedDescription ?? "Unknown reader error"
+            let readerErr = assetReader.error
+            let message = readerErr?.localizedDescription ?? "Unknown reader error"
+            let nsErr = readerErr as NSError?
+            log.error("Reader failed to start: \(message), domain=\(nsErr?.domain ?? "nil"), code=\(nsErr?.code ?? 0), underlyingError=\(nsErr?.userInfo[NSUnderlyingErrorKey].map { String(describing: $0) } ?? "nil")")
             throw ExportError.exportFailed("Reader failed to start: \(message)")
         }
         guard writer.startWriting() else {
