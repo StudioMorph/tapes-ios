@@ -123,7 +123,7 @@ struct TapesList: View {
             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             .overlay(alignment: .bottomTrailing) {
                 let isUploadingThisTape = uploadCoordinator.isUploading && uploadCoordinator.sourceTape?.id == tape.id
-                if tape.pendingUploadCount > 0, !isUploadingThisTape {
+                if tape.pendingUploadCount > 0, !isUploadingThisTape, tapeStore.jigglingTapeID == nil {
                     SyncBadge(count: tape.pendingUploadCount, direction: .upload) {
                         onSyncUpload?(tape)
                     }

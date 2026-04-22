@@ -13,8 +13,6 @@ struct TapesListView: View {
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
     @State private var showingDeleteSuccessToast = false
-    @State private var dropTargets: [DropTargetInfo] = []
-    @State private var hoveredTarget: DropTargetInfo? = nil
     @State private var showInlineTitle = false
     @State private var tapeToShare: Tape?
     @State private var pendingMergeTape: Tape?
@@ -50,35 +48,6 @@ struct TapesListView: View {
                     )
                 }
 
-                if let clip = tapesStore.floatingClip {
-                    GeometryReader { containerGeo in
-                        let origin = containerGeo.frame(in: .global).origin
-                        floatingClipOverlay(clip: clip, containerOrigin: origin)
-                    }
-                }
-            }
-            .onPreferenceChange(DropTargetPreferenceKey.self) { targets in
-                dropTargets = targets
-            }
-            .onChange(of: tapesStore.floatingPosition) { _, newPos in
-                if tapesStore.isFloatingClip {
-                    updateHoverTarget(at: newPos)
-                }
-            }
-            .onChange(of: tapesStore.floatingDragDidEnd) { _, didEnd in
-                guard didEnd, tapesStore.isFloatingClip else { return }
-                tapesStore.isFloatingDragActive = false
-                let location = tapesStore.floatingPosition
-                let target = dropTargets.first {
-                    $0.frame.contains(location) && $0.tapeID == tapesStore.jigglingTapeID
-                }
-                if let target {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        tapesStore.dropFloatingClip(onTape: target.tapeID, atIndex: target.insertionIndex, afterClipID: target.seamLeftClipID, beforeClipID: target.seamRightClipID)
-                    }
-                }
-                hoveredTarget = nil
-                tapesStore.floatingDragDidEnd = false
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -188,83 +157,6 @@ struct TapesListView: View {
                 .ignoresSafeArea(.all, edges: .all)
         }
         .overlay(exportOverlay)
-    }
-
-    // MARK: - Floating Clip Overlay
-
-    @ViewBuilder
-    private func floatingClipOverlay(clip: Clip, containerOrigin: CGPoint) -> some View {
-        let size = tapesStore.floatingThumbSize
-        let isHovering = hoveredTarget != nil
-        let displayScale: CGFloat = isHovering ? 0.5 : 1.0
-        let localPos = CGPoint(
-            x: tapesStore.floatingPosition.x - containerOrigin.x,
-            y: tapesStore.floatingPosition.y - containerOrigin.y
-        )
-
-        ZStack {
-            if let thumbnail = clip.thumbnailImage {
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: size.width, height: size.height)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            } else {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Tokens.Colors.tertiaryBackground)
-                    .frame(width: size.width, height: size.height)
-            }
-        }
-        .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 6)
-        .overlay(alignment: .topTrailing) {
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    tapesStore.returnFloatingClip()
-                }
-            } label: {
-                Image(systemName: "arrow.uturn.backward")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(Tokens.Colors.primaryText)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-            }
-            .offset(x: 12, y: -12)
-        }
-        .scaleEffect(displayScale)
-        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isHovering)
-        .position(localPos)
-        .gesture(
-            DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                .onChanged { value in
-                    tapesStore.floatingPosition = value.location
-                }
-                .onEnded { value in
-                    let target = dropTargets.first {
-                        $0.frame.contains(value.location) && $0.tapeID == tapesStore.jigglingTapeID
-                    }
-                    if let target {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            tapesStore.dropFloatingClip(onTape: target.tapeID, atIndex: target.insertionIndex, afterClipID: target.seamLeftClipID, beforeClipID: target.seamRightClipID)
-                        }
-                    }
-                    hoveredTarget = nil
-                }
-        )
-        .zIndex(999)
-    }
-
-    private func updateHoverTarget(at location: CGPoint) {
-        let newTarget = dropTargets.first {
-            $0.frame.contains(location) && $0.tapeID == tapesStore.jigglingTapeID
-        }
-        if newTarget != hoveredTarget {
-            if newTarget != nil {
-                let gen = UIImpactFeedbackGenerator(style: .light)
-                gen.impactOccurred()
-            }
-            hoveredTarget = newTarget
-        }
     }
 
     // MARK: - Action Handlers

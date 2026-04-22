@@ -172,16 +172,18 @@ struct TapeCardView: View {
                     }
                     titleTextView
                         .onTapGesture {
-                            guard titleEditingConfig == nil else { return }
+                            guard !isJiggling, titleEditingConfig == nil else { return }
                             beginEditingTitle()
                         }
-                    Image(systemName: "pencil")
-                        .font(Tokens.Typography.headline)
-                        .foregroundColor(Tokens.Colors.primaryText)
-                        .onTapGesture {
-                            guard titleEditingConfig == nil else { return }
-                            beginEditingTitle()
-                        }
+                    if !isJiggling {
+                        Image(systemName: "pencil")
+                            .font(Tokens.Typography.headline)
+                            .foregroundColor(Tokens.Colors.primaryText)
+                            .onTapGesture {
+                                guard titleEditingConfig == nil else { return }
+                                beginEditingTitle()
+                            }
+                    }
                 }
                 .layoutPriority(1)
                 
@@ -192,26 +194,26 @@ struct TapeCardView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 16) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(isShareIconDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .foregroundColor(isShareIconDisabled || isJiggling ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
                         .accessibilityLabel("Share")
                         .accessibilityHint(isShareIconDisabled ? "Sharing is not available" : "")
-                        .onTapGesture { guard !isShareIconDisabled else { return }; onShare() }
+                        .onTapGesture { guard !isShareIconDisabled, !isJiggling else { return }; onShare() }
                         .id("share-\(tapeID)")
 
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(isTapeActionsDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .foregroundColor(isTapeActionsDisabled || isJiggling ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
                         .accessibilityLabel("Tape settings")
                         .accessibilityHint(isTapeActionsDisabled ? "Add clips first" : "")
-                        .onTapGesture { guard !isTapeActionsDisabled else { return }; onSettings() }
+                        .onTapGesture { guard !isTapeActionsDisabled, !isJiggling else { return }; onSettings() }
                         .id("settings-\(tapeID)")
                     
                     Image(systemName: "play.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(isTapeActionsDisabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+                        .foregroundColor(isTapeActionsDisabled || isJiggling ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
                         .accessibilityLabel("Play")
                         .accessibilityHint(isTapeActionsDisabled ? "Add clips to play" : "")
-                        .onTapGesture { guard !isTapeActionsDisabled else { return }; onPlay() }
+                        .onTapGesture { guard !isTapeActionsDisabled, !isJiggling else { return }; onPlay() }
                         .id("play-\(tapeID)")
                 }
             }
@@ -301,9 +303,6 @@ struct TapeCardView: View {
             RoundedRectangle(cornerRadius: Tokens.Radius.card)
                 .fill(Tokens.Colors.secondaryBackground)
         )
-        .onTapGesture {
-            if isJiggling { exitJiggleMode() }
-        }
         .onChange(of: tapeStore.isFloatingClip) { _, isFloating in
             if isFloating {
                 pendingTargetItemIndex = nil
@@ -447,8 +446,6 @@ struct TapeCardView: View {
     }
 
     private func enterJiggleMode() {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
         tapeStore.jigglingTapeID = tape.id
     }
 

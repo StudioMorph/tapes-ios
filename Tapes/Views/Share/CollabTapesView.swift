@@ -77,6 +77,9 @@ struct CollabTapesView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                Tokens.Colors.primaryBackground
+                    .ignoresSafeArea(.all)
+
                 if !authManager.isSignedIn {
                     signInPrompt
                 } else {
@@ -85,7 +88,7 @@ struct CollabTapesView: View {
 
                 dialogOverlays
             }
-            .modifier(SegmentedBarModifier(selection: $selectedSegment, isScrolled: isScrolled))
+            .modifier(SegmentedBarModifier(selection: $selectedSegment, isScrolled: isScrolled, isJiggling: tapesStore.jigglingTapeID != nil))
             .modifier(ScrollEdgeSoftModifier())
             .navigationTitle("Collab")
             .navigationBarTitleDisplayMode(.inline)
@@ -213,6 +216,9 @@ struct CollabTapesView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        if tapesStore.isFloatingClip {
+                            tapesStore.returnFloatingClip()
+                        }
                         tapesStore.jigglingTapeID = nil
                     }
                 }
@@ -302,6 +308,7 @@ struct CollabTapesView: View {
                 .padding(.horizontal, Tokens.Spacing.m)
                 .padding(.vertical, Tokens.Spacing.s)
             }
+            .scrollDisabled(tapesStore.isFloatingDragActive)
             .onScrollGeometryChange(for: Bool.self) { geo in
                 geo.contentOffset.y > 4
             } action: { _, scrolled in
@@ -362,7 +369,7 @@ struct CollabTapesView: View {
             let isActive = syncCoordinator.isSyncing
                 || (uploadCoordinator.isUploading && uploadCoordinator.sourceTape?.id == tape.id)
                 || downloadCoordinator.isDownloading
-            if total > 0, tape.shareInfo != nil, !isActive {
+            if total > 0, tape.shareInfo != nil, !isActive, tapesStore.jigglingTapeID == nil {
                 SyncBadge(count: total, direction: .sync) {
                     handleSync(tape: tape)
                 }
@@ -531,6 +538,7 @@ private struct ScrollEdgeSoftModifier: ViewModifier {
 private struct SegmentedBarModifier: ViewModifier {
     @Binding var selection: CollabTapesView.CollabSegment
     var isScrolled: Bool
+    var isJiggling: Bool
 
     private var picker: some View {
         Picker("", selection: $selection) {
@@ -540,6 +548,9 @@ private struct SegmentedBarModifier: ViewModifier {
         }
         .pickerStyle(.segmented)
         .controlSize(.large)
+        .disabled(isJiggling)
+        .opacity(isJiggling ? 0.4 : 1)
+        .animation(.easeInOut(duration: 0.25), value: isJiggling)
         .padding(.horizontal, Tokens.Spacing.m)
         .padding(.vertical, Tokens.Spacing.s)
     }

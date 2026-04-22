@@ -125,8 +125,11 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
         coordinator.isUpdatingView = true
 
         coordinator.parent = self
-        coordinator.longPressGesture?.isEnabled = isLongPressEnabled
-        coordinator.jigglePressGesture?.isEnabled = !isLongPressEnabled
+        let wantsLongPress = isLongPressEnabled
+        if wantsLongPress != (coordinator.longPressGesture?.isEnabled ?? false) {
+            coordinator.pendingGestureSwap = wantsLongPress
+            coordinator.scheduleGestureSwap()
+        }
 
         let oldIds = coordinator.currentItemIds
         let newIds = items.map(\.id)
@@ -284,9 +287,24 @@ struct SnappingCarouselView<CellContent: View>: UIViewRepresentable {
         var currentSnapIndex: Int = 1
         private var lastReportedStartFrame: CGRect?
         private var lastReportedEndFrame: CGRect?
+        var pendingGestureSwap: Bool?
 
         init(parent: SnappingCarouselView) {
             self.parent = parent
+        }
+
+        func scheduleGestureSwap() {
+            guard let wantsLongPress = pendingGestureSwap else { return }
+            let jiggle = jigglePressGesture
+            if let jiggle, jiggle.state != .possible, jiggle.state != .ended, jiggle.state != .failed, jiggle.state != .cancelled {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.scheduleGestureSwap()
+                }
+                return
+            }
+            pendingGestureSwap = nil
+            longPressGesture?.isEnabled = wantsLongPress
+            jigglePressGesture?.isEnabled = !wantsLongPress
         }
 
         // MARK: - Flow Layout
