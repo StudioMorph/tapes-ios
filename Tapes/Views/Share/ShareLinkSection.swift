@@ -506,6 +506,13 @@ struct ShareLinkSection: View {
             )
             uploadCoordinator.seedCreateResponse(response, for: tape)
             await reloadCollaborators(using: api, tapeId: remoteTapeId)
+
+            let hasProtectedCollaborators = collaborators.contains {
+                $0.role != "owner" && ($0.shareVariant?.isProtected == true)
+            }
+            if hasProtectedCollaborators {
+                securedByEmail = true
+            }
         } catch {
             // Tape hasn't been shared yet — this is the normal first-time path.
         }
