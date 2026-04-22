@@ -69,3 +69,23 @@ Items to revisit when time allows. Not urgent, not blocking — just worth doing
 **Files likely involved**: `ShareUploadCoordinator.swift` (iOS — hash before upload), `tapes-api/src/routes/clips.ts` (server — dedup check on `createClip`/`confirmUpload`), `tapes-api/src/routes/scheduled.ts` (cleanup — reference counting).
 
 ---
+
+## Localization
+
+### 6. Localize the app with String Catalogs and add Portuguese
+
+**Context**: All user-facing strings are hardcoded in English. Apple's String Catalog system (`.xcstrings`) provides type-safe, compiler-checked localization with auto-generated Swift symbols.
+
+**Plan**:
+- Enable String Catalog Symbol Generation (already toggled in project settings).
+- Create a `.xcstrings` catalog file.
+- Extract all user-facing strings (~100-200) across views, sheets, alerts, badges, and buttons into the catalog.
+- Replace hardcoded strings with catalog references throughout the codebase.
+- Add Portuguese (PT) translations for all keys.
+- Review translations for tone — some terms (Tape, Clip, Mood, Live Photo) may be better kept in English.
+
+**Scope**: Touches almost every view file. Mechanical but large. Half-day project. No logic changes — purely additive.
+
+**Files likely involved**: New `.xcstrings` file, all files under `Tapes/Views/`, `Tapes/Components/`, `Tapes/Features/`, `Tapes/Export/ExportDialogs.swift`, `Tapes/DesignSystem/`.
+
+---
