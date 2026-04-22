@@ -347,7 +347,7 @@ public class ExportCoordinator: ObservableObject {
     private func beginBackgroundExportTask() {
         guard backgroundTaskID == .invalid else { return }
         backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
-            self?.endBackgroundExportTask()
+            Task { @MainActor in self?.endBackgroundExportTask() }
         }
     }
 

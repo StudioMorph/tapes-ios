@@ -817,9 +817,8 @@ final class TapePlayerViewModel: ObservableObject {
             forInterval: interval, queue: .main
         ) { [weak self] time in
             guard let self else { return }
-            guard !self.isSeekingToClip else { return }
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, !self.isSeekingToClip else { return }
                 self.updatePlaybackMetrics(localTime: time)
                 self.maybeStartTransition(localTime: time)
             }

@@ -38,13 +38,13 @@ final class BlurredBackgroundInstruction: NSObject, AVVideoCompositionInstructio
 
 final class BlurredBackgroundCompositor: NSObject, AVVideoCompositing {
 
-    var sourcePixelBufferAttributes: [String: Any]? = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-    ]
+    var sourcePixelBufferAttributes: [String: Any]? {
+        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+    }
 
-    var requiredPixelBufferAttributesForRenderContext: [String: Any] = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-    ]
+    var requiredPixelBufferAttributesForRenderContext: [String: Any] {
+        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+    }
 
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     private let blurSigma: Double = 100.0

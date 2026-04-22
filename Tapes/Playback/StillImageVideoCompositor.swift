@@ -47,15 +47,11 @@ final class StillImageVideoCompositor: NSObject, AVVideoCompositing, @unchecked 
     private var cachedRenderSize: CGSize = .zero
 
     var sourcePixelBufferAttributes: [String: Any]? {
-        [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-        ]
+        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
     }
 
     var requiredPixelBufferAttributesForRenderContext: [String: Any] {
-        [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-        ]
+        [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
     }
 
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {

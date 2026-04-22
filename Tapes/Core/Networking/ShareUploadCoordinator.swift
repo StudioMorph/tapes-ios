@@ -840,7 +840,7 @@ public class ShareUploadCoordinator: ObservableObject {
     private func beginBackgroundTask() {
         guard backgroundTaskID == .invalid else { return }
         backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
-            self?.endBackgroundTask()
+            Task { @MainActor in self?.endBackgroundTask() }
         }
     }
 

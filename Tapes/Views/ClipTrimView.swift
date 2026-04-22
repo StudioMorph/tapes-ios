@@ -333,7 +333,7 @@ struct ClipTrimView: View {
             currentTime = t
             if t >= trimEndTime && isPlaying {
                 player.pause()
-                musicPlayer.syncPause()
+                Task { @MainActor in musicPlayer.syncPause() }
                 isPlaying = false
                 seekTo(trimStart)
             }
