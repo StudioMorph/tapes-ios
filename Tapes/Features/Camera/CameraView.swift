@@ -726,13 +726,17 @@ struct CameraView: View {
     }
 
     private func buildVideoThumbnailCache() {
-        for item in capture.capturedItems {
-            if case let .video(url, _, _) = item, let url, videoThumbnailCache[url] == nil {
+        let itemsToProcess = capture.capturedItems.compactMap { item -> URL? in
+            if case let .video(url, _, _) = item, let url, videoThumbnailCache[url] == nil { return url }
+            return nil
+        }
+        Task {
+            for url in itemsToProcess {
                 let asset = AVURLAsset(url: url)
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
                 generator.maximumSize = CGSize(width: 600, height: 600)
-                if let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) {
+                if let (cgImage, _) = try? await generator.image(at: .zero) {
                     videoThumbnailCache[url] = UIImage(cgImage: cgImage)
                 }
             }

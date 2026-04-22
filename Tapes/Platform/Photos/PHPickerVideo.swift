@@ -51,45 +51,41 @@ struct PHPickerVideo: UIViewControllerRepresentable {
                 }
                 
                 // Create AVAsset from the URL
-                let asset = AVAsset(url: url)
+                let asset = AVURLAsset(url: url)
                 self.processVideo(asset: asset, originalURL: url)
             }
         }
         
         private func processVideo(asset: AVAsset, originalURL: URL) {
-            // Get duration
-            let duration = CMTimeGetSeconds(asset.duration)
-            
-            // Generate thumbnail
-            let thumbnail = generateThumbnail(from: asset)
-            
-            // Copy to temp directory
-            guard let tempURL = copyToTemp(originalURL: originalURL) else {
-                DispatchQueue.main.async {
+            Task {
+                let duration = try? await asset.load(.duration)
+                let durationSeconds = duration.map { CMTimeGetSeconds($0) } ?? 0
+
+                let thumbnail = await generateThumbnail(from: asset)
+
+                guard let tempURL = copyToTemp(originalURL: originalURL) else {
+                    await MainActor.run {
+                        self.parent.isPresented = false
+                    }
+                    return
+                }
+
+                await MainActor.run {
+                    self.parent.onVideoSelected(tempURL, durationSeconds, thumbnail)
                     self.parent.isPresented = false
                 }
-                return
-            }
-            
-            DispatchQueue.main.async {
-                self.parent.onVideoSelected(tempURL, duration, thumbnail)
-                self.parent.isPresented = false
             }
         }
         
-        private func generateThumbnail(from asset: AVAsset) -> UIImage? {
+        private func generateThumbnail(from asset: AVAsset) async -> UIImage? {
             let imageGenerator = AVAssetImageGenerator(asset: asset)
             imageGenerator.appliesPreferredTrackTransform = true
             imageGenerator.maximumSize = CGSize(width: 320, height: 320)
             
             let time = CMTime(seconds: 1.0, preferredTimescale: 60)
             
-            do {
-                let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
-                return UIImage(cgImage: cgImage)
-            } catch {
-                return nil
-            }
+            guard let (cgImage, _) = try? await imageGenerator.image(at: time) else { return nil }
+            return UIImage(cgImage: cgImage)
         }
         
         private func copyToTemp(originalURL: URL) -> URL? {

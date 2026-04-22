@@ -59,8 +59,8 @@ struct TapeSettingsSheet: View {
                 }
             }
         }
-        .onChange(of: transitionDuration) { _ in hasChanges = true }
-        .onChange(of: tape) { _ in resetToBindingValues() }
+        .onChange(of: transitionDuration) { hasChanges = true }
+        .onChange(of: tape) { resetToBindingValues() }
         .alert("Delete this Tape?", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {

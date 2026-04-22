@@ -367,13 +367,13 @@ final class CaptureService: NSObject, ObservableObject {
     private func subscribeToSubjectAreaChanges(device: AVCaptureDevice) {
         NotificationCenter.default.removeObserver(
             self,
-            name: .AVCaptureDeviceSubjectAreaDidChange,
+            name: AVCaptureDevice.subjectAreaDidChangeNotification,
             object: nil
         )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleSubjectAreaChange(_:)),
-            name: .AVCaptureDeviceSubjectAreaDidChange,
+            name: AVCaptureDevice.subjectAreaDidChangeNotification,
             object: device
         )
     }
@@ -688,19 +688,21 @@ extension CaptureService: AVCaptureFileOutputRecordingDelegate {
                 self.capturedCount = self.capturedItems.count
                 self.onVideoCaptured?(outputFileURL, duration)
 
-                if let thumb = self.generateVideoThumbnail(from: outputFileURL) {
-                    self.onThumbnailUpdated?(thumb)
+                Task {
+                    if let thumb = await self.generateVideoThumbnail(from: outputFileURL) {
+                        self.onThumbnailUpdated?(thumb)
+                    }
                 }
             }
         }
     }
 
-    private func generateVideoThumbnail(from url: URL) -> UIImage? {
+    private func generateVideoThumbnail(from url: URL) async -> UIImage? {
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 200, height: 200)
-        guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+        guard let (cgImage, _) = try? await generator.image(at: .zero) else { return nil }
         return UIImage(cgImage: cgImage)
     }
 }

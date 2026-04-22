@@ -49,7 +49,7 @@ public final class TapeExportSession: @unchecked Sendable {
         if tape.musicMood != .none {
             let musicURL = await MubertAPIClient.shared.cachedTrackURL(for: tape.id)
             if let musicURL {
-                try Self.addBackgroundMusic(
+                try await Self.addBackgroundMusic(
                     to: composition,
                     musicURL: musicURL,
                     tapeVolume: tape.musicVolume,
@@ -101,9 +101,10 @@ public final class TapeExportSession: @unchecked Sendable {
         segments: [TapeCompositionBuilder.Segment],
         totalDuration: CMTime,
         audioParams: inout [AVAudioMixInputParameters]
-    ) throws {
+    ) async throws {
         let musicAsset = AVURLAsset(url: musicURL)
-        guard let musicSourceTrack = musicAsset.tracks(withMediaType: .audio).first else {
+        let audioTracks = try await musicAsset.loadTracks(withMediaType: .audio)
+        guard let musicSourceTrack = audioTracks.first else {
             log.warning("Music file has no audio track, skipping")
             return
         }
@@ -116,7 +117,7 @@ public final class TapeExportSession: @unchecked Sendable {
             return
         }
 
-        let musicDuration = musicAsset.duration
+        let musicDuration = try await musicAsset.load(.duration)
         var cursor = CMTime.zero
 
         while CMTimeCompare(cursor, totalDuration) < 0 {

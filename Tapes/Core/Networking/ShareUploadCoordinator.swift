@@ -707,21 +707,14 @@ public class ShareUploadCoordinator: ObservableObject {
 
                     let tempDir = FileManager.default.temporaryDirectory
                     let tempURL = tempDir.appendingPathComponent(UUID().uuidString + ".mp4")
-                    session.outputURL = tempURL
-                    session.outputFileType = .mp4
-                    session.exportAsynchronously {
-                        switch session.status {
-                        case .completed:
-                            do {
-                                let data = try Data(contentsOf: tempURL)
-                                try? FileManager.default.removeItem(at: tempURL)
-                                cont.resume(returning: data)
-                            } catch {
-                                cont.resume(throwing: error)
-                            }
-                        default:
-                            let msg = session.error?.localizedDescription ?? "Export failed."
-                            cont.resume(throwing: APIError.validation(msg))
+                    Task {
+                        do {
+                            try await session.export(to: tempURL, as: .mp4)
+                            let data = try Data(contentsOf: tempURL)
+                            try? FileManager.default.removeItem(at: tempURL)
+                            cont.resume(returning: data)
+                        } catch {
+                            cont.resume(throwing: error)
                         }
                     }
                 }

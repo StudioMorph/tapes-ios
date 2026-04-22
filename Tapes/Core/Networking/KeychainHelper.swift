@@ -5,6 +5,7 @@ enum KeychainHelper {
 
     private static let service = "com.studiomorph.tapes"
 
+    @discardableResult
     static func save(_ data: Data, for key: String) -> Bool {
         delete(key)
         let query: [String: Any] = [
@@ -17,6 +18,7 @@ enum KeychainHelper {
         return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
+    @discardableResult
     static func save(_ string: String, for key: String) -> Bool {
         guard let data = string.data(using: .utf8) else { return false }
         return save(data, for: key)

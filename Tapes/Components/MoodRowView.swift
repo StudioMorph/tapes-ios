@@ -105,7 +105,7 @@ struct MoodRowView: View {
             Slider(value: $volume, in: 0.05...1.0, step: 0.05)
                 .tint(isReady ? .blue : Tokens.Colors.tertiaryText)
                 .disabled(!isReady)
-                .onChange(of: volume) { _ in onVolumeChanged() }
+                .onChange(of: volume) { onVolumeChanged() }
 
             Image(systemName: "speaker.wave.3.fill")
                 .font(.caption)

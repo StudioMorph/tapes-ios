@@ -648,7 +648,7 @@ final class TapePlayerViewModel: ObservableObject {
         inactive?.volume = 0
         active?.volume = 1
 
-        volumeTask = Task { [weak self] in
+        volumeTask = Task {
             for step in 0...steps {
                 guard !Task.isCancelled else { return }
                 let progress = Double(step) / Double(steps)

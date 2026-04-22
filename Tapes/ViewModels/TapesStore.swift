@@ -911,10 +911,10 @@ extension TapesStore {
 
             if let asset {
                 if needsDuration, asset.duration > 0 {
-                    await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.duration = asset.duration }
+                    self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.duration = asset.duration }
                 }
                 if needsThumbnail, let thumbnail = await Self.requestThumbnail(for: asset) {
-                    await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.8) }
+                    self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.8) }
                 }
                 return
             }
@@ -1013,7 +1013,7 @@ extension TapesStore {
         do {
             if needsDuration {
                 let duration = try await asset.load(.duration)
-                await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.duration = duration.seconds }
+                self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.duration = duration.seconds }
             }
 
             guard needsThumbnail else { return }
@@ -1249,7 +1249,7 @@ extension TapesStore {
         enqueueMetadataWork { [weak self] in
             guard let self else { return }
             if let thumbnail = await Self.requestThumbnail(for: asset) {
-                await self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.8) }
+                self.enqueueBatchUpdate(clipID: clipID, tapeID: tapeID) { $0.thumbnail = thumbnail.jpegData(compressionQuality: 0.8) }
             }
         }
     }

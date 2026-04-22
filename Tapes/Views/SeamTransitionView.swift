@@ -79,7 +79,7 @@ struct SeamTransitionView: View {
                 }
             }
         }
-        .onChange(of: duration) { _ in hasChanges = true }
+        .onChange(of: duration) { hasChanges = true }
     }
 
     // MARK: - Sections
