@@ -164,7 +164,13 @@ private struct ResolvedClipThumbnail: View {
                     }
             }
             
-            if !isJiggling {
+            if isJiggling {
+                ClipBadgePill {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+            } else {
                 ClipInfoBadge(clip: clip, livePhotosAsVideo: livePhotosAsVideo)
             }
         }
@@ -219,7 +225,7 @@ struct ClipInfoBadge: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
+        ClipBadgePill {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(iconColor)
@@ -238,9 +244,6 @@ struct ClipInfoBadge: View {
                 .font(.system(size: 9, weight: .bold))
                 .foregroundColor(.blue)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(Color.black.opacity(0.55), in: Capsule())
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
