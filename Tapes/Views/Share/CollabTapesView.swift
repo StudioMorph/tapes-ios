@@ -19,6 +19,14 @@ struct CollabTapesView: View {
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
     @State private var inviteToDismiss: PendingInvite?
+    @State private var selectedSegment: CollabSegment = .createdByMe
+    @State private var isScrolled = false
+
+    enum CollabSegment: String, CaseIterable, Identifiable {
+        case createdByMe = "Created by me"
+        case contributingTo = "Contributing to"
+        var id: String { rawValue }
+    }
 
     private var ownerCollabTapes: [Tape] {
         tapesStore.tapes
@@ -69,9 +77,6 @@ struct CollabTapesView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Tokens.Colors.primaryBackground
-                    .ignoresSafeArea(.all)
-
                 if !authManager.isSignedIn {
                     signInPrompt
                 } else {
@@ -80,8 +85,10 @@ struct CollabTapesView: View {
 
                 dialogOverlays
             }
+            .modifier(SegmentedBarModifier(selection: $selectedSegment, isScrolled: isScrolled))
+            .modifier(ScrollEdgeSoftModifier())
             .navigationTitle("Collab")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .alert("Sign In Issue", isPresented: .init(
                 get: { authManager.authError != nil },
@@ -268,19 +275,14 @@ struct CollabTapesView: View {
 
             ScrollView {
                 LazyVStack(spacing: Tokens.Spacing.m) {
-                    ForEach(ownerCollabTapes) { tape in
-                        if let binding = tapesStore.bindingForTape(id: tape.id) {
-                            collabTapeCard(tape: tape, binding: binding, width: contentWidth, isOwner: true)
+                    switch selectedSegment {
+                    case .createdByMe:
+                        ForEach(ownerCollabTapes) { tape in
+                            if let binding = tapesStore.bindingForTape(id: tape.id) {
+                                collabTapeCard(tape: tape, binding: binding, width: contentWidth, isOwner: true)
+                            }
                         }
-                    }
-
-                    if !pendingInviteStore.collaborativeInvites.isEmpty || !receivedCollabTapes.isEmpty {
-                        Text("Collaborating")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Tokens.Colors.secondaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, Tokens.Spacing.s)
-
+                    case .contributingTo:
                         ForEach(pendingInviteStore.collaborativeInvites) { invite in
                             PendingInviteCard(
                                 invite: invite,
@@ -298,6 +300,13 @@ struct CollabTapesView: View {
                 }
                 .padding(.horizontal, Tokens.Spacing.m)
                 .padding(.vertical, Tokens.Spacing.s)
+            }
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                geo.contentOffset.y > 4
+            } action: { _, scrolled in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isScrolled = scrolled
+                }
             }
         }
     }
@@ -504,6 +513,43 @@ struct CollabTapesView: View {
                 api: api,
                 tapeStore: tapesStore
             )
+        }
+    }
+}
+
+private struct ScrollEdgeSoftModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
+private struct SegmentedBarModifier: ViewModifier {
+    @Binding var selection: CollabTapesView.CollabSegment
+    var isScrolled: Bool
+
+    private var picker: some View {
+        Picker("", selection: $selection) {
+            ForEach(CollabTapesView.CollabSegment.allCases) { segment in
+                Text(segment.rawValue).tag(segment)
+            }
+        }
+        .pickerStyle(.segmented)
+        .controlSize(.large)
+        .padding(.horizontal, Tokens.Spacing.m)
+        .padding(.vertical, Tokens.Spacing.s)
+    }
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.safeAreaBar(edge: .top) { picker }
+        } else {
+            content.safeAreaInset(edge: .top, spacing: 0) {
+                picker.background(.bar)
+            }
         }
     }
 }
