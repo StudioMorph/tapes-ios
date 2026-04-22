@@ -302,8 +302,7 @@ struct CameraView: View {
     private var defaultBottomControls: some View {
         VStack(spacing: 0) {
             if capture.currentPosition == .back
-                && !capture.availableZoomPresets.isEmpty
-                && !capture.isRecording {
+                && !capture.availableZoomPresets.isEmpty {
                 zoomPill
                     .padding(.bottom, 16)
             }
@@ -326,12 +325,14 @@ struct CameraView: View {
                     modePicker
                 }
 
-                HStack {
-                    thumbnailPreview
-                    Spacer()
-                    doneButton
+                if !capture.isRecording {
+                    HStack {
+                        thumbnailPreview
+                        Spacer()
+                        doneButton
+                    }
+                    .padding(.horizontal, 20)
                 }
-                .padding(.horizontal, 20)
             }
             .frame(height: 48)
             .padding(.bottom, 16)
