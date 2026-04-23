@@ -120,15 +120,9 @@ final class PushNotificationManager: NSObject, ObservableObject {
             options: []
         )
 
-        let syncAction = UNNotificationAction(
-            identifier: "SYNC_PUSH",
-            title: "Send Sync Push",
-            options: [.foreground]
-        )
-
         let expiryCategory = UNNotificationCategory(
             identifier: "TAPE_EXPIRY_WARNING",
-            actions: [viewAction, syncAction],
+            actions: [viewAction],
             intentIdentifiers: [],
             options: []
         )

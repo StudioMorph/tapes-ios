@@ -184,9 +184,38 @@ The iOS client then uploads directly to R2 using the presigned URL via `PUT`.
 
 ---
 
+#### `POST /tapes/:tape_id/upload-batch`
+
+Declares an upload batch before clips are uploaded. The server records the expected clip count and holds notifications until the batch completes (all clips confirmed via `/uploaded`). Only one active batch per tape per user at a time.
+
+**Request:**
+```json
+{
+  "clip_count": 5,
+  "batch_type": "invite",
+  "mode": "view_only"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `clip_count` | `int` | Number of clips that will be uploaded in this batch |
+| `batch_type` | `string` | `"invite"` (initial share) or `"update"` (adding clips to existing share) |
+| `mode` | `string` | `"view_only"` or `"collaborative"` |
+
+**Response: `201 Created`**
+```json
+{
+  "batch_id": "uuid",
+  "expected_count": 5
+}
+```
+
+---
+
 #### `POST /tapes/:tape_id/clips/:clip_id/uploaded`
 
-Called by iOS after a successful upload to R2. Finalises the clip record, creates download tracking records for all participants, and triggers notifications.
+Called by iOS after a successful upload to R2. Finalises the clip record, creates download tracking records for all participants. If an upload batch is active, increments the batch counter. When the counter reaches the expected count, the server sends a single consolidated push notification to all other participants.
 
 **Request:**
 ```json
@@ -202,9 +231,12 @@ Called by iOS after a successful upload to R2. Finalises the clip record, create
   "clip_id": "uuid",
   "order_index": 6,
   "expires_at": "2026-04-19T09:00:00Z",
-  "tracking_records_created": 3
+  "tracking_records_created": 3,
+  "batch_completed": true
 }
 ```
+
+`batch_completed` is `true` when this confirmation completed the active batch and notifications were sent. `false` or absent otherwise.
 
 ---
 
@@ -365,20 +397,6 @@ Only tapes with pending downloads (`> 0`) are included. Empty object `{}` means 
 
 ---
 
-#### `POST /tapes/:tape_id/sync-push`
-
-Owner triggers a Sync Push. Sends push notification to all collaborators who haven't fully downloaded. Max once per 24 hours per tape.
-
-**Response: `200 OK`**
-```json
-{
-  "notified_count": 2,
-  "next_available_at": "2026-04-13T09:00:00Z"
-}
-```
-
-**Response: `429 Too Many Requests`** — already pushed within 24 hours.
-
 ---
 
 ### Device Token
@@ -441,7 +459,7 @@ All errors return:
 | `CLIP_NOT_FOUND` | 404 | Clip doesn't exist |
 | `TAPE_EXPIRED` | 410 | Tape has expired |
 | `TIER_REQUIRED` | 403 | Feature requires Plus or Together tier |
-| `RATE_LIMITED` | 429 | Too many requests (e.g. Sync Push cooldown) |
+| `RATE_LIMITED` | 429 | Too many requests |
 | `UPLOAD_TOO_LARGE` | 413 | File exceeds size limit |
 | `VALIDATION_ERROR` | 422 | Invalid request body |
 | `INTERNAL_ERROR` | 500 | Server error |
@@ -454,7 +472,6 @@ All errors return:
 |----------|-------|
 | `POST /auth/apple` | 10/min per IP |
 | `POST /tapes/:id/clips` | 30/min per user |
-| `POST /tapes/:id/sync-push` | 1/24h per tape |
 | All other endpoints | 60/min per user |
 
 ---
@@ -463,6 +480,15 @@ All errors return:
 
 ```
 iOS                          Workers API                    R2
+ |                               |                          |
+ |  POST /tapes/:id/upload-batch |                          |
+ |  { clip_count, batch_type,    |                          |
+ |    mode }                     |                          |
+ |------------------------------>|                          |
+ |  { batch_id }                |  Create batch record     |
+ |<------------------------------|  (expected_count=N)      |
+ |                               |                          |
+ |  — repeat for each clip —     |                          |
  |                               |                          |
  |  POST /tapes/:id/clips       |                          |
  |  (clip metadata)              |                          |
@@ -484,10 +510,68 @@ iOS                          Workers API                    R2
  |  (confirm URLs)               |                          |
  |------------------------------>|                          |
  |                               |  Create tracking records |
- |                               |  Notify collaborators    |
- |  { order_index, expires_at } |                          |
+ |                               |  Increment batch counter |
+ |                               |  If counter == N:        |
+ |                               |    Send ONE push to all  |
+ |                               |    participants          |
+ |  { order_index, expires_at,  |                          |
+ |    batch_completed }          |                          |
  |<------------------------------|                          |
 ```
+
+### Batch Notification Payloads
+
+The server constructs the push notification based on `batch_type` and `mode`:
+
+**Initial share (invite) — view-only:**
+```json
+{
+  "aps": {
+    "alert": { "title": "Tape invite", "body": "Jose invited you to see and follow their \"Holidays in Portugal\" Tape" },
+    "sound": "default", "badge": 1, "content-available": 1, "category": "TAPE_INVITE"
+  },
+  "tape_id": "uuid", "share_id": "short_id", "action": "tape_invite",
+  "tape_title": "Holidays in Portugal", "owner_name": "Jose", "mode": "view_only"
+}
+```
+
+**Initial share (invite) — collaborative:**
+```json
+{
+  "aps": {
+    "alert": { "title": "Tape invite", "body": "Jose invited you to collaborate on \"Holidays in Portugal\" Tape" },
+    "sound": "default", "badge": 1, "content-available": 1, "category": "TAPE_INVITE"
+  },
+  "tape_id": "uuid", "share_id": "short_id", "action": "tape_invite",
+  "tape_title": "Holidays in Portugal", "owner_name": "Jose", "mode": "collaborative"
+}
+```
+
+**Update (contribution) — view-only:**
+```json
+{
+  "aps": {
+    "alert": { "title": "Tape Update - Holidays in Portugal", "body": "Jose added 5 new clips to this tape" },
+    "sound": "default", "badge": 1, "content-available": 1, "category": "TAPE_SHARE"
+  },
+  "tape_id": "uuid", "share_id": "short_id", "action": "sync_update",
+  "clip_count": 5
+}
+```
+
+**Update (contribution) — collaborative:**
+```json
+{
+  "aps": {
+    "alert": { "title": "Tape Update - Holidays in Portugal", "body": "Jose contributed 5 new clips to this tape" },
+    "sound": "default", "badge": 1, "content-available": 1, "category": "TAPE_SHARE"
+  },
+  "tape_id": "uuid", "share_id": "short_id", "action": "sync_update",
+  "clip_count": 5
+}
+```
+
+For singular clips, body reads "a new clip" instead of "N new clips".
 
 ---
 
@@ -522,4 +606,4 @@ Now returns both `active` and `invited` collaborator rows (excludes `declined` a
 | Sync warning | `0 * * * *` (hourly) | Notify owner when clips within 48h of expiry have unsynced collaborators |
 | Orphan cleanup | `0 3 * * *` (daily 03:00 UTC) | Delete R2 assets with no DB record older than 24h |
 | Expired tape cleanup | `0 4 * * *` (daily 04:00 UTC) | Mark expired view-only tapes, flag for removal |
-| Notification batch | `0 */3 * * *` (every 3h) | Batch and send accumulated notifications |
+| Stale batch cleanup | `0 * * * *` (hourly) | Delete upload batch records older than 1h that never completed |

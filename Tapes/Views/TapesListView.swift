@@ -167,16 +167,11 @@ struct TapesListView: View {
 
     private func triggerSyncUpload(_ tape: Tape) {
         guard let api = authManager.apiClient else { return }
-        let tapeId = tape.id.uuidString.lowercased()
         shareUploadCoordinator.ensureTapeUploaded(
             tape: tape,
             intendedForCollaboration: false,
             api: api
-        ) { _ in
-            Task {
-                try? await api.syncPush(tapeId: tapeId)
-            }
-        }
+        )
     }
 
     private func handleSettings(_ tape: Tape) {

@@ -237,6 +237,16 @@ public class ShareUploadCoordinator: ObservableObject {
                         self.submitContinuedProcessingTask()
                     }
 
+                    if !clipsToUpload.isEmpty {
+                        let batchType = (response.clipsUploaded == true) ? "update" : "invite"
+                        _ = try? await api.declareUploadBatch(
+                            tapeId: tapeId,
+                            clipCount: clipsToUpload.count,
+                            batchType: batchType,
+                            mode: apiMode
+                        )
+                    }
+
                     // 3a. Upload new clips
                     var newFailures: Set<Int> = []
                     for (index, clip) in clipsToUpload.enumerated() {
@@ -386,6 +396,13 @@ public class ShareUploadCoordinator: ObservableObject {
 
         uploadTask = Task { [weak self] in
             guard let self else { return }
+
+            _ = try? await api.declareUploadBatch(
+                tapeId: remoteTapeId,
+                clipCount: unsyncedClips.count,
+                batchType: "update",
+                mode: "collaborative"
+            )
 
             var newFailures: Set<Int> = []
 

@@ -393,21 +393,28 @@ actor TapesAPIClient {
         try await delete(path: "/tapes/\(tapeId)/collaborators/\(encoded)?share_variant=\(shareVariant.rawValue)")
     }
 
-    // MARK: - Sync
+    // MARK: - Upload Batch
 
-    struct SyncPushResponse: Decodable {
-        let notifiedCount: Int
-        let nextAvailableAt: String
+    struct UploadBatchResponse: Decodable {
+        let batchId: String
+        let expectedCount: Int
 
         enum CodingKeys: String, CodingKey {
-            case notifiedCount = "notified_count"
-            case nextAvailableAt = "next_available_at"
+            case batchId = "batch_id"
+            case expectedCount = "expected_count"
         }
     }
 
-    func syncPush(tapeId: String) async throws -> SyncPushResponse {
-        try await postEmpty(path: "/tapes/\(tapeId)/sync-push")
+    func declareUploadBatch(tapeId: String, clipCount: Int, batchType: String, mode: String) async throws -> UploadBatchResponse {
+        let body: [String: Any] = [
+            "clip_count": clipCount,
+            "batch_type": batchType,
+            "mode": mode
+        ]
+        return try await postRaw(path: "/tapes/\(tapeId)/upload-batch", body: body)
     }
+
+    // MARK: - Sync
 
     struct SyncStatusResponse: Decodable {
         let tapes: [String: Int]
