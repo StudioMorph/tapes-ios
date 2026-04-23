@@ -18,6 +18,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
     private var downloadTask: Task<Void, Never>?
     @Published private(set) var resultTape: Tape?
+    @Published private(set) var resolvedMode: String?
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "SharedDownload")
 
     /// When `true`, an external coordinator (e.g. `CollabSyncCoordinator`)
@@ -105,6 +106,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         failedCount = 0
         downloadError = nil
         resultTape = nil
+        resolvedMode = nil
         downloadStartTime = Date()
 
         if !isManagedBySync, #available(iOS 26, *) {
@@ -116,7 +118,19 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
             do {
                 let resolution = try await api.resolveShare(shareId: shareId)
+
+                let earlyMode: String? = {
+                    if let access = resolution.accessMode {
+                        return access == "collaborate" ? "collaborative" : "view_only"
+                    }
+                    return nil
+                }()
+                self.resolvedMode = earlyMode
+
                 let manifest = try await api.getManifest(tapeId: resolution.tapeId)
+                if earlyMode == nil {
+                    self.resolvedMode = manifest.mode
+                }
 
                 let uploadedClips = manifest.clips.filter { $0.cloudUrl != nil }
 

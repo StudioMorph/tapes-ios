@@ -11,6 +11,7 @@ struct CollabTapesView: View {
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @EnvironmentObject private var syncChecker: TapeSyncChecker
     @EnvironmentObject private var pendingInviteStore: PendingInviteStore
+    @EnvironmentObject private var navigationCoordinator: NavigationCoordinator
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var tapeToPreview: Tape?
@@ -21,6 +22,8 @@ struct CollabTapesView: View {
     @State private var inviteToDismiss: PendingInvite?
     @State private var selectedSegment: CollabSegment = .createdByMe
     @State private var isScrolled = false
+    @State private var sortedOwnerIDs: [UUID] = []
+    @State private var sortedReceivedIDs: [UUID] = []
 
     enum CollabSegment: String, CaseIterable, Identifiable {
         case createdByMe = "Created by me"
@@ -29,30 +32,51 @@ struct CollabTapesView: View {
     }
 
     private var ownerCollabTapes: [Tape] {
-        tapesStore.tapes
+        let tapes = tapesStore.tapes.filter { $0.isCollabTape }
+        if sortedOwnerIDs.isEmpty { return tapes }
+        let lookup = Dictionary(uniqueKeysWithValues: tapes.map { ($0.id, $0) })
+        var ordered = sortedOwnerIDs.compactMap { lookup[$0] }
+        let newTapes = tapes.filter { !sortedOwnerIDs.contains($0.id) }
+        ordered.insert(contentsOf: newTapes, at: 0)
+        return ordered
+    }
+
+    private var receivedCollabTapes: [Tape] {
+        let tapes = tapesStore.tapes
+            .filter { !$0.isCollabTape && $0.isShared && $0.shareInfo?.mode == "collaborative" }
+        if sortedReceivedIDs.isEmpty { return tapes }
+        let lookup = Dictionary(uniqueKeysWithValues: tapes.map { ($0.id, $0) })
+        var ordered = sortedReceivedIDs.compactMap { lookup[$0] }
+        let newTapes = tapes.filter { !sortedReceivedIDs.contains($0.id) }
+        ordered.insert(contentsOf: newTapes, at: 0)
+        return ordered
+    }
+
+    private func refreshSortOrder() {
+        sortedOwnerIDs = tapesStore.tapes
             .filter { $0.isCollabTape }
             .sorted { a, b in
                 let aEmpty = a.clips.isEmpty && !a.hasReceivedFirstContent
                 let bEmpty = b.clips.isEmpty && !b.hasReceivedFirstContent
                 if aEmpty != bEmpty { return aEmpty }
 
-                let aHasSync = syncCount(for: a) > 0
-                let bHasSync = syncCount(for: b) > 0
-                if aHasSync != bHasSync { return aHasSync }
+                let aHasDownloads = (syncChecker.pendingDownloads[a.id] ?? 0) > 0
+                let bHasDownloads = (syncChecker.pendingDownloads[b.id] ?? 0) > 0
+                if aHasDownloads != bHasDownloads { return aHasDownloads }
 
                 return a.updatedAt > b.updatedAt
             }
-    }
+            .map(\.id)
 
-    private var receivedCollabTapes: [Tape] {
-        tapesStore.tapes
+        sortedReceivedIDs = tapesStore.tapes
             .filter { !$0.isCollabTape && $0.isShared && $0.shareInfo?.mode == "collaborative" }
             .sorted { a, b in
-                let aHasSync = syncCount(for: a) > 0
-                let bHasSync = syncCount(for: b) > 0
-                if aHasSync != bHasSync { return aHasSync }
+                let aHasDownloads = (syncChecker.pendingDownloads[a.id] ?? 0) > 0
+                let bHasDownloads = (syncChecker.pendingDownloads[b.id] ?? 0) > 0
+                if aHasDownloads != bHasDownloads { return aHasDownloads }
                 return a.updatedAt > b.updatedAt
             }
+            .map(\.id)
     }
 
     /// True when the upload coordinator is working on a tape owned by this tab.
@@ -112,6 +136,13 @@ struct CollabTapesView: View {
                 if let msg = downloadCoordinator.downloadError {
                     Text(msg)
                 }
+            }
+            .onAppear {
+                if navigationCoordinator.pendingCollabSegment == "contributingTo" {
+                    selectedSegment = .contributingTo
+                    navigationCoordinator.pendingCollabSegment = nil
+                }
+                refreshSortOrder()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 downloadCoordinator.handleScenePhaseChange(newPhase)

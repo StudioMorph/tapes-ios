@@ -18,9 +18,21 @@ struct SharedTapesView: View {
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
     @State private var inviteToDismiss: PendingInvite?
+    @State private var sortedTapeIDs: [UUID] = []
 
     private var viewOnlyTapes: [Tape] {
-        tapesStore.tapes
+        let tapes = tapesStore.tapes
+            .filter { $0.isShared && !$0.isCollabTape && ($0.shareInfo?.mode ?? "view_only") == "view_only" }
+        if sortedTapeIDs.isEmpty { return tapes }
+        let lookup = Dictionary(uniqueKeysWithValues: tapes.map { ($0.id, $0) })
+        var ordered = sortedTapeIDs.compactMap { lookup[$0] }
+        let newTapes = tapes.filter { !sortedTapeIDs.contains($0.id) }
+        ordered.insert(contentsOf: newTapes, at: 0)
+        return ordered
+    }
+
+    private func refreshSortOrder() {
+        let sorted = tapesStore.tapes
             .filter { $0.isShared && !$0.isCollabTape && ($0.shareInfo?.mode ?? "view_only") == "view_only" }
             .sorted { a, b in
                 let aHas = syncChecker.pendingDownloads[a.id] != nil
@@ -28,6 +40,7 @@ struct SharedTapesView: View {
                 if aHas != bHas { return aHas }
                 return a.updatedAt > b.updatedAt
             }
+        sortedTapeIDs = sorted.map(\.id)
     }
 
     var body: some View {
@@ -113,6 +126,7 @@ struct SharedTapesView: View {
                 }
             }
             .onAppear {
+                refreshSortOrder()
                 if let shareId = navigationCoordinator.pendingSharedTapeId {
                     navigationCoordinator.clearPendingTape()
                     handleIncomingShare(shareId: shareId)
@@ -121,16 +135,18 @@ struct SharedTapesView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 downloadCoordinator.handleScenePhaseChange(newPhase)
             }
+            .onChange(of: downloadCoordinator.resolvedMode) { _, mode in
+                if mode == "collaborative" {
+                    navigationCoordinator.pendingCollabSegment = "contributingTo"
+                    navigationCoordinator.selectedTab = .collab
+                }
+            }
             .onChange(of: downloadCoordinator.resultTape?.id) { _, newId in
                 guard newId != nil,
                       let tape = downloadCoordinator.resultTape else { return }
 
                 if let remoteTapeId = tape.shareInfo?.remoteTapeId {
                     pendingInviteStore.remove(tapeId: remoteTapeId)
-                }
-
-                if tape.shareInfo?.mode == "collaborative" {
-                    navigationCoordinator.selectedTab = .collab
                 }
             }
         }
