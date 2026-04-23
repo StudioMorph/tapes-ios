@@ -1125,12 +1125,20 @@ struct TapeCompositionBuilder {
             return override
         }
         if clip.clipType == .image,
-           let naturalSize = segment.metadata.naturalSize,
-           naturalSize.width > 0, naturalSize.height > 0,
            renderSize.width > 0, renderSize.height > 0 {
-            let imageIsLandscape = naturalSize.width > naturalSize.height
-            let renderIsLandscape = renderSize.width > renderSize.height
-            return (imageIsLandscape == renderIsLandscape) ? .fill : .fit
+            let contentSize: CGSize?
+            if clip.shouldPlayAsLiveVideo(tapeDefault: livePhotosAsVideo),
+               let ctx = segment.assetContext {
+                let transformed = ctx.naturalSize.applying(ctx.preferredTransform)
+                contentSize = CGSize(width: abs(transformed.width), height: abs(transformed.height))
+            } else {
+                contentSize = segment.metadata.naturalSize
+            }
+            if let size = contentSize, size.width > 0, size.height > 0 {
+                let contentIsLandscape = size.width > size.height
+                let renderIsLandscape = renderSize.width > renderSize.height
+                return (contentIsLandscape == renderIsLandscape) ? .fill : .fit
+            }
         }
         if segment.motionEffect != nil {
             return imageConfiguration.baseScaleMode
@@ -1532,32 +1540,34 @@ struct TapeCompositionBuilder {
         renderSize: CGSize,
         scaleMode: ScaleMode
     ) -> CGAffineTransform {
-        // TODO: refine scaling/rotation handling; for now rely on preferredTransform.
         let preferred = context.preferredTransform
-        // Basic scaling to fit render size.
-        let naturalSize = context.naturalSize.applying(preferred)
-        let absWidth = abs(naturalSize.width)
-        let absHeight = abs(naturalSize.height)
-        guard absWidth > 0, absHeight > 0 else { return preferred }
+        let rawWidth = context.naturalSize.width
+        let rawHeight = context.naturalSize.height
+        guard rawWidth > 0, rawHeight > 0 else { return .identity }
 
-        let renderWidth = renderSize.width
-        let renderHeight = renderSize.height
+        let angle = atan2(preferred.b, preferred.a)
+        let isMirrored = preferred.a * preferred.d - preferred.b * preferred.c < 0
 
-        let scaleX = renderWidth / absWidth
-        let scaleY = renderHeight / absHeight
+        let orientedSize = context.naturalSize.applying(preferred)
+        let absWidth = abs(orientedSize.width)
+        let absHeight = abs(orientedSize.height)
+        guard absWidth > 0, absHeight > 0 else { return .identity }
 
-        let scale: CGFloat
-        switch scaleMode {
-        case .fit:
-            scale = min(scaleX, scaleY)
-        case .fill:
-            scale = max(scaleX, scaleY)
+        let scaleX = renderSize.width / absWidth
+        let scaleY = renderSize.height / absHeight
+        let scale: CGFloat = scaleMode == .fill ? max(scaleX, scaleY) : min(scaleX, scaleY)
+
+        var transform = CGAffineTransform.identity
+        transform = transform.translatedBy(x: renderSize.width * 0.5, y: renderSize.height * 0.5)
+        transform = transform.scaledBy(x: scale, y: scale)
+        if isMirrored {
+            transform = transform.scaledBy(x: -1, y: 1)
         }
-
-        let transform = preferred.concatenating(CGAffineTransform(scaleX: scale, y: scale))
-        let translatedX = (renderWidth - absWidth * scale) / 2
-        let translatedY = (renderHeight - absHeight * scale) / 2
-        return transform.concatenating(CGAffineTransform(translationX: translatedX, y: translatedY))
+        if abs(angle) > 0.01 {
+            transform = transform.rotated(by: angle)
+        }
+        transform = transform.translatedBy(x: -rawWidth * 0.5, y: -rawHeight * 0.5)
+        return transform
     }
 
     private func prependTranslation(to transform: CGAffineTransform, dx: CGFloat, dy: CGFloat) -> CGAffineTransform {

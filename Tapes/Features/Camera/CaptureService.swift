@@ -230,6 +230,9 @@ final class CaptureService: NSObject, ObservableObject {
 
     private func applyModeOutputs(for mode: CaptureMode) {
         if mode == .video {
+            if session.canSetSessionPreset(.high) {
+                session.sessionPreset = .high
+            }
             if !session.outputs.contains(movieOutput), session.canAddOutput(movieOutput) {
                 session.addOutput(movieOutput)
                 if let connection = movieOutput.connection(with: .video),
@@ -238,6 +241,9 @@ final class CaptureService: NSObject, ObservableObject {
                 }
             }
         } else {
+            if session.canSetSessionPreset(.photo) {
+                session.sessionPreset = .photo
+            }
             if session.outputs.contains(movieOutput) {
                 session.removeOutput(movieOutput)
             }
