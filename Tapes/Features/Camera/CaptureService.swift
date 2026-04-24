@@ -1,4 +1,5 @@
 import AVFoundation
+import SwiftUI
 import UIKit
 
 final class CaptureService: NSObject, ObservableObject {
@@ -71,6 +72,11 @@ final class CaptureService: NSObject, ObservableObject {
     private var recordingTimer: Timer?
     private var recordingStartTime: Date?
     private var countdownTimer: Timer?
+    private var zoomDisplayLink: CADisplayLink?
+    private var zoomAnimationStart: CFTimeInterval = 0
+    private var zoomAnimationDuration: CFTimeInterval = 0.45
+    private var zoomFrom: CGFloat = 1.0
+    private var zoomTo: CGFloat = 1.0
 
     // MARK: - Multi-capture
 
@@ -189,13 +195,21 @@ final class CaptureService: NSObject, ObservableObject {
         let switchOvers = videoDevice.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat($0.doubleValue) }
         let switchFactor = switchOvers.first ?? 1.0
 
-        if switchFactor > 1.0 {
-            do {
-                try videoDevice.lockForConfiguration()
+        do {
+            try videoDevice.lockForConfiguration()
+            if switchFactor > 1.0 {
                 videoDevice.videoZoomFactor = switchFactor
-                videoDevice.unlockForConfiguration()
-            } catch {}
-        }
+            }
+            if videoDevice.isGeometricDistortionCorrectionSupported {
+                videoDevice.isGeometricDistortionCorrectionEnabled = true
+            }
+            if !videoDevice.virtualDeviceSwitchOverVideoZoomFactors.isEmpty {
+                videoDevice.setPrimaryConstituentDeviceSwitchingBehavior(
+                    .restricted, restrictedSwitchingBehaviorConditions: .videoZoomChanged
+                )
+            }
+            videoDevice.unlockForConfiguration()
+        } catch {}
 
         configureContinuousAutoFocus(device: videoDevice)
         subscribeToSubjectAreaChanges(device: videoDevice)
@@ -310,19 +324,48 @@ final class CaptureService: NSObject, ObservableObject {
         }
     }
 
-    func rampZoom(to factor: CGFloat, rate: Float = 4.0) {
+    func rampZoom(to factor: CGFloat) {
+        guard let device = videoDeviceInput?.device else { return }
+        let clamped = max(device.minAvailableVideoZoomFactor, min(factor, device.maxAvailableVideoZoomFactor))
+
+        stopZoomAnimation()
+
+        zoomFrom = currentZoomFactor
+        zoomTo = clamped
+        zoomAnimationStart = CACurrentMediaTime()
+
+        let link = CADisplayLink(target: self, selector: #selector(zoomAnimationTick))
+        link.add(to: .main, forMode: .common)
+        zoomDisplayLink = link
+    }
+
+    @objc private func zoomAnimationTick() {
+        let elapsed = CACurrentMediaTime() - zoomAnimationStart
+        let t = min(elapsed / zoomAnimationDuration, 1.0)
+        let eased = UnitCurve.easeInOut.value(at: t)
+        let newFactor = zoomFrom + (zoomTo - zoomFrom) * eased
+
         sessionQueue.async { [weak self] in
             guard let self, let device = self.videoDeviceInput?.device else { return }
-            let clamped = max(device.minAvailableVideoZoomFactor, min(factor, device.maxAvailableVideoZoomFactor))
+            let clamped = max(device.minAvailableVideoZoomFactor, min(newFactor, device.maxAvailableVideoZoomFactor))
             do {
                 try device.lockForConfiguration()
-                device.ramp(toVideoZoomFactor: clamped, withRate: rate)
+                device.videoZoomFactor = clamped
                 device.unlockForConfiguration()
-                DispatchQueue.main.async {
-                    self.currentZoomFactor = clamped
-                }
             } catch {}
         }
+
+        currentZoomFactor = newFactor
+
+        if t >= 1.0 {
+            stopZoomAnimation()
+            currentZoomFactor = zoomTo
+        }
+    }
+
+    func stopZoomAnimation() {
+        zoomDisplayLink?.invalidate()
+        zoomDisplayLink = nil
     }
 
     // MARK: - Focus & Exposure
@@ -426,6 +469,9 @@ final class CaptureService: NSObject, ObservableObject {
             }
 
             self.session.commitConfiguration()
+            DispatchQueue.main.async {
+                self.stopZoomAnimation()
+            }
 
             let presets: [ZoomPreset]
             let switchFactor: CGFloat
@@ -435,13 +481,21 @@ final class CaptureService: NSObject, ObservableObject {
                 let switchOvers = device.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat($0.doubleValue) }
                 switchFactor = switchOvers.first ?? 1.0
 
-                if switchFactor > 1.0 {
-                    do {
-                        try device.lockForConfiguration()
+                do {
+                    try device.lockForConfiguration()
+                    if switchFactor > 1.0 {
                         device.videoZoomFactor = switchFactor
-                        device.unlockForConfiguration()
-                    } catch {}
-                }
+                    }
+                    if device.isGeometricDistortionCorrectionSupported {
+                        device.isGeometricDistortionCorrectionEnabled = true
+                    }
+                    if !device.virtualDeviceSwitchOverVideoZoomFactors.isEmpty {
+                        device.setPrimaryConstituentDeviceSwitchingBehavior(
+                            .restricted, restrictedSwitchingBehaviorConditions: .videoZoomChanged
+                        )
+                    }
+                    device.unlockForConfiguration()
+                } catch {}
             } else {
                 presets = []
                 switchFactor = 1.0

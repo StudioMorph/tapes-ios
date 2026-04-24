@@ -125,6 +125,7 @@ struct CameraView: View {
                 .gesture(
                     MagnifyGesture()
                         .onChanged { value in
+                            capture.stopZoomAnimation()
                             let newZoom = pinchBaseZoom * value.magnification
                             capture.setZoom(newZoom)
                         }
@@ -345,10 +346,8 @@ struct CameraView: View {
         HStack(spacing: 0) {
             ForEach(capture.availableZoomPresets) { preset in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        capture.rampZoom(to: preset.factor)
-                        pinchBaseZoom = preset.factor
-                    }
+                    capture.rampZoom(to: preset.factor)
+                    pinchBaseZoom = preset.factor
                 } label: {
                     let isActive = isZoomPresetActive(preset)
                     Text(zoomLabel(for: preset))
@@ -360,6 +359,7 @@ struct CameraView: View {
                             Circle()
                                 .fill(isActive ? Color(white: 0.22) : Color.clear)
                         )
+                        .animation(.easeInOut(duration: 0.15), value: isActive)
                 }
             }
         }
