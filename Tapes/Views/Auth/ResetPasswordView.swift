@@ -48,43 +48,31 @@ struct ResetPasswordView: View {
                 .multilineTextAlignment(.center)
 
             VStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("New Password")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Tokens.Colors.secondaryText)
+                SecureInputField(
+                    label: "New Password",
+                    text: $password,
+                    textContentType: .newPassword
+                )
 
-                    SecureField("", text: $password)
-                        .textContentType(.newPassword)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(Tokens.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                if !password.isEmpty && password.count < 8 {
+                    Text("Password must be at least 8 characters")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Confirm Password")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Tokens.Colors.secondaryText)
+                SecureInputField(
+                    label: "Confirm Password",
+                    text: $confirmPassword,
+                    textContentType: .newPassword
+                )
 
-                    SecureField("", text: $confirmPassword)
-                        .textContentType(.newPassword)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(Tokens.Colors.secondaryBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                if !confirmPassword.isEmpty && password != confirmPassword {
+                    Text("Passwords don't match")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            }
-
-            if password.count > 0 && password.count < 8 {
-                Text("Password must be at least 8 characters")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.orange)
-            }
-
-            if !confirmPassword.isEmpty && password != confirmPassword {
-                Text("Passwords don't match")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.red)
             }
 
             if let error = authManager.authError {
@@ -108,7 +96,6 @@ struct ResetPasswordView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -139,7 +126,6 @@ struct ResetPasswordView: View {
                 Text("Continue")
                     .font(.system(size: 17, weight: .semibold))
                     .frame(maxWidth: .infinity)
-                    .frame(height: 50)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)

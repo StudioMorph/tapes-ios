@@ -126,15 +126,31 @@ struct AuthView: View {
                     .autocorrectionDisabled()
             }
 
-            LabeledField(label: "Password") {
-                SecureField("", text: $password)
-                    .textContentType(mode == .register ? .newPassword : .password)
-            }
+            SecureInputField(
+                label: "Password",
+                text: $password,
+                textContentType: mode == .register ? .newPassword : .password
+            )
 
             if mode == .register {
-                LabeledField(label: "Confirm Password") {
-                    SecureField("", text: $confirmPassword)
-                        .textContentType(.newPassword)
+                if !password.isEmpty && password.count < 8 {
+                    Text("Password must be at least 8 characters")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                SecureInputField(
+                    label: "Confirm Password",
+                    text: $confirmPassword,
+                    textContentType: .newPassword
+                )
+
+                if !confirmPassword.isEmpty && password != confirmPassword {
+                    Text("Passwords don't match")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -179,7 +195,6 @@ struct AuthView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
@@ -209,7 +224,7 @@ struct AuthView: View {
 
 // MARK: - Labeled Field
 
-private struct LabeledField<Content: View>: View {
+struct LabeledField<Content: View>: View {
     let label: String
     @ViewBuilder let content: Content
 
@@ -224,6 +239,50 @@ private struct LabeledField<Content: View>: View {
                 .padding(.vertical, 12)
                 .background(Tokens.Colors.secondaryBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+}
+
+// MARK: - Secure Input Field (with eye toggle)
+
+struct SecureInputField: View {
+    let label: String
+    @Binding var text: String
+    var textContentType: UITextContentType = .password
+
+    @State private var isRevealed = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+
+            HStack(spacing: 8) {
+                Group {
+                    if isRevealed {
+                        TextField("", text: $text)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    } else {
+                        SecureField("", text: $text)
+                    }
+                }
+                .textContentType(textContentType)
+
+                Button {
+                    isRevealed.toggle()
+                } label: {
+                    Image(systemName: isRevealed ? "eye.slash" : "eye")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Tokens.Colors.tertiaryText)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Tokens.Colors.secondaryBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 }
