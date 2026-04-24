@@ -113,10 +113,10 @@ struct CollabTapesView: View {
 
                 dialogOverlays
             }
-            .modifier(SegmentedBarModifier(selection: $selectedSegment, isScrolled: isScrolled, isJiggling: tapesStore.jigglingTapeID != nil))
+            .modifier(SegmentedBarModifier(selection: $selectedSegment, isScrolled: isScrolled, isJiggling: tapesStore.jigglingTapeID != nil, showPicker: !receivedCollabTapes.isEmpty))
             .modifier(ScrollEdgeSoftModifier())
             .navigationTitle("Collab")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(receivedCollabTapes.isEmpty ? .large : .inline)
             .toolbar { toolbarContent }
             .alert("Sign In Issue", isPresented: .init(
                 get: { authManager.authError != nil },
@@ -445,7 +445,7 @@ struct CollabTapesView: View {
 
             Image(systemName: "envelope.badge.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.blue)
+                .foregroundStyle(Tokens.Colors.secondaryText)
 
             Text("Verify your email")
                 .font(.system(size: 17, weight: .medium))
@@ -460,8 +460,7 @@ struct CollabTapesView: View {
             Button("Resend Verification Email") {
                 Task { await authManager.resendVerification() }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
+            .buttonStyle(.bordered)
 
             Spacer()
         }
@@ -592,6 +591,7 @@ private struct SegmentedBarModifier: ViewModifier {
     @Binding var selection: CollabTapesView.CollabSegment
     var isScrolled: Bool
     var isJiggling: Bool
+    var showPicker: Bool
 
     private var picker: some View {
         Picker("", selection: $selection) {
@@ -609,12 +609,16 @@ private struct SegmentedBarModifier: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.safeAreaBar(edge: .top) { picker }
-        } else {
-            content.safeAreaInset(edge: .top, spacing: 0) {
-                picker.background(.bar)
+        if showPicker {
+            if #available(iOS 26.0, *) {
+                content.safeAreaBar(edge: .top) { picker }
+            } else {
+                content.safeAreaInset(edge: .top, spacing: 0) {
+                    picker.background(.bar)
+                }
             }
+        } else {
+            content
         }
     }
 }

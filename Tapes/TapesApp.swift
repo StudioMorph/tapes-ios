@@ -97,6 +97,10 @@ struct TapesApp: App {
                     PushNotificationManager.shared.authManager = authManager
                     PushNotificationManager.shared.navigationCoordinator = navigationCoordinator
                     PushNotificationManager.shared.requestAuthorisation()
+
+                    if authManager.isSignedIn {
+                        await authManager.refreshProfile()
+                    }
                 }
         }
     }

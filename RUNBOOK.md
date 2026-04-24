@@ -294,12 +294,12 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 - **Cloudflare R2** bucket `tapes-media` for clip storage
 - **Cloudflare D1** database `tapes-db` for metadata
 - **APNs** for push notifications (new invites, new contributions)
-- **Sign in with Apple** for user identity
-- **Universal Links** configured via `apple-app-site-association` on the share domain
+- **Email/password authentication** with JWT sessions, email verification (Resend), and password reset
+- **Universal Links** configured via `apple-app-site-association` on the share domain (used for share links and password reset)
 
 ### Key Modules
 
-- `Tapes/Core/Auth/AuthManager.swift` — Apple ID auth + server JWT exchange
+- `Tapes/Core/Auth/AuthManager.swift` — email/password auth, JWT session management, email verification state
 - `Tapes/Core/Networking/TapesAPIClient.swift` — API contract (tapes, clips, collaborators, shares, manifest, sync status)
 - `Tapes/Core/Networking/TapeSyncChecker.swift` — event-driven sync: uses `POST /sync/status` (one lightweight request) instead of per-tape manifest polling. Push notifications trigger instant badge updates; 5-minute timer as fallback.
 - `Tapes/Core/Networking/ShareUploadCoordinator.swift` — background upload coordinator (progress overlay, completion dialogs); exposes `resultCreateResponse` with all four share IDs

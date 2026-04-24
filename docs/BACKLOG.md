@@ -89,3 +89,23 @@ Items to revisit when time allows. Not urgent, not blocking — just worth doing
 **Files likely involved**: New `.xcstrings` file, all files under `Tapes/Views/`, `Tapes/Components/`, `Tapes/Features/`, `Tapes/Export/ExportDialogs.swift`, `Tapes/DesignSystem/`.
 
 ---
+
+## Authentication
+
+### 7. ~~`validateResetToken` response shape mismatch~~ — DONE
+
+Fixed: Worker now returns `{ message: "Valid" }` to match the iOS `MessageResponse` type.
+
+---
+
+### 8. ~~Call `getMe` on app launch for auth state consistency~~ — DONE
+
+Implemented: `AuthManager.refreshProfile()` calls `getMe` on every app launch (when signed in). Wired in `TapesApp.swift`'s `.task` block.
+
+---
+
+### 9. ~~Register endpoint should handle email send failure~~ — NOT AN ISSUE
+
+The Shared and Collab tabs already show a "Verify your email" prompt with a "Resend Verification Email" button. If the initial email fails, the user has the resend action immediately visible. No fix needed.
+
+---

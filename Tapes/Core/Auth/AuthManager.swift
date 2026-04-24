@@ -157,6 +157,30 @@ final class AuthManager: ObservableObject {
         }
     }
 
+    // MARK: - Profile Refresh
+
+    func refreshProfile() async {
+        guard let api = apiClient else { return }
+
+        do {
+            let user = try await api.getMe()
+            userName = user.name
+            userEmail = user.email
+            isEmailVerified = user.emailVerified ?? false
+
+            if let name = user.name {
+                UserDefaults.standard.set(name, forKey: Self.userNameKey)
+            }
+            if let email = user.email {
+                UserDefaults.standard.set(email, forKey: Self.userEmailKey)
+            }
+            UserDefaults.standard.set(isEmailVerified, forKey: Self.emailVerifiedKey)
+            log.info("Profile refreshed from server")
+        } catch {
+            log.debug("Profile refresh skipped: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Email Verified (called when deep link confirms)
 
     func markEmailVerified() {

@@ -74,12 +74,27 @@ struct AccountTabView: View {
                 }
             }
 
-            HStack {
-                Text("Email Status")
-                    .foregroundColor(Tokens.Colors.primaryText)
-                Spacer()
-                Text(authManager.isEmailVerified ? "Verified" : "Not Verified")
-                    .foregroundColor(authManager.isEmailVerified ? .green : .orange)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Email Status")
+                        .foregroundColor(Tokens.Colors.primaryText)
+                    Spacer()
+                    Text(authManager.isEmailVerified ? "Verified" : "Not Verified")
+                        .foregroundColor(authManager.isEmailVerified ? .green : .orange)
+                }
+                if !authManager.isEmailVerified {
+                    HStack {
+                        Spacer()
+                        Button {
+                            Task { await authManager.resendVerification() }
+                        } label: {
+                            Text("Resend Email")
+                                .font(.subheadline)
+                                .foregroundColor(.blue)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
 
             HStack {
@@ -256,6 +271,32 @@ struct AccountTabView: View {
 
     private var appBuild: String {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+    }
+}
+
+// MARK: - Appearance Mode
+
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case dark
+    case light
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: "System"
+        case .dark: "Dark"
+        case .light: "Light"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .dark: .dark
+        case .light: .light
+        }
     }
 }
 

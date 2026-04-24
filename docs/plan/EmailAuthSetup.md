@@ -1,3 +1,7 @@
+# Email Auth Setup — IMPLEMENTED
+
+> **Status: Fully implemented and deployed.** This plan has been executed. See `docs/features/AuthAndSubscription.md` for the current feature documentation.
+
 # Email Auth Setup
 
 ## Email Service Provider
@@ -13,7 +17,7 @@ Stored as Cloudflare Worker secret `RESEND_API_KEY` (deployed).
 
 ### Sending Address
 
-`noreply@studiomorph.co.uk` (or `tapes@studiomorph.co.uk` — to be decided)
+`noreply@studiomorph.co.uk`
 
 ## Scope
 
@@ -27,6 +31,10 @@ Replace Sign in with Apple with email/password authentication.
 | `POST /auth/login` | Sign in (email, password) |
 | `POST /auth/forgot-password` | Send password reset email |
 | `POST /auth/reset-password` | Set new password with reset token |
+| `GET /auth/validate-reset-token` | Check token validity without consuming it |
+| `GET /auth/verify-email` | Browser-click handler, sets `email_verified`, sends silent push |
+| `POST /auth/resend-verification` | Re-send verification email (authenticated) |
+| `GET /users/me` | Returns user profile including `email_verified` |
 
 ### D1 Schema Changes
 
@@ -35,9 +43,11 @@ Replace Sign in with Apple with email/password authentication.
 
 ### iOS Changes
 
-- Remove `AuthenticationServices` / Sign in with Apple
-- New screens: Sign In, Create Account, Forgot Password
-- Update `AuthManager` for email/password JWT flow
+- Removed `AuthenticationServices` / Sign in with Apple
+- New screens: `AuthView` (login/register), `ForgotPasswordView`, `ResetPasswordView`
+- `AuthManager` updated for email/password JWT flow with `email_verified` state
+- `PushNotificationManager` handles `email_verified` silent push
+- `ContentView` handles `tapes://verified` and `tapes://reset-password?token=…` deep links
 
 ### Dependencies
 

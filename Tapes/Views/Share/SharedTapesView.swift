@@ -291,7 +291,7 @@ struct SharedTapesView: View {
 
             Image(systemName: "envelope.badge.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.blue)
+                .foregroundStyle(Tokens.Colors.secondaryText)
 
             Text("Verify your email")
                 .font(.system(size: 17, weight: .medium))
@@ -306,8 +306,7 @@ struct SharedTapesView: View {
             Button("Resend Verification Email") {
                 Task { await authManager.resendVerification() }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
+            .buttonStyle(.bordered)
 
             Spacer()
         }
