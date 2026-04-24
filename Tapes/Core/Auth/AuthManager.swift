@@ -1,21 +1,13 @@
-//
-//  AuthManager.swift
-//  Tapes
-//
-//  Created by AI Assistant on 26/01/2026.
-//
-
-import AuthenticationServices
 import SwiftUI
 import os
 
 @MainActor
 final class AuthManager: ObservableObject {
 
-    private static let userIDKey = "tapes_apple_user_id"
-    private static let userNameKey = "tapes_apple_user_name"
-    private static let userEmailKey = "tapes_apple_user_email"
-    private static let serverUserIDKey = "tapes_server_user_id"
+    private static let userIDKey = "tapes_user_id"
+    private static let userNameKey = "tapes_user_name"
+    private static let userEmailKey = "tapes_user_email"
+    private static let emailVerifiedKey = "tapes_email_verified"
 
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Auth")
 
@@ -23,8 +15,9 @@ final class AuthManager: ObservableObject {
 
     @Published private(set) var userName: String?
     @Published private(set) var userEmail: String?
-    @Published private(set) var serverUserId: String?
-    @Published private(set) var isAuthenticatingWithServer = false
+    @Published private(set) var userId: String?
+    @Published private(set) var isEmailVerified = false
+    @Published private(set) var isLoading = false
     @Published var authError: String?
 
     var apiClient: TapesAPIClient?
@@ -32,151 +25,169 @@ final class AuthManager: ObservableObject {
     // MARK: - Lifecycle
 
     init() {
-        serverUserId = UserDefaults.standard.string(forKey: Self.serverUserIDKey)
-        restoreSession()
+        userId = UserDefaults.standard.string(forKey: Self.userIDKey)
+        userName = UserDefaults.standard.string(forKey: Self.userNameKey)
+        userEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
+        isEmailVerified = UserDefaults.standard.bool(forKey: Self.emailVerifiedKey)
     }
 
     // MARK: - Session
 
-    var userID: String? {
-        UserDefaults.standard.string(forKey: Self.userIDKey)
-    }
+    var isSignedIn: Bool { userId != nil }
 
-    var isSignedIn: Bool {
-        userID != nil
-    }
+    // MARK: - Register
 
-    var hasServerSession: Bool {
-        serverUserId != nil
-    }
-
-    private func restoreSession() {
-        guard let id = userID else { return }
-
-        userName = UserDefaults.standard.string(forKey: Self.userNameKey)
-        userEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
-
-        let provider = ASAuthorizationAppleIDProvider()
-        provider.getCredentialState(forUserID: id) { [weak self] state, _ in
-            Task { @MainActor in
-                switch state {
-                case .revoked, .notFound:
-                    self?.signOut()
-                default:
-                    break
-                }
-            }
+    func register(email: String, password: String, firstName: String?, lastName: String?) async {
+        guard let api = apiClient else {
+            authError = "App not ready. Please try again."
+            return
         }
-    }
 
-    // MARK: - Handle Sign in with Apple Result
-
-    func handleAuthorization(_ result: Result<ASAuthorization, Error>) {
-        switch result {
-        case .success(let auth):
-            guard let credential = auth.credential as? ASAuthorizationAppleIDCredential else {
-                authError = "Unexpected credential type."
-                return
-            }
-
-            let uid = credential.user
-            UserDefaults.standard.set(uid, forKey: Self.userIDKey)
-
-            if let fullName = credential.fullName {
-                let name = PersonNameComponentsFormatter.localizedString(from: fullName, style: .default)
-                if !name.isEmpty {
-                    userName = name
-                    UserDefaults.standard.set(name, forKey: Self.userNameKey)
-                }
-            }
-            if userName == nil {
-                userName = UserDefaults.standard.string(forKey: Self.userNameKey)
-            }
-
-            if let email = credential.email {
-                userEmail = email
-                UserDefaults.standard.set(email, forKey: Self.userEmailKey)
-            }
-            if userEmail == nil {
-                userEmail = UserDefaults.standard.string(forKey: Self.userEmailKey)
-            }
-
-            authError = nil
-
-            guard let identityToken = credential.identityToken else {
-                log.error("Apple credential missing identity token")
-                authError = "Apple sign-in didn't return a token. Please try again."
-                UserDefaults.standard.removeObject(forKey: Self.userIDKey)
-                return
-            }
-
-            guard let api = apiClient else {
-                log.error("API client not ready during sign-in")
-                authError = "App not ready. Please close and reopen, then try again."
-                UserDefaults.standard.removeObject(forKey: Self.userIDKey)
-                return
-            }
-
-            Task {
-                await exchangeTokenWithServer(
-                    identityToken: identityToken,
-                    fullName: userName,
-                    email: userEmail,
-                    api: api
-                )
-            }
-
-        case .failure(let error):
-            guard let asError = error as? ASAuthorizationError else {
-                authError = error.localizedDescription
-                return
-            }
-            switch asError.code {
-            case .canceled, .unknown:
-                break
-            default:
-                authError = error.localizedDescription
-            }
-        }
-    }
-
-    // MARK: - Server Token Exchange
-
-    private func exchangeTokenWithServer(identityToken: Data, fullName: String?,
-                                          email: String?, api: TapesAPIClient) async {
-        isAuthenticatingWithServer = true
-        defer { isAuthenticatingWithServer = false }
+        isLoading = true
+        authError = nil
+        defer { isLoading = false }
 
         do {
-            let response = try await api.authenticateWithApple(
-                identityToken: identityToken,
-                fullName: fullName,
-                email: email
+            let response = try await api.register(
+                email: email,
+                password: password,
+                firstName: firstName,
+                lastName: lastName
             )
-            serverUserId = response.user.userId
-            UserDefaults.standard.set(response.user.userId, forKey: Self.serverUserIDKey)
-            authError = nil
-            log.info("Server auth successful, user: \(response.user.userId)")
+            persistSession(from: response)
+            log.info("Registration successful: \(response.user.userId)")
+        } catch let apiError as APIError {
+            authError = apiError.userMessage
         } catch {
-            log.error("Server auth failed: \(error.localizedDescription)")
-            authError = "Sign-in couldn't reach the server. Please try again."
-            UserDefaults.standard.removeObject(forKey: Self.userIDKey)
-            userName = nil
-            userEmail = nil
+            authError = "Something went wrong. Please try again."
+            log.error("Register failed: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Login
+
+    func login(email: String, password: String) async {
+        guard let api = apiClient else {
+            authError = "App not ready. Please try again."
+            return
+        }
+
+        isLoading = true
+        authError = nil
+        defer { isLoading = false }
+
+        do {
+            let response = try await api.login(email: email, password: password)
+            persistSession(from: response)
+            log.info("Login successful: \(response.user.userId)")
+        } catch let apiError as APIError {
+            authError = apiError.userMessage
+        } catch {
+            authError = "Something went wrong. Please try again."
+            log.error("Login failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Forgot Password
+
+    func forgotPassword(email: String) async -> Bool {
+        guard let api = apiClient else {
+            authError = "App not ready. Please try again."
+            return false
+        }
+
+        isLoading = true
+        authError = nil
+        defer { isLoading = false }
+
+        do {
+            _ = try await api.forgotPassword(email: email)
+            return true
+        } catch {
+            authError = "Failed to send reset email. Please try again."
+            return false
+        }
+    }
+
+    // MARK: - Reset Password
+
+    func resetPassword(token: String, newPassword: String) async -> Bool {
+        guard let api = apiClient else {
+            authError = "App not ready. Please try again."
+            return false
+        }
+
+        isLoading = true
+        authError = nil
+        defer { isLoading = false }
+
+        do {
+            let response = try await api.resetPassword(token: token, password: newPassword)
+            persistSession(from: response)
+            log.info("Password reset successful")
+            return true
+        } catch let apiError as APIError {
+            authError = apiError.userMessage
+            return false
+        } catch {
+            authError = "Failed to reset password. Please try again."
+            return false
+        }
+    }
+
+    // MARK: - Resend Verification
+
+    func resendVerification() async -> Bool {
+        guard let api = apiClient else { return false }
+
+        do {
+            _ = try await api.resendVerification()
+            return true
+        } catch {
+            log.error("Resend verification failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    // MARK: - Email Verified (called when deep link confirms)
+
+    func markEmailVerified() {
+        isEmailVerified = true
+        UserDefaults.standard.set(true, forKey: Self.emailVerifiedKey)
     }
 
     // MARK: - Sign Out
 
     func signOut() {
         UserDefaults.standard.removeObject(forKey: Self.userIDKey)
-        UserDefaults.standard.removeObject(forKey: Self.serverUserIDKey)
+        UserDefaults.standard.removeObject(forKey: Self.userNameKey)
+        UserDefaults.standard.removeObject(forKey: Self.userEmailKey)
+        UserDefaults.standard.removeObject(forKey: Self.emailVerifiedKey)
+        userId = nil
         userName = nil
         userEmail = nil
-        serverUserId = nil
+        isEmailVerified = false
 
         if let api = apiClient {
             Task { await api.clearToken() }
         }
+    }
+
+    // MARK: - Private
+
+    private func persistSession(from response: TapesAPIClient.AuthResponse) {
+        userId = response.user.userId
+        userName = response.user.name
+        userEmail = response.user.email
+        isEmailVerified = response.user.emailVerified ?? false
+
+        UserDefaults.standard.set(response.user.userId, forKey: Self.userIDKey)
+        if let name = response.user.name {
+            UserDefaults.standard.set(name, forKey: Self.userNameKey)
+        }
+        if let email = response.user.email {
+            UserDefaults.standard.set(email, forKey: Self.userEmailKey)
+        }
+        UserDefaults.standard.set(isEmailVerified, forKey: Self.emailVerifiedKey)
     }
 }

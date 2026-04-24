@@ -67,27 +67,50 @@ actor TapesAPIClient {
         let email: String?
         let name: String?
         let tier: String
-        let createdAt: String
+        let emailVerified: Bool?
 
         enum CodingKeys: String, CodingKey {
             case userId = "user_id"
             case email, name, tier
-            case createdAt = "created_at"
+            case emailVerified = "email_verified"
         }
     }
 
-    func authenticateWithApple(identityToken: Data, fullName: String?, email: String?) async throws -> AuthResponse {
-        guard let tokenString = String(data: identityToken, encoding: .utf8) else {
-            throw APIError.validation("Invalid identity token encoding.")
-        }
+    func register(email: String, password: String, firstName: String?, lastName: String?) async throws -> AuthResponse {
+        var body: [String: String] = ["email": email, "password": password]
+        if let first = firstName { body["first_name"] = first }
+        if let last = lastName { body["last_name"] = last }
 
-        var body: [String: String] = ["identity_token": tokenString]
-        if let name = fullName { body["full_name"] = name }
-        if let email = email { body["email"] = email }
-
-        let response: AuthResponse = try await post(path: "/auth/apple", body: body, authenticated: false)
+        let response: AuthResponse = try await post(path: "/auth/register", body: body, authenticated: false)
         storeToken(response.accessToken)
         return response
+    }
+
+    func login(email: String, password: String) async throws -> AuthResponse {
+        let body: [String: String] = ["email": email, "password": password]
+        let response: AuthResponse = try await post(path: "/auth/login", body: body, authenticated: false)
+        storeToken(response.accessToken)
+        return response
+    }
+
+    struct MessageResponse: Decodable {
+        let message: String
+    }
+
+    func forgotPassword(email: String) async throws -> MessageResponse {
+        let body = ["email": email]
+        return try await post(path: "/auth/forgot-password", body: body, authenticated: false)
+    }
+
+    func resetPassword(token: String, password: String) async throws -> AuthResponse {
+        let body = ["token": token, "password": password]
+        let response: AuthResponse = try await post(path: "/auth/reset-password", body: body, authenticated: false)
+        storeToken(response.accessToken)
+        return response
+    }
+
+    func resendVerification() async throws -> MessageResponse {
+        return try await postRaw(path: "/auth/resend-verification", body: [:] as [String: String])
     }
 
     // MARK: - Share Variants

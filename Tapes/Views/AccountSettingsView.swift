@@ -1,5 +1,4 @@
 import SwiftUI
-import AuthenticationServices
 
 struct AccountSettingsView: View {
     @EnvironmentObject private var authManager: AuthManager
@@ -9,8 +8,8 @@ struct AccountSettingsView: View {
     var onHotTips: (() -> Void)? = nil
     @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark
 
-    private var isAppleSignedIn: Bool {
-        authManager.userID != nil
+    private var isSignedIn: Bool {
+        authManager.isSignedIn
     }
 
     private var tierDisplayName: String {
@@ -31,7 +30,7 @@ struct AccountSettingsView: View {
                 creditsSection.listRowBackground(Tokens.Colors.secondaryBackground)
                 legalSection.listRowBackground(Tokens.Colors.secondaryBackground)
 
-                if isAppleSignedIn {
+                if isSignedIn {
                     signOutSection.listRowBackground(Tokens.Colors.secondaryBackground)
                 }
             }
@@ -53,56 +52,47 @@ struct AccountSettingsView: View {
     @ViewBuilder
     private var accountSection: some View {
         Section {
-            if isAppleSignedIn {
-                if let name = authManager.userName {
-                    HStack {
-                        Text("Name")
-                            .foregroundColor(Tokens.Colors.primaryText)
-                        Spacer()
-                        Text(name)
-                            .foregroundColor(Tokens.Colors.secondaryText)
-                    }
-                }
-                if let email = authManager.userEmail {
-                    HStack {
-                        Text("Email")
-                            .foregroundColor(Tokens.Colors.primaryText)
-                        Spacer()
-                        Text(email)
-                            .foregroundColor(Tokens.Colors.secondaryText)
-                    }
-                }
-
+            if let name = authManager.userName {
                 HStack {
-                    Text("Plan")
+                    Text("Name")
                         .foregroundColor(Tokens.Colors.primaryText)
                     Spacer()
-                    Text(tierDisplayName)
+                    Text(name)
                         .foregroundColor(Tokens.Colors.secondaryText)
                 }
-
-                if !entitlementManager.isPremium {
-                    Button("Manage Subscription") {
-                        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                            UIApplication.shared.open(url)
-                        }
-                    }
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Sign in to sync your account and manage your subscription.")
-                        .font(.subheadline)
+            }
+            if let email = authManager.userEmail {
+                HStack {
+                    Text("Email")
+                        .foregroundColor(Tokens.Colors.primaryText)
+                    Spacer()
+                    Text(email)
                         .foregroundColor(Tokens.Colors.secondaryText)
-
-                    SignInWithAppleButton(.signIn) { request in
-                        request.requestedScopes = [.fullName, .email]
-                    } onCompletion: { result in
-                        authManager.handleAuthorization(result)
-                    }
-                    .frame(height: 48)
-                    .clipShape(Capsule())
                 }
-                .padding(.vertical, 4)
+            }
+
+            HStack {
+                Text("Email Status")
+                    .foregroundColor(Tokens.Colors.primaryText)
+                Spacer()
+                Text(authManager.isEmailVerified ? "Verified" : "Not Verified")
+                    .foregroundColor(authManager.isEmailVerified ? .green : .orange)
+            }
+
+            HStack {
+                Text("Plan")
+                    .foregroundColor(Tokens.Colors.primaryText)
+                Spacer()
+                Text(tierDisplayName)
+                    .foregroundColor(Tokens.Colors.secondaryText)
+            }
+
+            if !entitlementManager.isPremium {
+                Button("Manage Subscription") {
+                    if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                        UIApplication.shared.open(url)
+                    }
+                }
             }
         } header: {
             Text("Account")

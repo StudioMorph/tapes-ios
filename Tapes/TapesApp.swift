@@ -114,6 +114,7 @@ struct TapesApp: App {
         }
         if url.scheme == "http" || url.scheme == "https" {
             let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if path.hasPrefix("t/reset-password") { return nil }
             let parts = path.split(separator: "/").map(String.init)
             guard parts.count == 2, parts[0] == "t" else { return nil }
             let id = parts[1]

@@ -1,5 +1,4 @@
 import SwiftUI
-import AuthenticationServices
 
 struct CollabTapesView: View {
     @EnvironmentObject private var authManager: AuthManager
@@ -106,6 +105,8 @@ struct CollabTapesView: View {
 
                 if !authManager.isSignedIn {
                     signInPrompt
+                } else if !authManager.isEmailVerified {
+                    unverifiedBanner
                 } else {
                     collabTapeList
                 }
@@ -432,14 +433,35 @@ struct CollabTapesView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Tokens.Spacing.xxl)
 
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = [.fullName, .email]
-            } onCompletion: { result in
-                authManager.handleAuthorization(result)
+            Spacer()
+        }
+    }
+
+    // MARK: - Unverified Banner
+
+    private var unverifiedBanner: some View {
+        VStack(spacing: Tokens.Spacing.l) {
+            Spacer()
+
+            Image(systemName: "envelope.badge.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(.blue)
+
+            Text("Verify your email")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(Tokens.Colors.secondaryText)
+
+            Text("Verify your email to share and collaborate on tapes.")
+                .font(Tokens.Typography.caption)
+                .foregroundStyle(Tokens.Colors.tertiaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Tokens.Spacing.xxl)
+
+            Button("Resend Verification Email") {
+                Task { await authManager.resendVerification() }
             }
-            .frame(height: Tokens.HitTarget.recommended)
-            .clipShape(Capsule())
-            .padding(.horizontal, Tokens.Spacing.xxl)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
 
             Spacer()
         }

@@ -63,7 +63,7 @@ struct ShareLinkSection: View {
     }
 
     private var canInvite: Bool {
-        guard authManager.hasServerSession else { return false }
+        guard authManager.isSignedIn else { return false }
         let trimmed = emailInput.trimmingCharacters(in: .whitespacesAndNewlines)
         return isValidEmail(trimmed) && !isInviting
     }
@@ -141,7 +141,7 @@ struct ShareLinkSection: View {
 
             Toggle("", isOn: $securedByEmail)
                 .labelsHidden()
-                .disabled(!authManager.hasServerSession)
+                .disabled(!authManager.isSignedIn)
         }
     }
 

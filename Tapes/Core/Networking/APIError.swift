@@ -36,17 +36,21 @@ enum APIError: LocalizedError {
         }
     }
 
+    var userMessage: String {
+        errorDescription ?? "Something went wrong."
+    }
+
     static func from(status: Int, body: Data) -> APIError {
         if let parsed = try? JSONDecoder().decode(APIErrorResponse.self, from: body) {
             let msg = parsed.error.message
             switch parsed.error.code {
-            case "UNAUTHORIZED": return .unauthorized
+            case "UNAUTHORIZED", "INVALID_CREDENTIALS": return .unauthorized
             case "FORBIDDEN": return .forbidden(msg)
             case "TAPE_NOT_FOUND", "CLIP_NOT_FOUND": return .notFound(msg)
             case "TAPE_EXPIRED": return .expired(msg)
             case "TIER_REQUIRED": return .tierRequired(msg)
             case "RATE_LIMITED": return .rateLimited(msg)
-            case "VALIDATION_ERROR": return .validation(msg)
+            case "VALIDATION_ERROR", "EMAIL_EXISTS", "INVALID_TOKEN", "TOKEN_EXPIRED": return .validation(msg)
             default: return .server(msg)
             }
         }
