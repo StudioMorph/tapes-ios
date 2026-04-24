@@ -114,7 +114,10 @@ actor TapesAPIClient {
     }
 
     func validateResetToken(_ token: String) async throws {
-        let request = try buildRequest(method: "GET", path: "/auth/validate-reset-token?token=\(token)", authenticated: false)
+        var components = URLComponents(url: baseURL.appendingPathComponent("/auth/validate-reset-token"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "token", value: token)]
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "GET"
         let _: MessageResponse = try await execute(request)
     }
 
