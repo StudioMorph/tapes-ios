@@ -113,6 +113,11 @@ actor TapesAPIClient {
         return try await postRaw(path: "/auth/resend-verification", body: [:] as [String: String])
     }
 
+    func validateResetToken(_ token: String) async throws {
+        let request = try buildRequest(method: "GET", path: "/auth/validate-reset-token?token=\(token)", authenticated: false)
+        let _: MessageResponse = try await execute(request)
+    }
+
     // MARK: - Share Variants
 
     /// One of the 4 permanent share links every tape exposes.
