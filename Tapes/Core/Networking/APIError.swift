@@ -11,6 +11,7 @@ struct APIErrorBody: Decodable {
 
 enum APIError: LocalizedError {
     case unauthorized
+    case invalidCredentials
     case forbidden(String)
     case notFound(String)
     case expired(String)
@@ -24,6 +25,7 @@ enum APIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unauthorized: return "Session expired. Please sign in again."
+        case .invalidCredentials: return "Incorrect email or password."
         case .forbidden(let msg): return msg
         case .notFound(let msg): return msg
         case .expired(let msg): return msg
@@ -44,7 +46,8 @@ enum APIError: LocalizedError {
         if let parsed = try? JSONDecoder().decode(APIErrorResponse.self, from: body) {
             let msg = parsed.error.message
             switch parsed.error.code {
-            case "UNAUTHORIZED", "INVALID_CREDENTIALS": return .unauthorized
+            case "UNAUTHORIZED": return .unauthorized
+            case "INVALID_CREDENTIALS": return .invalidCredentials
             case "FORBIDDEN": return .forbidden(msg)
             case "TAPE_NOT_FOUND", "CLIP_NOT_FOUND": return .notFound(msg)
             case "TAPE_EXPIRED": return .expired(msg)
