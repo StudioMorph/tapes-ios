@@ -6,7 +6,7 @@ struct AccountSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     var onHotTips: (() -> Void)? = nil
-    @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark
+    @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .system
 
     private var isSignedIn: Bool {
         authManager.isSignedIn

@@ -96,6 +96,7 @@ struct AuthView: View {
             }
         }
         .pickerStyle(.segmented)
+        .controlSize(.large)
     }
 
     // MARK: - Fields

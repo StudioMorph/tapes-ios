@@ -74,7 +74,7 @@ struct TapesApp: App {
         defaults.set(true, forKey: flagKey)
     }
 
-    @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark
+    @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .system
 
     var body: some Scene {
         WindowGroup {

@@ -5,7 +5,7 @@ struct AccountTabView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @Binding var showOnboarding: Bool
 
-    @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .dark
+    @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .system
 
     private var isSignedIn: Bool {
         authManager.isSignedIn
