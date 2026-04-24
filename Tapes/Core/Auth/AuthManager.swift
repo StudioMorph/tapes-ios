@@ -111,6 +111,8 @@ final class AuthManager: ObservableObject {
 
     // MARK: - Reset Password
 
+    private var pendingResetResponse: TapesAPIClient.AuthResponse?
+
     func resetPassword(token: String, newPassword: String) async -> Bool {
         guard let api = apiClient else {
             authError = "App not ready. Please try again."
@@ -123,7 +125,7 @@ final class AuthManager: ObservableObject {
 
         do {
             let response = try await api.resetPassword(token: token, password: newPassword)
-            persistSession(from: response)
+            pendingResetResponse = response
             log.info("Password reset successful")
             return true
         } catch let apiError as APIError {
@@ -133,6 +135,12 @@ final class AuthManager: ObservableObject {
             authError = "Failed to reset password. Please try again."
             return false
         }
+    }
+
+    func commitResetSession() {
+        guard let response = pendingResetResponse else { return }
+        persistSession(from: response)
+        pendingResetResponse = nil
     }
 
     // MARK: - Resend Verification

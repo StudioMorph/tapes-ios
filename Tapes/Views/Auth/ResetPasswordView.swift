@@ -132,10 +132,17 @@ struct ResetPasswordView: View {
                 .foregroundStyle(Tokens.Colors.secondaryText)
                 .multilineTextAlignment(.center)
 
-            Button("Continue") { dismiss() }
-                .font(.system(size: 17, weight: .semibold))
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+            Button {
+                authManager.commitResetSession()
+                dismiss()
+            } label: {
+                Text("Continue")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
         }
     }
 }
