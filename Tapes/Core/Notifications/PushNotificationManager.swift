@@ -7,6 +7,7 @@ final class PushNotificationManager: NSObject, ObservableObject {
     static let shared = PushNotificationManager()
 
     var apiClient: TapesAPIClient?
+    var authManager: AuthManager?
     var navigationCoordinator: NavigationCoordinator?
     var syncChecker: TapeSyncChecker?
     var tapesProvider: (() -> [Tape])?
@@ -70,6 +71,15 @@ final class PushNotificationManager: NSObject, ObservableObject {
         let remoteTapeId = userInfo["tape_id"] as? String
 
         log.info("[BackgroundPush] action=\(action ?? "none") tape=\(remoteTapeId ?? "none")")
+
+        if action == "email_verified" {
+            Task { @MainActor in
+                self.authManager?.markEmailVerified()
+                self.log.info("[BackgroundPush] email verified via silent push")
+                completionHandler(.newData)
+            }
+            return
+        }
 
         if action == "tape_invite" {
             Task { @MainActor in
@@ -198,7 +208,14 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         let userInfo = notification.request.content.userInfo
         let action = userInfo["action"] as? String
 
-        if action == "tape_invite" {
+        if action == "email_verified" {
+            Task { @MainActor in
+                self.authManager?.markEmailVerified()
+                self.log.info("[ForegroundPush] email verified via silent push")
+            }
+            completionHandler([])
+            return
+        } else if action == "tape_invite" {
             Task { @MainActor in
                 self.handleInvitePush(userInfo: userInfo)
             }

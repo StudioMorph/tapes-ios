@@ -94,6 +94,7 @@ struct TapesApp: App {
                 .task {
                     authManager.apiClient = apiClient
                     PushNotificationManager.shared.apiClient = apiClient
+                    PushNotificationManager.shared.authManager = authManager
                     PushNotificationManager.shared.navigationCoordinator = navigationCoordinator
                     PushNotificationManager.shared.requestAuthorisation()
                 }
