@@ -16,6 +16,7 @@ struct AuthView: View {
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var showForgotPassword = false
+    @Binding var resetPasswordToken: String?
 
     private var isFormValid: Bool {
         let emailValid = !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -63,6 +64,14 @@ struct AuthView: View {
         .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
         .sheet(isPresented: $showForgotPassword) {
             ForgotPasswordView()
+        }
+        .sheet(item: $resetPasswordToken) { token in
+            ResetPasswordView(token: token)
+        }
+        .onChange(of: resetPasswordToken) { _, newToken in
+            if newToken != nil {
+                showForgotPassword = false
+            }
         }
         .onChange(of: mode) { _, _ in
             authManager.authError = nil

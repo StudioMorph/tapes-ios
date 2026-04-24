@@ -96,12 +96,22 @@ struct ForgotPasswordView: View {
                 .foregroundStyle(Tokens.Colors.secondaryText)
                 .multilineTextAlignment(.center)
 
+            Button {
+                dismiss()
+            } label: {
+                Text("Got it")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+
             Button("Resend") {
                 sent = false
             }
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(.blue)
-            .padding(.top, 8)
         }
     }
 }

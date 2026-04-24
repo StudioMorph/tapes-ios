@@ -36,11 +36,8 @@ struct ContentView: View {
                         .presentationBackground(.clear)
                     }
             } else {
-                AuthView()
+                AuthView(resetPasswordToken: $resetPasswordToken)
             }
-        }
-        .sheet(item: $resetPasswordToken) { token in
-            ResetPasswordView(token: token)
         }
         .onOpenURL { url in
             handleDeepLink(url)
