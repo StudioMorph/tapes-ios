@@ -68,11 +68,25 @@ actor TapesAPIClient {
         let name: String?
         let tier: String
         let emailVerified: Bool?
+        let deliveryMode: String?
+        let timezone: String?
 
         enum CodingKeys: String, CodingKey {
             case userId = "user_id"
             case email, name, tier
             case emailVerified = "email_verified"
+            case deliveryMode = "delivery_mode"
+            case timezone
+        }
+    }
+
+    struct NotificationPreferenceResponse: Decodable {
+        let deliveryMode: String
+        let timezone: String?
+
+        enum CodingKeys: String, CodingKey {
+            case deliveryMode = "delivery_mode"
+            case timezone
         }
     }
 
@@ -521,6 +535,11 @@ actor TapesAPIClient {
 
     func getMe() async throws -> UserInfo {
         try await get(path: "/users/me")
+    }
+
+    func updateNotificationPreference(deliveryMode: String, timezone: String) async throws -> NotificationPreferenceResponse {
+        let body = ["delivery_mode": deliveryMode, "timezone": timezone]
+        return try await put(path: "/users/me/notification-preference", body: body)
     }
 
     // MARK: - Music (Mubert proxy)

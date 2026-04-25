@@ -1,27 +1,76 @@
 import SwiftUI
 import UserNotifications
+import Network
+
+enum DeliveryMode: String, CaseIterable, Identifiable {
+    case auto
+    case hourly
+    case twiceDaily = "twice_daily"
+    case onceDaily = "once_daily"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .auto:       "Immediate"
+        case .hourly:     "Hourly Digest"
+        case .twiceDaily: "Twice Daily"
+        case .onceDaily:  "Once Daily"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .auto:       "Get notified the moment something happens."
+        case .hourly:     "Receive a summary every hour."
+        case .twiceDaily: "Receive a summary at 12 pm and 6 pm."
+        case .onceDaily:  "Receive a summary at 6 pm."
+        }
+    }
+}
 
 struct PreferencesView: View {
     @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .system
     @AppStorage("tapes_marketing_emails") private var marketingEmails = true
     @AppStorage("tapes_product_updates") private var productUpdates = true
+    @AppStorage("tapes_delivery_mode") private var deliveryModeRaw = DeliveryMode.auto.rawValue
+    @AppStorage("tapes_delivery_mode_pending_sync") private var pendingSync = false
+
+    @EnvironmentObject private var authManager: AuthManager
 
     @State private var notificationsEnabled = false
     @State private var notificationsDetermined = false
+    @State private var monitor: NWPathMonitor?
+
+    private var deliveryMode: Binding<DeliveryMode> {
+        Binding(
+            get: { DeliveryMode(rawValue: deliveryModeRaw) ?? .auto },
+            set: { newValue in
+                deliveryModeRaw = newValue.rawValue
+                syncPreference(mode: newValue)
+            }
+        )
+    }
 
     var body: some View {
         Form {
             notificationsSection.listRowBackground(Tokens.Colors.secondaryBackground)
+            deliverySection.listRowBackground(Tokens.Colors.secondaryBackground)
             communicationSection.listRowBackground(Tokens.Colors.secondaryBackground)
             appearanceSection.listRowBackground(Tokens.Colors.secondaryBackground)
         }
         .scrollContentBackground(.hidden)
         .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
         .navigationTitle("Preferences")
-        .task { await checkNotificationStatus() }
+        .task {
+            await checkNotificationStatus()
+            await loadServerPreference()
+            startConnectivityMonitor()
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await checkNotificationStatus() }
         }
+        .onDisappear { monitor?.cancel() }
     }
 
     // MARK: - Notifications
@@ -44,6 +93,22 @@ struct PreferencesView: View {
             Text("Notifications")
         } footer: {
             Text("Manage tape activity alerts, collaboration invites, and sync updates. Opens system settings.")
+        }
+    }
+
+    // MARK: - Delivery
+
+    private var deliverySection: some View {
+        Section {
+            Picker("Delivery", selection: deliveryMode) {
+                ForEach(DeliveryMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+        } header: {
+            Text("Notification Delivery")
+        } footer: {
+            Text((DeliveryMode(rawValue: deliveryModeRaw) ?? .auto).description)
         }
     }
 
@@ -91,10 +156,53 @@ struct PreferencesView: View {
         guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else { return }
         UIApplication.shared.open(url)
     }
+
+    private func loadServerPreference() async {
+        guard let api = authManager.apiClient else { return }
+        do {
+            let user = try await api.getMe()
+            if let serverMode = user.deliveryMode,
+               let mode = DeliveryMode(rawValue: serverMode) {
+                deliveryModeRaw = mode.rawValue
+            }
+        } catch { }
+    }
+
+    private func syncPreference(mode: DeliveryMode) {
+        guard let api = authManager.apiClient else {
+            pendingSync = true
+            return
+        }
+
+        Task {
+            do {
+                _ = try await api.updateNotificationPreference(
+                    deliveryMode: mode.rawValue,
+                    timezone: TimeZone.current.identifier
+                )
+                pendingSync = false
+            } catch {
+                pendingSync = true
+            }
+        }
+    }
+
+    private func startConnectivityMonitor() {
+        guard pendingSync else { return }
+        let pathMonitor = NWPathMonitor()
+        pathMonitor.pathUpdateHandler = { path in
+            guard path.status == .satisfied, pendingSync else { return }
+            let mode = DeliveryMode(rawValue: deliveryModeRaw) ?? .auto
+            syncPreference(mode: mode)
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "com.studiomorph.tapes.netmonitor"))
+        monitor = pathMonitor
+    }
 }
 
 #Preview {
     NavigationStack {
         PreferencesView()
+            .environmentObject(AuthManager())
     }
 }

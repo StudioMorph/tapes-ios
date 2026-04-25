@@ -417,6 +417,32 @@ Register or update APNs device token for push notifications.
 
 ---
 
+### Notification Preference
+
+#### `PUT /users/me/notification-preference`
+
+Set the user's notification delivery mode and timezone.
+
+**Request:**
+```json
+{
+  "delivery_mode": "hourly",
+  "timezone": "Europe/London"
+}
+```
+
+Valid `delivery_mode` values: `auto`, `hourly`, `twice_daily`, `once_daily`.
+
+**Response: `200 OK`**
+```json
+{
+  "delivery_mode": "hourly",
+  "timezone": "Europe/London"
+}
+```
+
+---
+
 ### User
 
 #### `GET /users/me`
@@ -430,6 +456,9 @@ Get current user profile.
   "email": "jose@email.com",
   "name": "Jose Garcia",
   "tier": "plus",
+  "email_verified": true,
+  "delivery_mode": "auto",
+  "timezone": "Europe/London",
   "created_at": "2026-04-12T09:00:00Z"
 }
 ```
