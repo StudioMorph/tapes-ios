@@ -135,7 +135,8 @@ final class TapePlayerViewModel: ObservableObject {
 
     func prepare(
         api: TapesAPIClient? = nil,
-        entitlementManager: EntitlementManager? = nil
+        entitlementManager: EntitlementManager? = nil,
+        startAtClip: Int = 0
     ) async {
         guard !isLoading, !tape.clips.isEmpty else { return }
 
@@ -145,6 +146,7 @@ final class TapePlayerViewModel: ObservableObject {
         configureAudioSession()
         registerSystemObservers()
 
+        let startIndex = min(max(startAtClip, 0), tape.clips.count - 1)
         let hasMood = tape.musicMood != .none
 
         let musicTask: Task<Void, Never>? = hasMood ? Task {
@@ -158,10 +160,10 @@ final class TapePlayerViewModel: ObservableObject {
             timeline = updateTimelineRenderSize(tl)
 
             if hasMood {
-                try await loadClip(index: 0, autoplay: false, forceSlot: .primary)
+                try await loadClip(index: startIndex, autoplay: false, forceSlot: .primary)
                 await musicTask?.value
             } else {
-                try await loadClip(index: 0, autoplay: false, forceSlot: .primary)
+                try await loadClip(index: startIndex, autoplay: false, forceSlot: .primary)
             }
 
             isLoading = false
@@ -170,10 +172,9 @@ final class TapePlayerViewModel: ObservableObject {
 
             activePlayer()?.play()
             isPlaying = true
-            if hasMood && !adPlayed { backgroundMusic.syncPlay() }
-            if hasMood && adPlayed { backgroundMusic.syncPlay() }
+            if hasMood { backgroundMusic.syncPlay() }
 
-            startSequentialPreload(from: 1)
+            startSequentialPreload(from: startIndex + 1)
             resetControlsTimer()
         } catch {
             loadError = error.localizedDescription
@@ -227,6 +228,7 @@ final class TapePlayerViewModel: ObservableObject {
     }
 
     func nextClip() {
+        updateWatchedProgress(throughClip: currentClipIndex)
         Task { await jumpToClip(index: currentClipIndex + 1, autoplay: true) }
         resetControlsTimer()
     }
@@ -711,6 +713,9 @@ final class TapePlayerViewModel: ObservableObject {
             cancelDragTransition()
             return
         }
+        if targetIndex > currentClipIndex {
+            updateWatchedProgress(throughClip: currentClipIndex)
+        }
         let capturedDragWasPlaying = dragWasPlaying
         withAnimation(.linear(duration: 0.2)) {
             transitionProgress = 1
@@ -1047,6 +1052,7 @@ final class TapePlayerViewModel: ObservableObject {
         guard !isTransitioning, !isInteractiveDragging else { return }
 
         cumulativePlaybackTime += clipDuration
+        updateWatchedProgress(throughClip: currentClipIndex)
 
         if currentClipIndex < (timeline?.segments.count ?? 0) - 1 {
             let nextIndex = currentClipIndex + 1
@@ -1066,6 +1072,14 @@ final class TapePlayerViewModel: ObservableObject {
             isPlaying = false
             backgroundMusic.syncPause()
             withAnimation(.easeInOut(duration: 0.2)) { showingControls = true }
+        }
+    }
+
+    private func updateWatchedProgress(throughClip index: Int) {
+        let newCount = index + 1
+        let current = tape.watchedClipCount ?? 0
+        if newCount > current {
+            tape.watchedClipCount = newCount
         }
     }
 
@@ -1106,6 +1120,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     private func skipFailedClip(from index: Int, autoplay: Bool) async {
         guard let timeline else { return }
+        updateWatchedProgress(throughClip: index)
         var nextIndex = index + 1
         while nextIndex < timeline.segments.count {
             do {

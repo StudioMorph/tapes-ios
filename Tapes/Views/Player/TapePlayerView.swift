@@ -13,8 +13,11 @@ struct TapePlayerView: View {
     @State private var adContainerView: UIView?
     @State private var adContainerViewController: UIViewController?
 
-    init(tape: Tape, onDismiss: @escaping () -> Void, onSave: ((Tape) -> Void)? = nil) {
+    private let startAtClip: Int
+
+    init(tape: Tape, startAtClip: Int = 0, onDismiss: @escaping () -> Void, onSave: ((Tape) -> Void)? = nil) {
         _vm = StateObject(wrappedValue: TapePlayerViewModel(tape: tape))
+        self.startAtClip = startAtClip
         self.onDismiss = onDismiss
         self.onSave = onSave
     }
@@ -22,6 +25,10 @@ struct TapePlayerView: View {
     // MARK: - Body
 
     var body: some View {
+        playerContent
+    }
+
+    private var playerContent: some View {
         Color.clear
             .background { mediaLayer }
             .contentShape(Rectangle())
@@ -36,13 +43,7 @@ struct TapePlayerView: View {
             .overlay { loadingLayer }
             .overlay { offlineAdLayer }
             .onAppear {
-                Task {
-                    await vm.prepare(
-                        api: authManager.apiClient,
-                        entitlementManager: entitlementManager
-                    )
-                }
-                vm.resetControlsTimer()
+                startPlayback(from: startAtClip)
             }
             .onDisappear {
                 AdManager.shared.tearDownCurrentAd()
@@ -286,6 +287,19 @@ struct TapePlayerView: View {
             onRetry: { Task { await vm.retryLoading() } },
             onDismiss: { dismissPlayer() }
         )
+    }
+
+    // MARK: - Playback Start
+
+    private func startPlayback(from clipIndex: Int) {
+        Task {
+            await vm.prepare(
+                api: authManager.apiClient,
+                entitlementManager: entitlementManager,
+                startAtClip: clipIndex
+            )
+        }
+        vm.resetControlsTimer()
     }
 
     // MARK: - Dismiss

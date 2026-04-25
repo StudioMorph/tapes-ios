@@ -35,7 +35,7 @@ struct TapeCardView: View {
     let isShareDisabled: Bool
     let onShare: () -> Void
     let onSettings: () -> Void
-    let onPlay: () -> Void
+    let onPlay: (Int) -> Void
     let onThumbnailDelete: (Clip) -> Void
     let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: () -> Void
@@ -138,7 +138,7 @@ struct TapeCardView: View {
         isShareDisabled: Bool = false,
         onShare: @escaping () -> Void = {},
         onSettings: @escaping () -> Void,
-        onPlay: @escaping () -> Void,
+        onPlay: @escaping (Int) -> Void,
         onThumbnailDelete: @escaping (Clip) -> Void,
         onCameraCapture: @escaping (@escaping ([PickedMedia]) -> Void) -> Void = { _ in },
         onTitleFocusRequest: @escaping () -> Void = {},
@@ -156,6 +156,36 @@ struct TapeCardView: View {
         self.onCameraCapture = onCameraCapture
         self.onTitleFocusRequest = onTitleFocusRequest
         self.titleEditingConfig = titleEditingConfig
+    }
+
+    @ViewBuilder
+    private var playButton: some View {
+        let disabled = isTapeActionsDisabled || isJiggling
+        let icon = Image(systemName: "play.fill")
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundColor(disabled ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
+            .accessibilityLabel("Play")
+            .accessibilityHint(disabled ? "Add clips to play" : "")
+
+        if let resumeIndex = tape.resumeClipIndex, !disabled {
+            Menu {
+                Button {
+                    onPlay(resumeIndex)
+                } label: {
+                    Label("Pick up where you left off", systemImage: "play.fill")
+                }
+                Button {
+                    onPlay(0)
+                } label: {
+                    Label("Start from the beginning", systemImage: "memories")
+                }
+            } label: {
+                icon
+            }
+        } else {
+            icon
+                .onTapGesture { guard !disabled else { return }; onPlay(0) }
+        }
     }
 
     var body: some View {
@@ -208,12 +238,7 @@ struct TapeCardView: View {
                         .onTapGesture { guard !isTapeActionsDisabled, !isJiggling else { return }; onSettings() }
                         .id("settings-\(tapeID)")
                     
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(isTapeActionsDisabled || isJiggling ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
-                        .accessibilityLabel("Play")
-                        .accessibilityHint(isTapeActionsDisabled ? "Add clips to play" : "")
-                        .onTapGesture { guard !isTapeActionsDisabled, !isJiggling else { return }; onPlay() }
+                    playButton
                         .id("play-\(tapeID)")
                 }
             }
@@ -780,7 +805,7 @@ struct TapeCardView: View {
         tapeWidth: 375,
         isLandscape: false,
         onSettings: {},
-        onPlay: {},
+        onPlay: { _ in },
         onThumbnailDelete: { _ in },
         onCameraCapture: { _ in },
         onTitleFocusRequest: {},

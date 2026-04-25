@@ -17,7 +17,7 @@ struct TapesList: View {
     @Binding var draftTitle: String
     let onShare: (Tape) -> Void
     let onSettings: (Tape) -> Void
-    let onPlay: (Tape) -> Void
+    let onPlay: (Tape, Int) -> Void
     let onThumbnailDelete: (Tape, Clip) -> Void
     let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: (UUID, String) -> Void
@@ -112,7 +112,7 @@ struct TapesList: View {
                 isLandscape: isLandscape,
                 onShare: { onShare(tape) },
                 onSettings: { onSettings(tape) },
-                onPlay: { onPlay(tape) },
+                onPlay: { startIndex in onPlay(tape, startIndex) },
                 onThumbnailDelete: { clip in onThumbnailDelete(tape, clip) },
                 onCameraCapture: onCameraCapture,
                 onTitleFocusRequest: { onTitleFocusRequest(tapeID, tape.title) },
@@ -208,7 +208,7 @@ struct AmbientTutorialCarousel: View {
         draftTitle: .constant(""),
         onShare: { _ in },
         onSettings: { _ in },
-        onPlay: { _ in },
+        onPlay: { _, _ in },
         onThumbnailDelete: { _, _ in },
         onCameraCapture: { _ in },
         onTitleFocusRequest: { _, _ in },

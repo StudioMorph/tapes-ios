@@ -167,6 +167,10 @@ public struct Tape: Identifiable, Codable, Equatable {
     /// Set when new clips are downloaded from another user. Cleared on playback.
     public var hasUnseenContent: Bool = false
 
+    /// Number of clips watched from the start. `nil` means never played.
+    /// Used to offer "pick up where you left off" on next playback.
+    public var watchedClipCount: Int?
+
     /// Tapes created in the Collab tab. These can only be shared as collaborative.
     public var isCollabTape: Bool
 
@@ -230,6 +234,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case shareInfo
         case lastUploadedClipCount
         case hasUnseenContent
+        case watchedClipCount
         case isCollabTape
     }
     
@@ -260,6 +265,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         shareInfo = try container.decodeIfPresent(ShareInfo.self, forKey: .shareInfo)
         lastUploadedClipCount = try container.decodeIfPresent(Int.self, forKey: .lastUploadedClipCount)
         hasUnseenContent = try container.decodeIfPresent(Bool.self, forKey: .hasUnseenContent) ?? false
+        watchedClipCount = try container.decodeIfPresent(Int.self, forKey: .watchedClipCount)
         isCollabTape = try container.decodeIfPresent(Bool.self, forKey: .isCollabTape) ?? false
     }
     
@@ -290,6 +296,15 @@ public struct Tape: Identifiable, Codable, Equatable {
     
     public var clipCount: Int {
         return clips.count
+    }
+
+    /// The clip index to resume from, or `nil` if no resume is needed
+    /// (never played, or all clips already watched with no new content).
+    public var resumeClipIndex: Int? {
+        guard let watched = watchedClipCount, watched > 0, watched < clips.count else {
+            return nil
+        }
+        return watched
     }
 
     public var hasAssociatedAlbum: Bool {

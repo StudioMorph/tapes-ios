@@ -10,6 +10,7 @@ struct TapesListView: View {
     @StateObject private var cameraCoordinator = CameraCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
     @State private var tapeToPreview: Tape?
+    @State private var playbackStartClip: Int = 0
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
     @State private var showingDeleteSuccessToast = false
@@ -146,7 +147,7 @@ struct TapesListView: View {
             }
         }
         .fullScreenCover(item: $tapeToPreview) { tape in
-            TapePlayerView(tape: tape, onDismiss: {
+            TapePlayerView(tape: tape, startAtClip: playbackStartClip, onDismiss: {
                 tapeToPreview = nil
             }, onSave: { updatedTape in
                 tapesStore.updateTape(updatedTape)
@@ -178,10 +179,11 @@ struct TapesListView: View {
         tapesStore.selectTape(tape)
     }
     
-    private func handlePlay(_ tape: Tape) {
+    private func handlePlay(_ tape: Tape, startAt clipIndex: Int) {
         tapesStore.clearUnseenContent(for: tape.id)
         var cleared = tape
         cleared.hasUnseenContent = false
+        playbackStartClip = clipIndex
         tapeToPreview = cleared
     }
 

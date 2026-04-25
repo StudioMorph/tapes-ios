@@ -12,6 +12,7 @@ struct SharedTapesView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var tapeToPreview: Tape?
+    @State private var playbackStartClip: Int = 0
     @State private var tapeToShare: Tape?
     @State private var tapeToSettings: Tape?
     @State private var editingTapeID: UUID?
@@ -167,7 +168,7 @@ struct SharedTapesView: View {
             }
         }
         .fullScreenCover(item: $tapeToPreview) { tape in
-            TapePlayerView(tape: tape, onDismiss: {
+            TapePlayerView(tape: tape, startAtClip: playbackStartClip, onDismiss: {
                 tapeToPreview = nil
             }, onSave: { updatedTape in
                 tapesStore.updateTape(updatedTape)
@@ -219,10 +220,11 @@ struct SharedTapesView: View {
                                 isShareDisabled: true,
                                 onShare: { tapeToShare = tape },
                                 onSettings: { tapeToSettings = tape },
-                                onPlay: {
+                                onPlay: { startIndex in
                                     tapesStore.clearUnseenContent(for: tape.id)
                                     var cleared = tape
                                     cleared.hasUnseenContent = false
+                                    playbackStartClip = startIndex
                                     tapeToPreview = cleared
                                 },
                                 onThumbnailDelete: { _ in },
