@@ -5,8 +5,6 @@ struct AccountTabView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @Binding var showOnboarding: Bool
 
-    @AppStorage("tapes_appearance_mode") private var appearanceMode: AppearanceMode = .system
-
     private var isSignedIn: Bool {
         authManager.isSignedIn
     }
@@ -23,11 +21,8 @@ struct AccountTabView: View {
         NavigationStack {
             Form {
                 accountSection.listRowBackground(Tokens.Colors.secondaryBackground)
-                appearanceSection.listRowBackground(Tokens.Colors.secondaryBackground)
+                settingsSection.listRowBackground(Tokens.Colors.secondaryBackground)
                 hotTipsSection.listRowBackground(Tokens.Colors.secondaryBackground)
-                aboutSection.listRowBackground(Tokens.Colors.secondaryBackground)
-                creditsSection.listRowBackground(Tokens.Colors.secondaryBackground)
-                legalSection.listRowBackground(Tokens.Colors.secondaryBackground)
 
                 if isSignedIn {
                     signOutSection.listRowBackground(Tokens.Colors.secondaryBackground)
@@ -56,31 +51,18 @@ struct AccountTabView: View {
     private var accountSection: some View {
         Section {
             if let name = authManager.userName {
-                HStack {
-                    Text("Name")
-                        .foregroundColor(Tokens.Colors.primaryText)
-                    Spacer()
-                    Text(name)
-                        .foregroundColor(Tokens.Colors.secondaryText)
-                }
+                LabeledContent("Name", value: name)
             }
             if let email = authManager.userEmail {
-                HStack {
-                    Text("Email")
-                        .foregroundColor(Tokens.Colors.primaryText)
-                    Spacer()
-                    Text(email)
-                        .foregroundColor(Tokens.Colors.secondaryText)
-                }
+                LabeledContent("Email", value: email)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("Email Status")
-                        .foregroundColor(Tokens.Colors.primaryText)
                     Spacer()
                     Text(authManager.isEmailVerified ? "Verified" : "Not Verified")
-                        .foregroundColor(authManager.isEmailVerified ? .green : .orange)
+                        .foregroundStyle(authManager.isEmailVerified ? .green : .orange)
                 }
                 if !authManager.isEmailVerified {
                     HStack {
@@ -90,20 +72,14 @@ struct AccountTabView: View {
                         } label: {
                             Text("Resend Email")
                                 .font(.subheadline)
-                                .foregroundColor(.blue)
+                                .foregroundStyle(.blue)
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
 
-            HStack {
-                Text("Plan")
-                    .foregroundColor(Tokens.Colors.primaryText)
-                Spacer()
-                Text(tierDisplayName)
-                    .foregroundColor(Tokens.Colors.secondaryText)
-            }
+            LabeledContent("Plan", value: tierDisplayName)
 
             if !entitlementManager.isPremium {
                 Button("Manage Subscription") {
@@ -115,29 +91,31 @@ struct AccountTabView: View {
         } header: {
             Text("Account")
                 .font(Tokens.Typography.title)
-                .foregroundColor(Tokens.Colors.primaryText)
+                .foregroundStyle(Tokens.Colors.primaryText)
                 .textCase(nil)
         }
     }
 
-    // MARK: - Appearance
+    // MARK: - Settings
 
-    private var appearanceSection: some View {
+    private var settingsSection: some View {
         Section {
-            Picker("Appearance", selection: $appearanceMode) {
-                ForEach(AppearanceMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
-                }
+            NavigationLink {
+                PreferencesView()
+            } label: {
+                Label("Preferences", systemImage: "slider.horizontal.3")
             }
-            .pickerStyle(.segmented)
+
+            NavigationLink {
+                AppInfoView()
+            } label: {
+                Label("App Info", systemImage: "info.circle")
+            }
         } header: {
-            Text("Appearance")
+            Text("Settings")
                 .font(Tokens.Typography.title)
-                .foregroundColor(Tokens.Colors.primaryText)
+                .foregroundStyle(Tokens.Colors.primaryText)
                 .textCase(nil)
-        } footer: {
-            Text("Choose how Tapes looks. System follows your device settings.")
-                .foregroundColor(Tokens.Colors.secondaryText)
         }
     }
 
@@ -151,99 +129,12 @@ struct AccountTabView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "lightbulb.max")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.blue)
+                        .foregroundStyle(.blue)
                         .frame(width: 24)
                     Text("Hot Tips")
-                        .foregroundColor(Tokens.Colors.primaryText)
+                        .foregroundStyle(Tokens.Colors.primaryText)
                 }
             }
-        }
-    }
-
-    // MARK: - About
-
-    private var aboutSection: some View {
-        Section {
-            HStack {
-                Text("Version")
-                    .foregroundColor(Tokens.Colors.primaryText)
-                Spacer()
-                Text(appVersion)
-                    .foregroundColor(Tokens.Colors.secondaryText)
-            }
-
-            HStack {
-                Text("Build")
-                    .foregroundColor(Tokens.Colors.primaryText)
-                Spacer()
-                Text(appBuild)
-                    .foregroundColor(Tokens.Colors.secondaryText)
-            }
-        } header: {
-            Text("About")
-                .font(Tokens.Typography.title)
-                .foregroundColor(Tokens.Colors.primaryText)
-                .textCase(nil)
-        }
-    }
-
-    // MARK: - Credits
-
-    private var creditsSection: some View {
-        Section {
-            HStack(spacing: 12) {
-                Image(systemName: "music.note")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Tokens.Colors.secondaryText)
-                    .frame(width: 24)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Mubert")
-                        .font(.body)
-                        .foregroundColor(Tokens.Colors.primaryText)
-                    Text("AI-generated background music")
-                        .font(.caption)
-                        .foregroundColor(Tokens.Colors.secondaryText)
-                }
-            }
-        } header: {
-            Text("Credits")
-                .font(Tokens.Typography.title)
-                .foregroundColor(Tokens.Colors.primaryText)
-                .textCase(nil)
-        }
-    }
-
-    // MARK: - Legal
-
-    private var legalSection: some View {
-        Section {
-            Link(destination: URL(string: "https://studiomorph.com/privacy")!) {
-                HStack {
-                    Text("Privacy Policy")
-                        .foregroundColor(Tokens.Colors.primaryText)
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption)
-                        .foregroundColor(Tokens.Colors.secondaryText)
-                }
-            }
-
-            Link(destination: URL(string: "https://studiomorph.com/terms")!) {
-                HStack {
-                    Text("Terms of Service")
-                        .foregroundColor(Tokens.Colors.primaryText)
-                    Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption)
-                        .foregroundColor(Tokens.Colors.secondaryText)
-                }
-            }
-        } header: {
-            Text("Legal")
-                .font(Tokens.Typography.title)
-                .foregroundColor(Tokens.Colors.primaryText)
-                .textCase(nil)
         }
     }
 
@@ -251,26 +142,11 @@ struct AccountTabView: View {
 
     private var signOutSection: some View {
         Section {
-            Button(role: .destructive) {
+            Button("Sign Out", role: .destructive) {
                 authManager.signOut()
-            } label: {
-                HStack {
-                    Spacer()
-                    Text("Sign Out")
-                    Spacer()
-                }
             }
+            .frame(maxWidth: .infinity)
         }
-    }
-
-    // MARK: - Helpers
-
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-    }
-
-    private var appBuild: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
     }
 }
 
