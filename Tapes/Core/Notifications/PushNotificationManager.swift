@@ -137,8 +137,15 @@ final class PushNotificationManager: NSObject, ObservableObject {
             options: []
         )
 
+        let digestCategory = UNNotificationCategory(
+            identifier: "TAPE_DIGEST",
+            actions: [viewAction],
+            intentIdentifiers: [],
+            options: []
+        )
+
         UNUserNotificationCenter.current().setNotificationCategories([
-            shareCategory, inviteCategory, expiryCategory
+            shareCategory, inviteCategory, expiryCategory, digestCategory
         ])
     }
 
