@@ -171,6 +171,7 @@ struct PreferencesView: View {
     private func syncPreference(mode: DeliveryMode) {
         guard let api = authManager.apiClient else {
             pendingSync = true
+            startConnectivityMonitor()
             return
         }
 
@@ -183,12 +184,13 @@ struct PreferencesView: View {
                 pendingSync = false
             } catch {
                 pendingSync = true
+                startConnectivityMonitor()
             }
         }
     }
 
     private func startConnectivityMonitor() {
-        guard pendingSync else { return }
+        guard monitor == nil else { return }
         let pathMonitor = NWPathMonitor()
         pathMonitor.pathUpdateHandler = { path in
             guard path.status == .satisfied, pendingSync else { return }
