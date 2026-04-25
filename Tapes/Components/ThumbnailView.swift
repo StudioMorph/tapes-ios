@@ -58,7 +58,7 @@ struct StartPlusView: View {
                             DropTargetInfo(tapeID: tapeID, insertionIndex: 0, seamLeftClipID: nil, seamRightClipID: nil, frame: frame, kind: .startPlus)
                         ])
                 } else {
-                    Image(systemName: "plus")
+                    Image(systemName: "photo.badge.plus")
                         .font(.system(size: 24, weight: .medium))
                         .foregroundColor(Tokens.Colors.primaryText)
                 }
@@ -93,7 +93,7 @@ struct EndPlusView: View {
                             DropTargetInfo(tapeID: tapeID, insertionIndex: clipCount, seamLeftClipID: nil, seamRightClipID: nil, frame: frame, kind: .endPlus)
                         ])
                 } else {
-                    Image(systemName: "plus")
+                    Image(systemName: "photo.badge.plus")
                         .font(.system(size: 24, weight: .medium))
                         .foregroundColor(Tokens.Colors.primaryText)
                 }
