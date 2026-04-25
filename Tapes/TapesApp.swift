@@ -98,9 +98,14 @@ struct TapesApp: App {
                     PushNotificationManager.shared.navigationCoordinator = navigationCoordinator
                     PushNotificationManager.shared.requestAuthorisation()
 
+                    AdManager.shared.preWarm()
+
                     if authManager.isSignedIn {
                         await authManager.refreshProfile()
                     }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    requestAdConsent()
                 }
         }
     }
@@ -109,6 +114,13 @@ struct TapesApp: App {
         if let shareId = Self.shareId(from: url) {
             navigationCoordinator.handleShareLink(shareId: shareId)
         }
+    }
+
+    private func requestAdConsent() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController
+        else { return }
+        ConsentManager.shared.requestConsentIfNeeded(from: rootVC)
     }
 
     /// `tapes://t/{id}` or `https://…/t/{id}` (Universal Link).

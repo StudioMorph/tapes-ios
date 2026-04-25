@@ -5,6 +5,7 @@ struct PlayerControls: View {
     let isFinished: Bool
     let canGoBack: Bool
     let canGoForward: Bool
+    var isDisabled: Bool = false
     let onPlayPause: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
@@ -19,6 +20,8 @@ struct PlayerControls: View {
         return isPlaying ? "Pause" : "Play"
     }
 
+    private var disabledOpacity: Double { isDisabled ? 0.3 : 1.0 }
+
     var body: some View {
         HStack(spacing: 32) {
             Button(action: onPrevious) {
@@ -28,7 +31,7 @@ struct PlayerControls: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .disabled(!canGoBack)
+            .disabled(!canGoBack || isDisabled)
             .accessibilityLabel("Previous clip")
 
             Button(action: onPlayPause) {
@@ -38,6 +41,7 @@ struct PlayerControls: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
+            .disabled(isDisabled)
             .accessibilityLabel(playButtonLabel)
 
             Button(action: onNext) {
@@ -47,9 +51,10 @@ struct PlayerControls: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .disabled(!canGoForward)
+            .disabled(!canGoForward || isDisabled)
             .accessibilityLabel("Next clip")
         }
+        .opacity(disabledOpacity)
     }
 }
 

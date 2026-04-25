@@ -4,6 +4,10 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Tapes uses this to show you relevant ads. You can change this anytime in Settings.</string>
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>StudioMorph.Tapes.export</string>

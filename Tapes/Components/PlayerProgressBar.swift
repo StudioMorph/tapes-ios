@@ -5,11 +5,16 @@ import SwiftUI
 struct PlayerScrubBar: View {
     let currentTime: Double
     let totalDuration: Double
+    var isDisabled: Bool = false
     let onSeek: (Double) -> Void
 
     private var progressFraction: CGFloat {
         guard totalDuration > 0 else { return 0 }
         return CGFloat(min(max(currentTime / totalDuration, 0), 1))
+    }
+
+    private var fillColor: Color {
+        isDisabled ? .yellow : Color(red: 0, green: 0.478, blue: 1)
     }
 
     var body: some View {
@@ -20,7 +25,7 @@ struct PlayerScrubBar: View {
                     .background(.ultraThinMaterial)
 
                 Rectangle()
-                    .fill(Color(red: 0, green: 0.478, blue: 1))
+                    .fill(fillColor)
                     .frame(width: max(0, geometry.size.width * progressFraction))
                     .clipShape(
                         .rect(
@@ -33,6 +38,7 @@ struct PlayerScrubBar: View {
             }
             .contentShape(Rectangle().inset(by: -8))
             .gesture(
+                isDisabled ? nil :
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         let progress = max(0, min(1, value.location.x / geometry.size.width))

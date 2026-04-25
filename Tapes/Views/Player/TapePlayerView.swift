@@ -5,9 +5,13 @@ import AVKit
 struct TapePlayerView: View {
     @StateObject private var vm: TapePlayerViewModel
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var entitlementManager: EntitlementManager
     @Environment(\.scenePhase) private var scenePhase
     let onDismiss: () -> Void
     let onSave: ((Tape) -> Void)?
+
+    @State private var adContainerView: UIView?
+    @State private var adContainerViewController: UIViewController?
 
     init(tape: Tape, onDismiss: @escaping () -> Void, onSave: ((Tape) -> Void)? = nil) {
         _vm = StateObject(wrappedValue: TapePlayerViewModel(tape: tape))
@@ -21,21 +25,86 @@ struct TapePlayerView: View {
         Color.clear
             .background { mediaLayer }
             .contentShape(Rectangle())
-            .onTapGesture { vm.toggleControls() }
-            .gesture(swipeGesture)
-            .overlay { controlsOverlay }
+            .onTapGesture {
+                if !vm.isAdPlaying { vm.toggleControls() }
+            }
+            .gesture(vm.isAdPlaying ? nil : swipeGesture)
+            .overlay { adLayer }
+            .overlay { vm.isAdPlaying ? nil : controlsOverlay }
+            .overlay { adCloseButton }
             .overlay { toastLayer }
             .overlay { loadingLayer }
+            .overlay { offlineAdLayer }
             .onAppear {
-                Task { await vm.prepare(api: authManager.apiClient) }
+                Task {
+                    await vm.prepare(
+                        api: authManager.apiClient,
+                        entitlementManager: entitlementManager
+                    )
+                }
                 vm.resetControlsTimer()
             }
             .onDisappear {
+                AdManager.shared.tearDownCurrentAd()
                 vm.shutdown()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 vm.handleScenePhaseChange(newPhase)
             }
+            .onChange(of: adContainerView) { _, newView in
+                vm.setAdContainer(view: newView, viewController: adContainerViewController)
+            }
+            .onChange(of: adContainerViewController) { _, newVC in
+                vm.setAdContainer(view: adContainerView, viewController: newVC)
+            }
+    }
+
+    // MARK: - Ad Layer
+
+    private var adLayer: some View {
+        AdContainerRepresentable(
+            containerView: $adContainerView,
+            containerViewController: $adContainerViewController
+        )
+        .ignoresSafeArea()
+        .opacity(vm.isAdPlaying ? 1 : 0)
+        .allowsHitTesting(vm.isAdPlaying)
+    }
+
+    @ViewBuilder
+    private var offlineAdLayer: some View {
+        if vm.showOfflineAdView {
+            OfflineAdView(onCountdownFinished: { vm.offlineCountdownFinished() })
+                .transition(.opacity)
+        }
+    }
+
+    // MARK: - Ad Close Button
+
+    @ViewBuilder
+    private var adCloseButton: some View {
+        if vm.isAdPlaying {
+            VStack {
+                HStack {
+                    Button(action: { dismissPlayer() }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(.black.opacity(0.2))
+                            .background(.ultraThinMaterial)
+                            .clipShape(Circle())
+                            .contentShape(Circle())
+                    }
+                    .accessibilityLabel("Close player")
+                    .padding(.leading, 16)
+                    .padding(.top, 8)
+
+                    Spacer()
+                }
+                Spacer()
+            }
+        }
     }
 
     // MARK: - Layer 1: Media (full-bleed)
@@ -133,6 +202,7 @@ struct TapePlayerView: View {
                 PlayerScrubBar(
                     currentTime: vm.clipTime,
                     totalDuration: vm.clipDuration,
+                    isDisabled: vm.isAdPlaying,
                     onSeek: { time in
                         Task { await vm.seekWithinClip(time) }
                     }
@@ -152,6 +222,7 @@ struct TapePlayerView: View {
                         isFinished: vm.isFinished,
                         canGoBack: vm.canGoBack,
                         canGoForward: vm.canGoForward,
+                        isDisabled: vm.isAdPlaying,
                         onPlayPause: { vm.togglePlayPause() },
                         onPrevious: { vm.previousClip() },
                         onNext: { vm.nextClip() }

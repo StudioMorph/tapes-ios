@@ -36,6 +36,11 @@ final class TapePlayerViewModel: ObservableObject {
     @Published var clipVolume: Double = 1.0
     @Published var clipMusicVolume: Double = 0.3
 
+    // MARK: - Ad State
+
+    @Published private(set) var isAdPlaying = false
+    @Published private(set) var showOfflineAdView = false
+
     // MARK: - Input
 
     var tape: Tape
@@ -103,6 +108,7 @@ final class TapePlayerViewModel: ObservableObject {
     private var dragWasPlaying = false
     private var skipToastWorkItem: DispatchWorkItem?
     private var wasPlayingBeforeBackground = false
+    private var wasAdPlayingBeforeBackground = false
     private var airplayObservation: NSKeyValueObservation?
     private var isAirPlayActive = false
     private var preRenderedImageURLs: [Int: URL] = [:]
@@ -113,6 +119,11 @@ final class TapePlayerViewModel: ObservableObject {
 
     let backgroundMusic = BackgroundMusicPlayer()
 
+    private var cumulativePlaybackTime: TimeInterval = 0
+    private var isFreeUser = true
+    private weak var adContainerView: UIView?
+    private weak var adContainerViewController: UIViewController?
+
     // MARK: - Init
 
     init(tape: Tape) {
@@ -122,17 +133,20 @@ final class TapePlayerViewModel: ObservableObject {
 
     // MARK: - Public API
 
-    func prepare(api: TapesAPIClient? = nil) async {
+    func prepare(
+        api: TapesAPIClient? = nil,
+        entitlementManager: EntitlementManager? = nil
+    ) async {
         guard !isLoading, !tape.clips.isEmpty else { return }
 
         resetState()
+        isFreeUser = !(entitlementManager?.isPremium ?? false)
         isLoading = true
         configureAudioSession()
         registerSystemObservers()
 
         let hasMood = tape.musicMood != .none
 
-        // Start music generation concurrently with video loading
         let musicTask: Task<Void, Never>? = hasMood ? Task {
             await backgroundMusic.prepare(
                 mood: tape.musicMood, tapeID: tape.id, volume: tape.musicVolume, api: api
@@ -144,28 +158,27 @@ final class TapePlayerViewModel: ObservableObject {
             timeline = updateTimelineRenderSize(tl)
 
             if hasMood {
-                // Load clip without autoplay — wait for music first
                 try await loadClip(index: 0, autoplay: false, forceSlot: .primary)
-
-                // Wait for music to be ready before starting playback
                 await musicTask?.value
-
-                // Start video and music together
-                activePlayer()?.play()
-                isPlaying = true
-                backgroundMusic.syncPlay()
             } else {
-                try await loadClip(index: 0, autoplay: true, forceSlot: .primary)
-                isPlaying = true
+                try await loadClip(index: 0, autoplay: false, forceSlot: .primary)
             }
+
+            isLoading = false
+
+            let adPlayed = await playAdSlotIfNeeded()
+
+            activePlayer()?.play()
+            isPlaying = true
+            if hasMood && !adPlayed { backgroundMusic.syncPlay() }
+            if hasMood && adPlayed { backgroundMusic.syncPlay() }
 
             startSequentialPreload(from: 1)
             resetControlsTimer()
         } catch {
             loadError = error.localizedDescription
+            isLoading = false
         }
-
-        isLoading = false
     }
 
     func shutdown() {
@@ -261,10 +274,18 @@ final class TapePlayerViewModel: ObservableObject {
 
     func replay() {
         isFinished = false
+        cumulativePlaybackTime = 0
         Task {
+            let adPlayed = await playAdSlotIfNeeded()
             await jumpToClip(index: 0, autoplay: true)
         }
         resetControlsTimer()
+    }
+
+    /// Provide the IMA ad container references so the ad manager can render into them.
+    func setAdContainer(view: UIView?, viewController: UIViewController?) {
+        adContainerView = view
+        adContainerViewController = viewController
     }
 
     func retryLoading() async {
@@ -297,11 +318,18 @@ final class TapePlayerViewModel: ObservableObject {
         switch phase {
         case .background, .inactive:
             wasPlayingBeforeBackground = isPlaying
+            wasAdPlayingBeforeBackground = isAdPlaying
             if isPlaying {
                 pausePlayers()
                 backgroundMusic.syncPause()
             }
         case .active:
+            if wasAdPlayingBeforeBackground {
+                wasAdPlayingBeforeBackground = false
+                wasPlayingBeforeBackground = false
+                AdManager.shared.completeAdAfterClick()
+                return
+            }
             if wasPlayingBeforeBackground {
                 activePlayer()?.play()
                 if isTransitioning { inactivePlayer()?.play() }
@@ -1017,8 +1045,22 @@ final class TapePlayerViewModel: ObservableObject {
 
     private func handleClipFinished() {
         guard !isTransitioning, !isInteractiveDragging else { return }
+
+        cumulativePlaybackTime += clipDuration
+
         if currentClipIndex < (timeline?.segments.count ?? 0) - 1 {
-            Task { await jumpToClip(index: currentClipIndex + 1, autoplay: isPlaying) }
+            let nextIndex = currentClipIndex + 1
+            if isFreeUser && cumulativePlaybackTime >= AdConfig.midRollInterval {
+                Task {
+                    backgroundMusic.syncPause()
+                    cumulativePlaybackTime = 0
+                    let _ = await playAdSlotIfNeeded()
+                    backgroundMusic.syncPlay()
+                    await jumpToClip(index: nextIndex, autoplay: true)
+                }
+            } else {
+                Task { await jumpToClip(index: nextIndex, autoplay: isPlaying) }
+            }
         } else {
             isFinished = true
             isPlaying = false
@@ -1274,6 +1316,56 @@ final class TapePlayerViewModel: ObservableObject {
         preloadTask = nil
         preloadNextIndex = 0
         cleanupAllPreRenderedFiles()
+        cumulativePlaybackTime = 0
+        isAdPlaying = false
+        showOfflineAdView = false
+    }
+
+    // MARK: - Ad Slot
+
+    /// Returns `true` if an ad (or offline countdown) was shown.
+    @discardableResult
+    private func playAdSlotIfNeeded() async -> Bool {
+        guard isFreeUser else { return false }
+
+        let online = NetworkMonitor.shared.isConnected
+
+        if online {
+            guard let containerView = adContainerView,
+                  let containerVC = adContainerViewController,
+                  let contentPlayer = activePlayer()
+            else { return false }
+
+            isAdPlaying = true
+            backgroundMusic.syncPause()
+            showingControls = true
+
+            let success = await AdManager.shared.requestAndPlayAd(
+                in: containerView,
+                viewController: containerVC,
+                contentPlayer: contentPlayer
+            )
+
+            isAdPlaying = false
+            return success
+        } else {
+            showOfflineAdView = true
+            backgroundMusic.syncPause()
+
+            await withCheckedContinuation { continuation in
+                offlineCountdownContinuation = continuation
+            }
+
+            showOfflineAdView = false
+            return true
+        }
+    }
+
+    private var offlineCountdownContinuation: CheckedContinuation<Void, Never>?
+
+    func offlineCountdownFinished() {
+        offlineCountdownContinuation?.resume()
+        offlineCountdownContinuation = nil
     }
 
     private func startSequentialPreload(from startIndex: Int) {

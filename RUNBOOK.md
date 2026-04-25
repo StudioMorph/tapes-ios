@@ -205,10 +205,13 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
 
 ### iOS
 
-- **Frameworks**: AVFoundation, Photos, PhotosUI, AVKit, UserNotifications, AudioToolbox, BackgroundTasks, CoreMotion
+- **Frameworks**: AVFoundation, Photos, PhotosUI, AVKit, UserNotifications, AudioToolbox, BackgroundTasks, CoreMotion, AppTrackingTransparency, Network
 - **Export**: AVAssetReader / AVAssetWriter with HEVC encoding; `BGContinuedProcessingTask` (iOS 26+) for background export
 - **Minimum target**: iOS 18.2, Xcode 16+, Swift 5.0
 - **Dependency management**: Swift Package Manager only
+- **SPM packages**:
+  - `GoogleInteractiveMediaAds` (3.23+) — video ad playback (IMA SDK)
+  - `GoogleUserMessagingPlatform` (2.6+) — GDPR/ATT consent management (UMP SDK)
 - **Key files**
   - **Player**
     - `Tapes/Views/Player/TapePlayerView.swift` (thin View shell)
@@ -240,9 +243,18 @@ Structure: **Design Tokens → Components → Screen Layouts → User Flows → 
     - `Tapes/Core/Navigation/NavigationCoordinator.swift`
   - **Design System**
     - `Tapes/DesignSystem/**` — prefer these components over ad-hoc SwiftUI views in new screens.
+- **Ads** (see `docs/features/AdIntegration.md`)
+  - `Core/Ads/AdConfig.swift` — ad tag URL, timing constants
+  - `Core/Ads/AdManager.swift` — IMA SDK lifecycle
+  - `Core/Ads/NetworkMonitor.swift` — NWPathMonitor wrapper
+  - `Core/Privacy/ConsentManager.swift` — UMP + ATT consent flow
+  - `Views/Player/AdContainerRepresentable.swift` — UIKit bridge for IMA
+  - `Views/Player/OfflineAdView.swift` — branded offline countdown
 - **Info.plist**
   - `BGTaskSchedulerPermittedIdentifiers` configured in the project-root plist (array-type keys require a physical plist file, not `INFOPLIST_KEY_` build settings).
   - Camera / microphone / Photos usage descriptions.
+  - `NSUserTrackingUsageDescription` — ATT prompt text for ad tracking.
+  - `GADApplicationIdentifier` — Google Ad Manager app ID (currently test ID).
 - **Entitlements**: Associated Domains (`applinks:`), Push Notifications.
 
 ### Android
