@@ -202,6 +202,11 @@ final class TapePlayerViewModel: ObservableObject {
 
     func shutdown() {
         isTornDown = true
+
+        let pendingCountdown = offlineCountdownContinuation
+        offlineCountdownContinuation = nil
+        pendingCountdown?.resume()
+
         backgroundMusic.syncStop()
         cancelTransition()
         pausePlayers()

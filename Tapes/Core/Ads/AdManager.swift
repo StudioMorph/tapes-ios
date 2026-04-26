@@ -90,6 +90,11 @@ final class AdManager: NSObject, ObservableObject {
         contentPlayhead = nil
         isAdPlaying = false
         userClickedAd = false
+
+        let pending = adCompletion
+        adCompletion = nil
+        pending?(false)
+
         adsLoader?.contentComplete()
     }
 
