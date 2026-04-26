@@ -131,6 +131,7 @@ final class TapePlayerViewModel: ObservableObject {
     private var preRenderTasks: [Int: Task<URL, Error>] = [:]
 
     private static let cacheCapacity = 10
+    private static let preloadLookahead = 5
     private static let maxConcurrentPreRenders = 2
 
     let timeState = PlayerTimeState()
@@ -1407,11 +1408,12 @@ final class TapePlayerViewModel: ObservableObject {
         if clampedStart <= preloadNextIndex, preloadTask != nil { return }
         preloadTask?.cancel()
         preloadNextIndex = clampedStart
+        let lookaheadEnd = min(clampedStart + Self.preloadLookahead - 1, maxIndex)
         let tapeTimeline = updateTimelineRenderSize(timeline)
         preloadTask = Task(priority: .utility) { [weak self] in
             guard let self else { return }
             var index = self.preloadNextIndex
-            while index <= maxIndex, !Task.isCancelled {
+            while index <= lookaheadEnd, !Task.isCancelled {
                 self.preloadNextIndex = index
                 if self.clipCache[index] == nil {
                     _ = try? await self.loadClipComposition(
