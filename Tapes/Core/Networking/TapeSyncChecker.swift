@@ -48,6 +48,13 @@ public class TapeSyncChecker: ObservableObject {
         }
     }
 
+    /// Awaitable refresh for callers that need to know when the check finishes
+    /// (e.g. background push handlers that must defer their completionHandler).
+    func refreshAndWait(tapes: [Tape], api: TapesAPIClient) async {
+        lastCheckDate = nil
+        await checkViaStatus(tapes: tapes, api: api)
+    }
+
     /// Instant badge update from a push notification payload.
     /// Falls back to a full status check if the tape can't be matched locally.
     func updateFromPush(remoteTapeId: String, tapes: [Tape], api: TapesAPIClient) {
@@ -57,6 +64,16 @@ public class TapeSyncChecker: ObservableObject {
             log.info("[SyncPush] bumped pending for tape=\(tape.id) remote=\(remoteTapeId) to \(current + 1)")
         }
         refresh(tapes: tapes, api: api)
+    }
+
+    /// Awaitable variant for background push handlers.
+    func updateFromPushAndWait(remoteTapeId: String, tapes: [Tape], api: TapesAPIClient) async {
+        if let tape = tapes.first(where: { $0.shareInfo?.remoteTapeId == remoteTapeId }) {
+            let current = pendingDownloads[tape.id] ?? 0
+            pendingDownloads[tape.id] = current + 1
+            log.info("[SyncPush] bumped pending for tape=\(tape.id) remote=\(remoteTapeId) to \(current + 1)")
+        }
+        await refreshAndWait(tapes: tapes, api: api)
     }
 
     func clearDownload(for tapeId: UUID) {

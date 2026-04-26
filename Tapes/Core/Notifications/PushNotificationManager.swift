@@ -99,9 +99,9 @@ final class PushNotificationManager: NSObject, ObservableObject {
 
         Task { @MainActor in
             if let remoteTapeId {
-                checker.updateFromPush(remoteTapeId: remoteTapeId, tapes: tapes, api: api)
+                await checker.updateFromPushAndWait(remoteTapeId: remoteTapeId, tapes: tapes, api: api)
             } else {
-                checker.refresh(tapes: tapes, api: api)
+                await checker.refreshAndWait(tapes: tapes, api: api)
             }
             completionHandler(.newData)
         }
