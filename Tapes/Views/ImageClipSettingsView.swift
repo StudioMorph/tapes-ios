@@ -20,6 +20,7 @@ struct ImageClipSettingsView: View {
     @State private var showLivePhotoToast = false
     @State private var showMotionMenu = false
     @State private var livePhotoCollapseTask: Task<Void, Never>?
+    @State private var livePhotoLoadTask: Task<Void, Never>?
 
     // Motion preview
     @State private var motionAnimationID = UUID()
@@ -130,6 +131,8 @@ struct ImageClipSettingsView: View {
             motionAnimationID = UUID()
         }
         .onDisappear {
+            livePhotoLoadTask?.cancel()
+            livePhotoLoadTask = nil
             stopLivePhotoPlayback()
             bgMusic.syncStop()
         }
@@ -479,7 +482,8 @@ struct ImageClipSettingsView: View {
     }
 
     private func startLivePhotoPlayback() {
-        Task { await loadAndPlayLivePhoto() }
+        livePhotoLoadTask?.cancel()
+        livePhotoLoadTask = Task { await loadAndPlayLivePhoto() }
     }
 
     private func stopLivePhotoPlayback() {
@@ -513,6 +517,7 @@ private struct MotionPreviewImage: View {
 
     @State private var progress: CGFloat = 0
     @State private var animationStartDate = Date()
+    @State private var isActive = true
 
     var body: some View {
         let effect = motionValues
@@ -528,11 +533,12 @@ private struct MotionPreviewImage: View {
             .scaleEffect(scale)
             .offset(x: ox, y: oy)
             .clipped()
-            .onAppear { startCycle() }
+            .onAppear { isActive = true; startCycle() }
+            .onDisappear { isActive = false }
     }
 
     private func startCycle() {
-        guard style != .none else { return }
+        guard style != .none, isActive else { return }
         progress = 0
         animationStartDate = Date()
         withAnimation(.easeInOut(duration: cycleDuration)) {
@@ -544,12 +550,12 @@ private struct MotionPreviewImage: View {
     private func scheduleReset() {
         let cycleStart = animationStartDate
         DispatchQueue.main.asyncAfter(deadline: .now() + cycleDuration + 0.3) {
-            guard cycleStart == animationStartDate else { return }
+            guard cycleStart == animationStartDate, isActive else { return }
             withAnimation(.none) {
                 progress = 0
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                guard cycleStart == animationStartDate else { return }
+                guard cycleStart == animationStartDate, isActive else { return }
                 animationStartDate = Date()
                 withAnimation(.easeInOut(duration: cycleDuration)) {
                     progress = 1
