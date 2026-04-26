@@ -974,7 +974,11 @@ extension TapesStore {
     private func scheduleBatchFlush() {
         guard batchUpdateTask == nil else { return }
         batchUpdateTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 200_000_000)
+            } catch {
+                return
+            }
             self?.flushBatchUpdates()
         }
     }
@@ -1095,7 +1099,11 @@ extension TapesStore {
         let actor = persistenceActor
         let delay = saveDebounce
         saveTask = Task.detached(priority: .utility) {
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            do {
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            } catch {
+                return
+            }
             let sanitized = snapshot.map { $0.removingPlaceholders() }
             await actor.save(sanitized, to: url)
         }
