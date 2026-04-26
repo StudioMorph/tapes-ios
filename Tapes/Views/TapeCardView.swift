@@ -10,6 +10,10 @@ enum ImportSource {
     case centerFAB
 }
 
+private struct IdentifiableUUID: Identifiable {
+    let id: UUID
+}
+
 private struct CardWidthKey: PreferenceKey {
     static var defaultValue: CGFloat { 0 }
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -47,10 +51,8 @@ struct TapeCardView: View {
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var showingSeamTransition = false
-    @State private var showingClipTrim = false
     @State private var clipToTrim: Clip? = nil
-    @State private var showingImageSettings = false
-    @State private var imageSettingsClipID: UUID? = nil
+    @State private var imageSettingsClipID: IdentifiableUUID? = nil
     @State private var importSource: ImportSource? = nil
     @State private var clipToDelete: Clip? = nil
     @State private var showingDeleteConfirmation = false
@@ -411,16 +413,12 @@ struct TapeCardView: View {
                 )
             }
         }
-        .fullScreenCover(isPresented: $showingClipTrim) {
-            if let clipToTrim,
-               let clipIndex = tape.clips.firstIndex(where: { $0.id == clipToTrim.id }) {
+        .fullScreenCover(item: $clipToTrim) { clip in
+            if let clipIndex = tape.clips.firstIndex(where: { $0.id == clip.id }) {
                 ClipTrimView(
                     clip: $tape.clips[clipIndex],
                     tape: tape,
-                    onDismiss: {
-                        showingClipTrim = false
-                        self.clipToTrim = nil
-                    },
+                    onDismiss: { clipToTrim = nil },
                     onSave: { updatedClip in
                         tape.updateClip(updatedClip)
                         tapeStore.updateTape(tape)
@@ -428,18 +426,13 @@ struct TapeCardView: View {
                 )
             }
         }
-        .fullScreenCover(isPresented: $showingImageSettings) {
-            if let clipID = imageSettingsClipID {
-                ImageClipSettingsView(
-                    tape: $tape,
-                    clipID: clipID,
-                    onDismiss: {
-                        showingImageSettings = false
-                        imageSettingsClipID = nil
-                    }
-                )
-                .environmentObject(tapeStore)
-            }
+        .fullScreenCover(item: $imageSettingsClipID) { wrapper in
+            ImageClipSettingsView(
+                tape: $tape,
+                clipID: wrapper.id,
+                onDismiss: { imageSettingsClipID = nil }
+            )
+            .environmentObject(tapeStore)
         }
         .alert("Delete Clip?", isPresented: $showingDeleteConfirmation) {
             Button("Delete", role: .destructive) {
@@ -592,10 +585,8 @@ struct TapeCardView: View {
         if isJiggling { return }
         if clip.clipType == .video {
             clipToTrim = clip
-            showingClipTrim = true
         } else if clip.clipType == .image {
-            imageSettingsClipID = clip.id
-            showingImageSettings = true
+            imageSettingsClipID = IdentifiableUUID(id: clip.id)
         }
     }
 
