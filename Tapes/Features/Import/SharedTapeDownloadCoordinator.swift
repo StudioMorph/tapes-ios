@@ -395,7 +395,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         }
 
         var thumbData: Data?
-        if clipType == .image, let image = Self.loadImageFromPhotos(assetLocalId: assetLocalId) {
+        if clipType == .image, let image = await Self.loadImageFromPhotos(assetLocalId: assetLocalId) {
             thumbData = image.preparingThumbnail(of: CGSize(width: 480, height: 480))?.jpegData(compressionQuality: 0.8)
         } else if let thumbUrlStr = manifestClip.thumbnailUrl, let thumbURL = URL(string: thumbUrlStr) {
             if let (thumbTemp, thumbResp) = try? await session.download(for: URLRequest(url: thumbURL)),
@@ -534,24 +534,26 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         return assetId
     }
 
-    private static func loadImageFromPhotos(assetLocalId: String) -> UIImage? {
+    private static func loadImageFromPhotos(assetLocalId: String) async -> UIImage? {
         let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetLocalId], options: nil)
         guard let asset = fetch.firstObject else { return nil }
 
-        var result: UIImage?
         let options = PHImageRequestOptions()
-        options.isSynchronous = true
         options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
 
-        PHImageManager.default().requestImage(
-            for: asset,
-            targetSize: CGSize(width: 480, height: 480),
-            contentMode: .aspectFill,
-            options: options
-        ) { image, _ in
-            result = image
+        return await withCheckedContinuation { continuation in
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 480, height: 480),
+                contentMode: .aspectFill,
+                options: options
+            ) { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                guard !isDegraded else { return }
+                continuation.resume(returning: image)
+            }
         }
-        return result
     }
 
     // MARK: - Scene Phase
