@@ -143,13 +143,16 @@ private struct ResolvedClipThumbnail: View {
     let clip: Clip
     var isJiggling: Bool = false
     var livePhotosAsVideo: Bool = true
+    @State private var diskImage: UIImage?
 
     var body: some View {
+        let resolvedImage = clip.thumbnailImage ?? diskImage
+
         ZStack {
             Rectangle()
                 .fill(Tokens.Colors.elevated)
             
-            if let thumbnail = clip.thumbnailImage {
+            if let thumbnail = resolvedImage {
                 Image(uiImage: thumbnail)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -178,6 +181,11 @@ private struct ResolvedClipThumbnail: View {
             Text(clip.hasThumbnail ? "thumb" : "no thumb")
                 .font(.caption2)
                 .opacity(0.001)
+        }
+        .task(id: clip.id) {
+            if clip.thumbnailImage == nil {
+                diskImage = await Clip.loadThumbnailFromDisk(for: clip.id)
+            }
         }
     }
 }

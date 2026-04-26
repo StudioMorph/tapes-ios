@@ -330,16 +330,19 @@ public struct Clip: Identifiable, Codable, Equatable {
         let key = id as NSUUID
         if let cached = Self.thumbnailCache.object(forKey: key) { return cached }
 
-        let data: Data?
-        if let mem = thumbnail {
-            data = mem
-        } else {
-            let url = Self.mediaDirectory.appendingPathComponent("\(id)_thumb.jpg")
-            data = try? Data(contentsOf: url)
-        }
+        guard let mem = thumbnail, let image = UIImage(data: mem) else { return nil }
+        Self.thumbnailCache.setObject(image, forKey: key, cost: mem.count)
+        return image
+    }
 
-        guard let data, let image = UIImage(data: data) else { return nil }
-        Self.thumbnailCache.setObject(image, forKey: key, cost: data.count)
+    public nonisolated static func loadThumbnailFromDisk(for clipID: UUID) async -> UIImage? {
+        let key = clipID as NSUUID
+        if let cached = thumbnailCache.object(forKey: key) { return cached }
+
+        let url = mediaDirectory.appendingPathComponent("\(clipID)_thumb.jpg")
+        guard let data = try? Data(contentsOf: url),
+              let image = UIImage(data: data) else { return nil }
+        thumbnailCache.setObject(image, forKey: key, cost: data.count)
         return image
     }
 
