@@ -1013,6 +1013,7 @@ final class TapePlayerViewModel: ObservableObject {
         let wasPlaying = isPlaying
         let seekTime = CMTime(seconds: clipTime, preferredTimescale: 600)
         Task { @MainActor in
+            guard !isTornDown else { return }
             do {
                 let composition = try await loadClipComposition(
                     index: currentClipIndex,
