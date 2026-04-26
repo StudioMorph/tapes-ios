@@ -238,7 +238,7 @@ public class TapesStore: ObservableObject {
     private let saveDebounce: TimeInterval = 0.35
     private var metadataQueue: [() async -> Void] = []
     private var activeMetadataTasks = 0
-    private static let maxConcurrentMetadata = 8
+    private static let maxConcurrentMetadata = 4
     private var pendingClipUpdates: [(clipID: UUID, tapeID: UUID, transform: (inout Clip) -> Void)] = []
     private var batchUpdateTask: Task<Void, Never>?
     
@@ -452,19 +452,17 @@ public class TapesStore: ObservableObject {
             imageData = nil
         }
 
-        if assetIdentifier != nil || imageData != nil {
-            var clip = Clip(
-                assetLocalId: assetIdentifier,
-                imageData: imageData,
-                clipType: .image,
-                duration: Tokens.Timing.photoDefaultDuration,
-                thumbnail: thumbnailData
-            )
-            clip.updatedAt = Date()
-            return clip
-        }
+        guard assetIdentifier != nil || imageData != nil else { return nil }
 
-        return nil
+        var clip = Clip(
+            assetLocalId: assetIdentifier,
+            imageData: imageData,
+            clipType: .image,
+            duration: Tokens.Timing.photoDefaultDuration,
+            thumbnail: thumbnailData
+        )
+        clip.updatedAt = Date()
+        return clip
     }
 
     private func scheduleMediaCleanup(for clipIDs: [UUID]) {
