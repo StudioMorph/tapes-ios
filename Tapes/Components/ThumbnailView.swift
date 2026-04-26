@@ -177,11 +177,7 @@ private struct ResolvedClipThumbnail: View {
                 ClipInfoBadge(clip: clip, livePhotosAsVideo: livePhotosAsVideo)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            Text(clip.hasThumbnail ? "thumb" : "no thumb")
-                .font(.caption2)
-                .opacity(0.001)
-        }
+        
         .task(id: clip.id) {
             if clip.thumbnailImage == nil {
                 diskImage = await Clip.loadThumbnailFromDisk(for: clip.id)
