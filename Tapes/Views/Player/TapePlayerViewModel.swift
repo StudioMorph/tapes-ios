@@ -10,6 +10,14 @@ enum PlayerSlot {
     case secondary
 }
 
+// MARK: - Player Time State (high-frequency, isolated to avoid full-tree invalidation)
+
+@MainActor
+final class PlayerTimeState: ObservableObject {
+    @Published var clipTime: Double = 0
+    @Published var clipDuration: Double = 0
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -26,8 +34,6 @@ final class TapePlayerViewModel: ObservableObject {
     @Published private(set) var currentClipIndex: Int = 0
     @Published private(set) var isPlaying = false
     @Published private(set) var showingControls = true
-    @Published private(set) var clipDuration: Double = 0
-    @Published private(set) var clipTime: Double = 0
     @Published private(set) var isFinished = false
     @Published private(set) var isLoading = false
     @Published private(set) var loadError: String?
@@ -55,6 +61,16 @@ final class TapePlayerViewModel: ObservableObject {
     }
 
     // MARK: - Computed Properties
+
+    var clipTime: Double {
+        get { timeState.clipTime }
+        set { timeState.clipTime = newValue }
+    }
+
+    var clipDuration: Double {
+        get { timeState.clipDuration }
+        set { timeState.clipDuration = newValue }
+    }
 
     var totalClips: Int { tape.clips.count }
     var canGoBack: Bool { currentClipIndex > 0 }
@@ -117,6 +133,7 @@ final class TapePlayerViewModel: ObservableObject {
     private static let cacheCapacity = 10
     private static let maxConcurrentPreRenders = 2
 
+    let timeState = PlayerTimeState()
     let backgroundMusic = BackgroundMusicPlayer()
 
     private var cumulativePlaybackTime: TimeInterval = 0
@@ -1091,7 +1108,6 @@ final class TapePlayerViewModel: ObservableObject {
     private func updatePlaybackMetrics(localTime: CMTime) {
         let localSeconds = CMTimeGetSeconds(localTime)
         clipTime = min(max(localSeconds.isFinite ? localSeconds : 0, 0), clipDuration)
-        isPlaying = (activePlayer()?.rate ?? 0) > 0
     }
 
     private func updateClipTime(with localTime: CMTime) {

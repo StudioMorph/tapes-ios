@@ -200,9 +200,8 @@ struct TapePlayerView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
 
-                PlayerScrubBar(
-                    currentTime: vm.clipTime,
-                    totalDuration: vm.clipDuration,
+                PlayerTimeScrubBar(
+                    timeState: vm.timeState,
                     isDisabled: vm.isAdPlaying,
                     onSeek: { time in
                         Task { await vm.seekWithinClip(time) }
@@ -210,11 +209,8 @@ struct TapePlayerView: View {
                 )
 
                 VStack(spacing: 0) {
-                    PlayerTimeLabels(
-                        currentTime: vm.clipTime,
-                        totalDuration: vm.clipDuration
-                    )
-                    .padding(.top, 6)
+                    PlayerTimeLabelsView(timeState: vm.timeState)
+                        .padding(.top, 6)
 
                     Spacer()
 
@@ -326,6 +322,34 @@ struct TapePlayerView: View {
                     viewWidth: vm.viewportSize.width
                 )
             }
+    }
+}
+
+// MARK: - Time-Driven Views (isolated observation to avoid full-tree invalidation at 10 Hz)
+
+private struct PlayerTimeScrubBar: View {
+    @ObservedObject var timeState: PlayerTimeState
+    var isDisabled: Bool
+    var onSeek: (Double) -> Void
+
+    var body: some View {
+        PlayerScrubBar(
+            currentTime: timeState.clipTime,
+            totalDuration: timeState.clipDuration,
+            isDisabled: isDisabled,
+            onSeek: onSeek
+        )
+    }
+}
+
+private struct PlayerTimeLabelsView: View {
+    @ObservedObject var timeState: PlayerTimeState
+
+    var body: some View {
+        PlayerTimeLabels(
+            currentTime: timeState.clipTime,
+            totalDuration: timeState.clipDuration
+        )
     }
 }
 
