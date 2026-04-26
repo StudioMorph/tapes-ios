@@ -1183,6 +1183,7 @@ extension TapesStore {
             autoSave()
         } else {
             tapes.insert(newEmptyTape, at: 0)
+            autoSave()
         }
     }
 
