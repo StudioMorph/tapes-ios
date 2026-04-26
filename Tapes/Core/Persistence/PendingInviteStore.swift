@@ -50,18 +50,24 @@ public class PendingInviteStore: ObservableObject {
     // MARK: - Persistence
 
     private func save() {
-        do {
-            let data = try JSONEncoder().encode(invites)
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            log.error("Failed to save invites: \(error.localizedDescription)")
+        let snapshot = invites
+        let url = fileURL
+        Task.detached(priority: .utility) {
+            do {
+                let data = try JSONEncoder().encode(snapshot)
+                try data.write(to: url, options: .atomic)
+            } catch {
+                Logger(subsystem: "com.studiomorph.tapes", category: "PendingInvites")
+                    .error("Failed to save invites: \(error.localizedDescription)")
+            }
         }
     }
 
     private func load() {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        let url = fileURL
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
         do {
-            let data = try Data(contentsOf: fileURL)
+            let data = try Data(contentsOf: url)
             invites = try JSONDecoder().decode([PendingInvite].self, from: data)
             log.info("Loaded \(self.invites.count) pending invite(s)")
         } catch {
