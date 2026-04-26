@@ -116,8 +116,10 @@ struct ClipTrimView: View {
                 .ignoresSafeArea()
             }
         }
-        .task { await loadAsset() }
-        .task { await prepareMusic() }
+        .task {
+            await loadAsset()
+            await prepareMusic()
+        }
         .onDisappear { cleanup() }
         .onChange(of: clipVolume) { _, newVol in
             player?.volume = Float(newVol)
@@ -275,7 +277,10 @@ struct ClipTrimView: View {
             }
         } catch {
             TapesLog.player.error("ClipTrimView: failed to load asset: \(error.localizedDescription)")
-            await MainActor.run { loadError = "Failed to load video" }
+            await MainActor.run {
+                loadError = "Failed to load video"
+                isLoading = false
+            }
         }
     }
 
