@@ -30,7 +30,7 @@ struct ImageClipSettingsView: View {
     @State private var loopObserver: Any?
 
     // Background music
-    @State private var bgMusic = BackgroundMusicPlayer()
+    @StateObject private var bgMusic = BackgroundMusicPlayer()
 
     private var clip: Clip? {
         tape.clips.first(where: { $0.id == clipID })
@@ -103,7 +103,7 @@ struct ImageClipSettingsView: View {
         }
         .task {
             await loadClipImage()
-            if livePhotoIsOn { startLivePhotoPlayback() }
+            if livePhotoIsOn { await loadAndPlayLivePhoto() }
             if hasBackgroundMusic {
                 await bgMusic.prepare(
                     mood: tape.musicMood,
@@ -456,31 +456,30 @@ struct ImageClipSettingsView: View {
 
     // MARK: - Live Photo Video Playback
 
-    private func startLivePhotoPlayback() {
+    private func loadAndPlayLivePhoto() async {
         stopLivePhotoPlayback()
         guard let clip, let assetId = clip.assetLocalId else { return }
+        guard let result = await extractLivePhotoVideo(assetIdentifier: assetId) else { return }
+        let newPlayer = AVPlayer(url: result.url)
+        newPlayer.volume = Float(clipVolume)
 
-        Task {
-            guard let result = await extractLivePhotoVideo(assetIdentifier: assetId) else { return }
-            let player = AVPlayer(url: result.url)
-            player.volume = Float(clipVolume)
-
-            let observer = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: player.currentItem,
-                queue: .main
-            ) { _ in
-                player.seek(to: .zero)
-                player.play()
-            }
-
-            await MainActor.run {
-                self.livePhotoVideoURL = result.url
-                self.livePhotoPlayer = player
-                self.loopObserver = observer
-                player.play()
-            }
+        let observer = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: newPlayer.currentItem,
+            queue: .main
+        ) { _ in
+            newPlayer.seek(to: .zero)
+            newPlayer.play()
         }
+
+        self.livePhotoVideoURL = result.url
+        self.livePhotoPlayer = newPlayer
+        self.loopObserver = observer
+        newPlayer.play()
+    }
+
+    private func startLivePhotoPlayback() {
+        Task { await loadAndPlayLivePhoto() }
     }
 
     private func stopLivePhotoPlayback() {
