@@ -79,7 +79,7 @@ private actor TapePersistenceActor {
                 // Re-save JSON without blobs
                 let stripped = tapes.map { $0.removingPlaceholders() }
                 if let encoded = try? JSONEncoder().encode(stripped) {
-                    try? encoded.write(to: url)
+                    try? encoded.write(to: url, options: [.atomic, Self.protection])
                 }
             }
 
