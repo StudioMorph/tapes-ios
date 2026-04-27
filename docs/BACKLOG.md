@@ -16,6 +16,37 @@ Items to revisit when time allows. Not urgent, not blocking — just worth doing
 
 ---
 
+### 10. Parallel clip uploads (2–3 concurrent) + bounded extraction prefetch
+
+**Context**: After the upload pipeline optimisation work (`docs/features/UploadPipelineOptimisation.md`) the dominant remaining cost on slow networks is per-clip TLS handshake + first-byte latency. Each clip currently runs through its `createClip → PUT R2 → confirmUpload` pipeline serially against the next clip; while one stream is idle waiting on the network, the upload pool sits empty. Within-clip parallelism is shipped (primary + paired Live Photo movie + thumbnail run concurrently); cross-clip parallelism is not.
+
+**Expected win**: 1.5–2.5× total upload time on cellular for tapes of 10+ clips. Smaller (1.2–1.5×) on Wi-Fi where bandwidth is the bottleneck. Compounds with the within-clip parallelism we already shipped.
+
+**Plan summary** (not yet approved):
+
+- Replace the per-clip sequential `for` loop in `ensureTapeUploaded` and `contributeClips` with a bounded concurrent pool. Constant ceiling of 3 in flight; do not introduce dynamic Wi-Fi/cellular tuning before TestFlight.
+- Extend the extract-ahead prefetch from depth 1 to depth N+1 (one ahead of the in-flight pool size). Memory cost is now negligible because every payload type is file-backed (the file-streaming follow-up landed in `f7bf622`); the real ceiling is disk space in `tmp/` for the export-session fallback.
+- Update progress UX from "Uploading clip X of Y" to a completed-count form ("Uploaded X of Y") because in-flight indices stop being meaningful.
+- Cancellation path: if any clip exits with an error after `withRetry` exhaustion, cancel siblings still in flight, surface failures via `failedClipIndices` (already a `Set` so insert order doesn't matter), end the batch.
+
+**Pre-flight checks needed before implementing**:
+
+- Verify Cloudflare Worker rate limits allow 3 concurrent `confirmUpload` calls per tape without 429s. If they don't, raise the limit on the relevant rate-limit namespace before iOS work starts.
+- Confirm `confirmUpload` is order-independent server-side (very likely — each clip is its own row — but worth checking once).
+- Test on both Wi-Fi and cellular before declaring done; concurrency wins are network-shaped and we don't want a regression hidden by good office Wi-Fi.
+
+**Trigger**: Defer until either (a) we have a few uninterrupted days for performance work + cross-network testing pre-TestFlight, or (b) post-TestFlight when real users complain about long upload times. Do not bundle with unrelated work — concurrency bugs are the hardest to debug and warrant a clean diff.
+
+**Risks**:
+
+- Concurrency introduces non-deterministic failure ordering; harder to reproduce regressions.
+- Backend rate limits could throttle us into worse-than-serial throughput if not raised first.
+- `BGContinuedProcessingTask` interaction is unknown — denser progress updates *might* delay expiration (good) or might trip system limits (bad). Has to be measured.
+
+**Files likely involved**: `Tapes/Core/Networking/ShareUploadCoordinator.swift` (the concurrent pool, prefetch depth, progress UX), `tapes-api/src/middleware/rateLimit.ts` (if limits need raising), `docs/plan/UploadPipelineParallelClips.md` (to be written when we execute).
+
+---
+
 ## App Settings
 
 ### 2. Create a dedicated settings view

@@ -50,6 +50,10 @@ So while clip N is uploading over the network, clip N+1's Photos-library extract
 - `uploadToR2(url:data:contentType:)` — used for the small in-memory buffers that we already hold (still photos resolved by PhotoKit, thumbnails). Sets `Content-Length` explicitly.
 - `uploadToR2(url:fileURL:contentType:)` — used for **everything backed by a file**: PhotoKit videos (direct or export-session), Live Photo `.photo` and `.pairedVideo`, sandbox imports. Streams via `URLSession.upload(for:fromFile:)`. URLSession reads chunks off disk and pushes them straight into the TLS socket, so memory stays flat regardless of file size and time-to-first-byte drops to milliseconds.
 
+### Per-clip parallelism
+
+Within a single clip the three R2 PUTs (primary payload, paired Live Photo movie, thumbnail) write to independent signed URLs and have no server-side ordering requirement. They run concurrently via `async let`. Wall-clock for a clip becomes "the slowest of the three" instead of "the sum of all three", which roughly halves the upload time for Live Photos (where the photo and paired video are both significant) and is a negligible win for regular clips (the thumbnail is tiny). A throw from any of the three cancels the still-in-flight peers via structured concurrency; `withRetry` then re-runs the whole clip end-to-end exactly as it did under the sequential version.
+
 ## Testing or QA considerations
 
 - Upload a tape containing Live Photos, regular photos, and regular videos. All three should succeed end-to-end.

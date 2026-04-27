@@ -762,38 +762,57 @@ public class ShareUploadCoordinator: ObservableObject {
             livePhotoSound: clip.isLivePhoto ? !(clip.livePhotoMuted ?? false) : nil
         )
 
-        switch prepared.primary {
-        case .data(let data):
-            try await uploadToR2(
-                url: createResponse.uploadUrl,
-                data: data,
-                contentType: prepared.primaryContentType
-            )
-        case .file(let fileURL):
-            try await uploadToR2(
-                url: createResponse.uploadUrl,
-                fileURL: fileURL,
-                contentType: prepared.primaryContentType
-            )
-        }
+        // Run the three R2 PUTs concurrently. They write to independent
+        // signed URLs (primary, paired Live Photo movie, thumbnail) and
+        // share no server-side ordering. The clip is finished when the
+        // slowest of them finishes, instead of the sum of all three —
+        // which roughly halves wall-clock upload time for Live Photos
+        // (where photo + paired video are both significant) and is a
+        // negligible win for everything else.
+        //
+        // Any throw cancels the still-in-flight peers (structured
+        // concurrency); the whole `uploadPrepared` call then fails and
+        // `withRetry` re-runs the clip end-to-end, exactly as today.
+        async let primaryUpload: Void = {
+            switch prepared.primary {
+            case .data(let data):
+                try await Self.uploadToR2(
+                    url: createResponse.uploadUrl,
+                    data: data,
+                    contentType: prepared.primaryContentType
+                )
+            case .file(let fileURL):
+                try await Self.uploadToR2(
+                    url: createResponse.uploadUrl,
+                    fileURL: fileURL,
+                    contentType: prepared.primaryContentType
+                )
+            }
+        }()
 
-        if clip.isLivePhoto,
-           let movieUploadUrl = createResponse.livePhotoMovieUploadUrl,
-           let movieFileURL = prepared.livePhotoMovieFileURL {
-            try await uploadToR2(
+        async let movieUpload: Void = {
+            guard clip.isLivePhoto,
+                  let movieUploadUrl = createResponse.livePhotoMovieUploadUrl,
+                  let movieFileURL = prepared.livePhotoMovieFileURL else { return }
+            try await Self.uploadToR2(
                 url: movieUploadUrl,
                 fileURL: movieFileURL,
                 contentType: "video/quicktime"
             )
-        }
+        }()
 
-        if let thumbData = clip.thumbnail {
-            try await uploadToR2(
+        async let thumbnailUpload: Void = {
+            guard let thumbData = clip.thumbnail else { return }
+            try await Self.uploadToR2(
                 url: createResponse.thumbnailUploadUrl,
                 data: thumbData,
                 contentType: "image/jpeg"
             )
-        }
+        }()
+
+        try await primaryUpload
+        try await movieUpload
+        try await thumbnailUpload
 
         let baseUploadUrl = createResponse.uploadUrl.components(separatedBy: "?").first ?? createResponse.uploadUrl
         let baseThumbUrl = createResponse.thumbnailUploadUrl.components(separatedBy: "?").first ?? createResponse.thumbnailUploadUrl
