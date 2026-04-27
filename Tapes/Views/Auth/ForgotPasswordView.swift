@@ -63,16 +63,15 @@ struct ForgotPasswordView: View {
                     if success { sent = true }
                 }
             } label: {
-                Group {
-                    if authManager.isLoading {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text("Send Reset Link")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
+                ZStack {
+                    Text("Send Reset Link")
+                        .font(.system(size: 17, weight: .semibold))
+                        .opacity(authManager.isLoading ? 0 : 1)
+                    ProgressView()
+                        .tint(.white)
+                        .opacity(authManager.isLoading ? 1 : 0)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -102,7 +101,6 @@ struct ForgotPasswordView: View {
                 Text("Got it")
                     .font(.system(size: 17, weight: .semibold))
                     .frame(maxWidth: .infinity)
-                    .frame(height: 50)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)

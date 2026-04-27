@@ -186,14 +186,13 @@ struct AuthView: View {
         Button {
             Task { await submit() }
         } label: {
-            Group {
-                if authManager.isLoading {
-                    ProgressView()
-                        .tint(.white)
-                } else {
-                    Text(mode == .login ? "Log In" : "Create Account")
-                        .font(.system(size: 17, weight: .semibold))
-                }
+            ZStack {
+                Text(mode == .login ? "Log In" : "Create Account")
+                    .font(.system(size: 17, weight: .semibold))
+                    .opacity(authManager.isLoading ? 0 : 1)
+                ProgressView()
+                    .tint(.white)
+                    .opacity(authManager.isLoading ? 1 : 0)
             }
             .frame(maxWidth: .infinity)
         }

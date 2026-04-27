@@ -160,13 +160,13 @@ struct ResetPasswordView: View {
                     if ok { viewState = .success }
                 }
             } label: {
-                Group {
-                    if authManager.isLoading {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text("Reset Password")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
+                ZStack {
+                    Text("Reset Password")
+                        .font(.system(size: 17, weight: .semibold))
+                        .opacity(authManager.isLoading ? 0 : 1)
+                    ProgressView()
+                        .tint(.white)
+                        .opacity(authManager.isLoading ? 1 : 0)
                 }
                 .frame(maxWidth: .infinity)
             }
