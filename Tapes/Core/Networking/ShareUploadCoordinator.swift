@@ -1090,11 +1090,24 @@ public class ShareUploadCoordinator: ObservableObject {
 
     // MARK: - Background Task (fallback)
 
+    /// iOS contract: the expiration handler MUST call `endBackgroundTask`
+    /// synchronously before it returns. Hopping into a `Task { @MainActor … }`
+    /// to do it later trips the
+    /// `Background task still not ended after expiration handlers were called`
+    /// warning and risks process termination. Capture the identifier in a
+    /// local, end it inline, and clear our stored property via
+    /// `MainActor.assumeIsolated` (the closure already runs on the main
+    /// thread; this is just bookkeeping that satisfies the compiler).
     private func beginBackgroundTask() {
         guard backgroundTaskID == .invalid else { return }
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
-            Task { @MainActor in self?.endBackgroundTask() }
+        var taskID: UIBackgroundTaskIdentifier = .invalid
+        taskID = UIApplication.shared.beginBackgroundTask { [weak self] in
+            UIApplication.shared.endBackgroundTask(taskID)
+            MainActor.assumeIsolated {
+                self?.backgroundTaskID = .invalid
+            }
         }
+        backgroundTaskID = taskID
     }
 
     private func endBackgroundTask() {

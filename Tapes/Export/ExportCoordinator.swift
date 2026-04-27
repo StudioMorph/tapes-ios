@@ -344,11 +344,19 @@ public class ExportCoordinator: ObservableObject {
 
     // MARK: - Background Task (basic fallback for all iOS versions)
 
+    /// iOS contract: end the system task synchronously inside the
+    /// expiration handler — see `ShareUploadCoordinator.beginBackgroundTask`
+    /// for the full rationale.
     private func beginBackgroundExportTask() {
         guard backgroundTaskID == .invalid else { return }
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
-            Task { @MainActor in self?.endBackgroundExportTask() }
+        var taskID: UIBackgroundTaskIdentifier = .invalid
+        taskID = UIApplication.shared.beginBackgroundTask { [weak self] in
+            UIApplication.shared.endBackgroundTask(taskID)
+            MainActor.assumeIsolated {
+                self?.backgroundTaskID = .invalid
+            }
         }
+        backgroundTaskID = taskID
     }
 
     private func endBackgroundExportTask() {

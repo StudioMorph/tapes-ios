@@ -610,11 +610,19 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
     // MARK: - Background Task (fallback)
 
+    /// iOS contract: end the system task synchronously inside the
+    /// expiration handler — see `ShareUploadCoordinator.beginBackgroundTask`
+    /// for the full rationale.
     private func beginBackgroundTask() {
         guard backgroundTaskID == .invalid else { return }
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask { [weak self] in
-            Task { @MainActor in self?.endBackgroundTask() }
+        var taskID: UIBackgroundTaskIdentifier = .invalid
+        taskID = UIApplication.shared.beginBackgroundTask { [weak self] in
+            UIApplication.shared.endBackgroundTask(taskID)
+            MainActor.assumeIsolated {
+                self?.backgroundTaskID = .invalid
+            }
         }
+        backgroundTaskID = taskID
     }
 
     private func endBackgroundTask() {
