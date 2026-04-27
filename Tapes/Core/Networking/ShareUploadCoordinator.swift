@@ -247,8 +247,16 @@ public class ShareUploadCoordinator: ObservableObject {
                         )
                     }
 
-                    // 3a. Upload new clips
+                    // 3a. Upload new clips with extract-ahead pipelining:
+                    // extraction of clip N+1 runs in parallel with the network
+                    // upload of clip N, so CPU/disk and network overlap.
                     var newFailures: Set<Int> = []
+                    var prefetch: Task<PreparedClip, Error>? = clipsToUpload.first.map { first in
+                        Task.detached(priority: .userInitiated) {
+                            try await Self.prepareClip(first)
+                        }
+                    }
+
                     for (index, clip) in clipsToUpload.enumerated() {
                         guard !Task.isCancelled else { break }
 
@@ -258,9 +266,29 @@ public class ShareUploadCoordinator: ObservableObject {
                             self.updateContinuedTaskProgress()
                         }
 
+                        let currentPrefetch = prefetch
+                        if index + 1 < clipsToUpload.count {
+                            let nextClip = clipsToUpload[index + 1]
+                            prefetch = Task.detached(priority: .userInitiated) {
+                                try await Self.prepareClip(nextClip)
+                            }
+                        } else {
+                            prefetch = nil
+                        }
+
                         do {
-                            try await Self.withRetry(maxAttempts: 3) {
-                                try await Self.uploadClip(clip, tapeId: tapeId, api: api)
+                            guard let currentPrefetch else {
+                                throw APIError.validation("Missing clip preparation task.")
+                            }
+                            let prepared = try await currentPrefetch.value
+                            do {
+                                try await Self.withRetry(maxAttempts: 3) {
+                                    try await Self.uploadPrepared(clip, prepared: prepared, tapeId: tapeId, api: api)
+                                }
+                                Self.cleanupTempFiles(prepared.tempFiles)
+                            } catch {
+                                Self.cleanupTempFiles(prepared.tempFiles)
+                                throw error
                             }
                             self.completedClips += 1
                         } catch {
@@ -268,6 +296,8 @@ public class ShareUploadCoordinator: ObservableObject {
                             newFailures.insert(index)
                         }
                     }
+
+                    prefetch?.cancel()
 
                     // 3b. Delete removed clips from server + R2
                     for clipId in clipIdsToDelete {
@@ -405,6 +435,11 @@ public class ShareUploadCoordinator: ObservableObject {
             )
 
             var newFailures: Set<Int> = []
+            var prefetch: Task<PreparedClip, Error>? = unsyncedClips.first.map { first in
+                Task.detached(priority: .userInitiated) {
+                    try await Self.prepareClip(first)
+                }
+            }
 
             for (index, clip) in unsyncedClips.enumerated() {
                 guard !Task.isCancelled else { break }
@@ -415,9 +450,29 @@ public class ShareUploadCoordinator: ObservableObject {
                     self.updateContinuedTaskProgress()
                 }
 
+                let currentPrefetch = prefetch
+                if index + 1 < unsyncedClips.count {
+                    let nextClip = unsyncedClips[index + 1]
+                    prefetch = Task.detached(priority: .userInitiated) {
+                        try await Self.prepareClip(nextClip)
+                    }
+                } else {
+                    prefetch = nil
+                }
+
                 do {
-                    try await Self.withRetry(maxAttempts: 3) {
-                        try await Self.uploadClip(clip, tapeId: remoteTapeId, api: api)
+                    guard let currentPrefetch else {
+                        throw APIError.validation("Missing clip preparation task.")
+                    }
+                    let prepared = try await currentPrefetch.value
+                    do {
+                        try await Self.withRetry(maxAttempts: 3) {
+                            try await Self.uploadPrepared(clip, prepared: prepared, tapeId: remoteTapeId, api: api)
+                        }
+                        Self.cleanupTempFiles(prepared.tempFiles)
+                    } catch {
+                        Self.cleanupTempFiles(prepared.tempFiles)
+                        throw error
                     }
                     self.completedClips += 1
                     await MainActor.run { markSynced([clip.id]) }
@@ -426,6 +481,8 @@ public class ShareUploadCoordinator: ObservableObject {
                     newFailures.insert(index)
                 }
             }
+
+            prefetch?.cancel()
 
             self.failedClipIndices = newFailures
 
@@ -540,14 +597,93 @@ public class ShareUploadCoordinator: ObservableObject {
 
     // MARK: - Clip Upload (static so it doesn't capture self)
 
-    private static let uploadSession: URLSession = {
+    private nonisolated static let uploadSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
         return URLSession(configuration: config)
     }()
 
-    private static func uploadClip(_ clip: Clip, tapeId: String, api: TapesAPIClient) async throws {
+    /// Holds extracted media ready to upload. Extraction happens off-main via
+    /// `prepareClip`; the upload step then reads only the already-resolved
+    /// payload. Live Photos (which already require a temp file for metadata
+    /// preservation) use `.file` so the upload streams from disk.
+    private struct PreparedClip: @unchecked Sendable {
+        enum PrimarySource {
+            case data(Data)
+            case file(URL)
+        }
+        let primary: PrimarySource
+        let primaryContentType: String
+        let livePhotoMovieFileURL: URL?
+        let tempFiles: [URL]
+    }
+
+    /// Off-main extraction. Returns a `PreparedClip` that the upload loop can
+    /// hand to `uploadPrepared`. The caller owns `tempFiles` and must delete
+    /// them after the upload finishes (success or failure).
+    private nonisolated static func prepareClip(_ clip: Clip) async throws -> PreparedClip {
+        if clip.isLivePhoto, let assetId = clip.assetLocalId {
+            let photoURL = try await exportLivePhotoPhotoToFile(identifier: assetId)
+            let movieURL = try await exportLivePhotoMovieToFile(identifier: assetId)
+            let photoContentType = contentTypeForExtension(photoURL.pathExtension, default: "image/jpeg")
+            return PreparedClip(
+                primary: .file(photoURL),
+                primaryContentType: photoContentType,
+                livePhotoMovieFileURL: movieURL,
+                tempFiles: [photoURL, movieURL]
+            )
+        }
+
+        if let url = clip.localURL, FileManager.default.fileExists(atPath: url.path) {
+            let data = try Data(contentsOf: url)
+            return PreparedClip(
+                primary: .data(data),
+                primaryContentType: clip.clipType == .video ? "video/mp4" : "image/jpeg",
+                livePhotoMovieFileURL: nil,
+                tempFiles: []
+            )
+        }
+
+        if clip.clipType == .image, let imageData = clip.resolvedImageData {
+            return PreparedClip(
+                primary: .data(imageData),
+                primaryContentType: "image/jpeg",
+                livePhotoMovieFileURL: nil,
+                tempFiles: []
+            )
+        }
+
+        if let assetId = clip.assetLocalId {
+            let phAsset = try await fetchPHAssetWithRetry(identifier: assetId)
+            if clip.clipType == .video {
+                let data = try await exportVideoData(phAsset: phAsset)
+                return PreparedClip(
+                    primary: .data(data),
+                    primaryContentType: "video/mp4",
+                    livePhotoMovieFileURL: nil,
+                    tempFiles: []
+                )
+            } else {
+                let data = try await exportImageData(phAsset: phAsset)
+                return PreparedClip(
+                    primary: .data(data),
+                    primaryContentType: "image/jpeg",
+                    livePhotoMovieFileURL: nil,
+                    tempFiles: []
+                )
+            }
+        }
+
+        throw APIError.validation("Clip has no media to upload.")
+    }
+
+    private nonisolated static func uploadPrepared(
+        _ clip: Clip,
+        prepared: PreparedClip,
+        tapeId: String,
+        api: TapesAPIClient
+    ) async throws {
         let clipId = clip.id.uuidString.lowercased()
         let durationMs = Int(clip.duration * 1000)
 
@@ -576,17 +712,29 @@ public class ShareUploadCoordinator: ObservableObject {
             livePhotoSound: clip.isLivePhoto ? !(clip.livePhotoMuted ?? false) : nil
         )
 
-        let fileData = try await resolveClipData(clip)
+        switch prepared.primary {
+        case .data(let data):
+            try await uploadToR2(
+                url: createResponse.uploadUrl,
+                data: data,
+                contentType: prepared.primaryContentType
+            )
+        case .file(let fileURL):
+            try await uploadToR2(
+                url: createResponse.uploadUrl,
+                fileURL: fileURL,
+                contentType: prepared.primaryContentType
+            )
+        }
 
-        try await uploadToR2(
-            url: createResponse.uploadUrl,
-            data: fileData,
-            contentType: clip.clipType == .video ? "video/mp4" : "image/jpeg"
-        )
-
-        if clip.isLivePhoto, let movieUploadUrl = createResponse.livePhotoMovieUploadUrl {
-            let movieData = try await resolveLivePhotoMovieData(clip)
-            try await uploadToR2(url: movieUploadUrl, data: movieData, contentType: "video/quicktime")
+        if clip.isLivePhoto,
+           let movieUploadUrl = createResponse.livePhotoMovieUploadUrl,
+           let movieFileURL = prepared.livePhotoMovieFileURL {
+            try await uploadToR2(
+                url: movieUploadUrl,
+                fileURL: movieFileURL,
+                contentType: "video/quicktime"
+            )
         }
 
         if let thumbData = clip.thumbnail {
@@ -613,70 +761,69 @@ public class ShareUploadCoordinator: ObservableObject {
         )
     }
 
-    private static func resolveClipData(_ clip: Clip) async throws -> Data {
-        if clip.isLivePhoto, let assetId = clip.assetLocalId {
-            return try await exportLivePhotoImageResource(identifier: assetId)
+    private nonisolated static func cleanupTempFiles(_ urls: [URL]) {
+        for url in urls {
+            try? FileManager.default.removeItem(at: url)
         }
-
-        if let url = clip.localURL, FileManager.default.fileExists(atPath: url.path) {
-            return try Data(contentsOf: url)
-        }
-
-        if clip.clipType == .image, let imageData = clip.resolvedImageData {
-            return imageData
-        }
-
-        if let assetId = clip.assetLocalId {
-            return try await exportPHAssetData(identifier: assetId, isVideo: clip.clipType == .video)
-        }
-
-        throw APIError.validation("Clip has no media to upload.")
     }
 
-    private static func resolveLivePhotoMovieData(_ clip: Clip) async throws -> Data {
-        guard let assetId = clip.assetLocalId else {
-            throw APIError.validation("Live Photo has no asset identifier.")
-        }
+    // MARK: - Extraction Helpers
 
-        guard let result = await extractLivePhotoVideo(assetIdentifier: assetId) else {
-            throw APIError.validation("Could not extract Live Photo video component.")
-        }
-
-        return try Data(contentsOf: result.url)
-    }
-
-    /// Exports the photo resource of a Live Photo using PHAssetResourceManager,
-    /// preserving all metadata including the content identifier needed for
-    /// reconstructing Live Photos on the receiving device.
-    private static func exportLivePhotoImageResource(identifier: String) async throws -> Data {
-        var phAsset: PHAsset?
+    private nonisolated static func fetchPHAssetWithRetry(identifier: String) async throws -> PHAsset {
         for attempt in 0..<3 {
             let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
             if let asset = fetchResult.firstObject {
-                phAsset = asset
-                break
+                return asset
             }
             if attempt < 2 {
                 try await Task.sleep(nanoseconds: UInt64((attempt + 1)) * 500_000_000)
             }
         }
-        guard let phAsset else {
-            throw APIError.validation("Photo library asset not found.")
-        }
+        throw APIError.validation("Photo library asset not found.")
+    }
+
+    private nonisolated static let livePhotoTempDir: URL = {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("LivePhotoExport", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    /// Exports the `.photo` resource of a Live Photo using
+    /// `PHAssetResourceManager.writeData`. Preserves the content identifier
+    /// and other metadata needed for Live Photo reconstruction on the receiver.
+    private nonisolated static func exportLivePhotoPhotoToFile(identifier: String) async throws -> URL {
+        let phAsset = try await fetchPHAssetWithRetry(identifier: identifier)
 
         let resources = PHAssetResource.assetResources(for: phAsset)
         guard let photoResource = resources.first(where: { $0.type == .photo }) else {
             throw APIError.validation("Live Photo has no photo resource.")
         }
 
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("LivePhotoExport", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        let dest = tempDir.appendingPathComponent("\(UUID().uuidString).\(photoResource.originalFilename.split(separator: ".").last ?? "jpg")")
+        let ext = photoResource.originalFilename.split(separator: ".").last.map(String.init) ?? "jpg"
+        let dest = livePhotoTempDir.appendingPathComponent("\(UUID().uuidString).\(ext)")
+        try await writeAssetResource(photoResource, to: dest)
+        return dest
+    }
 
+    /// Exports the `.pairedVideo` resource of a Live Photo to a temp file.
+    private nonisolated static func exportLivePhotoMovieToFile(identifier: String) async throws -> URL {
+        let phAsset = try await fetchPHAssetWithRetry(identifier: identifier)
+
+        let resources = PHAssetResource.assetResources(for: phAsset)
+        guard let pairedVideo = resources.first(where: { $0.type == .pairedVideo }) else {
+            throw APIError.validation("Live Photo has no paired video resource.")
+        }
+
+        let dest = livePhotoTempDir.appendingPathComponent("\(UUID().uuidString).mov")
+        try await writeAssetResource(pairedVideo, to: dest)
+        return dest
+    }
+
+    private nonisolated static func writeAssetResource(_ resource: PHAssetResource, to dest: URL) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let options = PHAssetResourceRequestOptions()
             options.isNetworkAccessAllowed = true
-            PHAssetResourceManager.default().writeData(for: photoResource, toFile: dest, options: options) { error in
+            PHAssetResourceManager.default().writeData(for: resource, toFile: dest, options: options) { error in
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
@@ -684,76 +831,101 @@ public class ShareUploadCoordinator: ObservableObject {
                 }
             }
         }
-
-        let data = try Data(contentsOf: dest)
-        try? FileManager.default.removeItem(at: dest)
-        return data
     }
 
-    private static func exportPHAssetData(identifier: String, isVideo: Bool) async throws -> Data {
-        var phAsset: PHAsset?
-        for attempt in 0..<3 {
-            let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
-            if let asset = fetchResult.firstObject {
-                phAsset = asset
-                break
-            }
-            if attempt < 2 {
-                try await Task.sleep(nanoseconds: UInt64((attempt + 1)) * 500_000_000)
-            }
-        }
-        guard let phAsset else {
-            throw APIError.validation("Photo library asset not found.")
-        }
-
-        if isVideo {
-            return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
-                let options = PHVideoRequestOptions()
-                options.deliveryMode = .highQualityFormat
-                options.isNetworkAccessAllowed = true
-                options.version = .current
-                PHImageManager.default().requestExportSession(
-                    forVideo: phAsset,
-                    options: options,
-                    exportPreset: AVAssetExportPresetPassthrough
-                ) { session, _ in
-                    guard let session else {
-                        cont.resume(throwing: APIError.validation("Could not export video."))
-                        return
-                    }
-
-                    let tempDir = FileManager.default.temporaryDirectory
-                    let tempURL = tempDir.appendingPathComponent(UUID().uuidString + ".mp4")
-                    Task {
-                        do {
-                            try await session.export(to: tempURL, as: .mp4)
-                            let data = try Data(contentsOf: tempURL)
-                            try? FileManager.default.removeItem(at: tempURL)
-                            cont.resume(returning: data)
-                        } catch {
-                            cont.resume(throwing: error)
-                        }
-                    }
+    /// Loads image data via `PHImageManager.requestImageDataAndOrientation` —
+    /// Apple's standard UI-oriented path that returns right-sized HEIC/JPEG
+    /// data suitable for upload (not the raw original).
+    private nonisolated static func exportImageData(phAsset: PHAsset) async throws -> Data {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            options.isSynchronous = false
+            PHImageManager.default().requestImageDataAndOrientation(for: phAsset, options: options) { data, _, _, _ in
+                if let data {
+                    cont.resume(returning: data)
+                } else {
+                    cont.resume(throwing: APIError.validation("Could not access image data."))
                 }
             }
-        } else {
-            return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
-                let options = PHImageRequestOptions()
-                options.deliveryMode = .highQualityFormat
-                options.isNetworkAccessAllowed = true
-                options.isSynchronous = false
-                PHImageManager.default().requestImageDataAndOrientation(for: phAsset, options: options) { data, _, _, _ in
-                    if let data {
+        }
+    }
+
+    /// Loads video data. Fast path: `requestAVAsset` — local unedited videos
+    /// come back as `AVURLAsset`, allowing a single file read with no export
+    /// pipeline. Fallback: `requestExportSession` passthrough for iCloud or
+    /// edited videos where the fast path doesn't apply.
+    private nonisolated static func exportVideoData(phAsset: PHAsset) async throws -> Data {
+        if let directData = try? await readVideoDataDirect(phAsset: phAsset) {
+            return directData
+        }
+        return try await exportVideoViaSession(phAsset: phAsset)
+    }
+
+    private nonisolated static func readVideoDataDirect(phAsset: PHAsset) async throws -> Data {
+        let url: URL = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in
+            let options = PHVideoRequestOptions()
+            options.version = .current
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            PHImageManager.default().requestAVAsset(forVideo: phAsset, options: options) { avAsset, _, _ in
+                if let urlAsset = avAsset as? AVURLAsset {
+                    cont.resume(returning: urlAsset.url)
+                } else {
+                    cont.resume(throwing: APIError.validation("AVURLAsset unavailable."))
+                }
+            }
+        }
+        return try Data(contentsOf: url)
+    }
+
+    private nonisolated static func exportVideoViaSession(phAsset: PHAsset) async throws -> Data {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
+            let options = PHVideoRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            options.version = .current
+            PHImageManager.default().requestExportSession(
+                forVideo: phAsset,
+                options: options,
+                exportPreset: AVAssetExportPresetPassthrough
+            ) { session, _ in
+                guard let session else {
+                    cont.resume(throwing: APIError.validation("Could not export video."))
+                    return
+                }
+
+                let tempDir = FileManager.default.temporaryDirectory
+                let tempURL = tempDir.appendingPathComponent(UUID().uuidString + ".mp4")
+                Task {
+                    do {
+                        try await session.export(to: tempURL, as: .mp4)
+                        let data = try Data(contentsOf: tempURL)
+                        try? FileManager.default.removeItem(at: tempURL)
                         cont.resume(returning: data)
-                    } else {
-                        cont.resume(throwing: APIError.validation("Could not access image data."))
+                    } catch {
+                        cont.resume(throwing: error)
                     }
                 }
             }
         }
     }
 
-    private static func uploadToR2(url: String, data: Data, contentType: String, maxRetries: Int = 3) async throws {
+    private nonisolated static func contentTypeForExtension(_ ext: String, default fallback: String) -> String {
+        switch ext.lowercased() {
+        case "jpg", "jpeg": return "image/jpeg"
+        case "heic": return "image/heic"
+        case "png": return "image/png"
+        case "mp4", "m4v": return "video/mp4"
+        case "mov": return "video/quicktime"
+        default: return fallback
+        }
+    }
+
+    // MARK: - R2 Upload
+
+    private nonisolated static func uploadToR2(url: String, data: Data, contentType: String, maxRetries: Int = 3) async throws {
         guard let uploadURL = URL(string: url) else {
             throw APIError.validation("Invalid upload URL.")
         }
@@ -773,6 +945,43 @@ public class ShareUploadCoordinator: ObservableObject {
                 request.setValue("\(data.count)", forHTTPHeaderField: "Content-Length")
 
                 let (_, response) = try await uploadSession.upload(for: request, from: data)
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    lastError = APIError.server("Upload failed (HTTP \(code)).")
+                    continue
+                }
+                return
+            } catch {
+                lastError = error
+            }
+        }
+
+        throw lastError
+    }
+
+    /// File-streamed R2 upload. Used for Live Photo components, which the
+    /// extraction step has already written to disk — uploading via
+    /// `upload(for:fromFile:)` avoids an additional file→Data round trip and
+    /// keeps memory near zero for large photo/paired-video bodies.
+    private nonisolated static func uploadToR2(url: String, fileURL: URL, contentType: String, maxRetries: Int = 3) async throws {
+        guard let uploadURL = URL(string: url) else {
+            throw APIError.validation("Invalid upload URL.")
+        }
+
+        var lastError: Error = APIError.server("Upload failed.")
+
+        for attempt in 0..<maxRetries {
+            if attempt > 0 {
+                let delay = pow(2.0, Double(attempt))
+                try await Task.sleep(for: .seconds(delay))
+            }
+
+            do {
+                var request = URLRequest(url: uploadURL)
+                request.httpMethod = "PUT"
+                request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+
+                let (_, response) = try await uploadSession.upload(for: request, fromFile: fileURL)
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                     let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                     lastError = APIError.server("Upload failed (HTTP \(code)).")
