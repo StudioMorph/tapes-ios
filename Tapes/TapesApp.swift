@@ -17,6 +17,7 @@ struct TapesApp: App {
         cleanupTempImports()
         Self.cleanupLegacyMockMusicTracks()
         Task.detached(priority: .utility) { Self.applyMediaFileProtection() }
+        BackgroundTransferManager.shared.reconnect()
         if #available(iOS 26, *) {
             ExportCoordinator.registerBackgroundExportHandler()
             ShareUploadCoordinator.registerBackgroundUploadHandler()

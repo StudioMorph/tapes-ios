@@ -12,4 +12,5 @@ struct TapesLog {
     static let api = Logger(subsystem: "com.studiomorph.tapes", category: "API")
     static let upload = Logger(subsystem: "com.studiomorph.tapes", category: "Upload")
     static let music = Logger(subsystem: "com.studiomorph.tapes", category: "Music")
+    static let transfer = Logger(subsystem: "com.studiomorph.tapes", category: "Transfer")
 }

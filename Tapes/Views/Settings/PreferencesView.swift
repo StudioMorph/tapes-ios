@@ -35,6 +35,7 @@ struct PreferencesView: View {
     @AppStorage("tapes_product_updates") private var productUpdates = true
     @AppStorage("tapes_delivery_mode") private var deliveryModeRaw = DeliveryMode.auto.rawValue
     @AppStorage("tapes_delivery_mode_pending_sync") private var pendingSync = false
+    @AppStorage("allowCellularUploads") private var allowCellularUploads = true
 
     @EnvironmentObject private var authManager: AuthManager
 
@@ -57,6 +58,7 @@ struct PreferencesView: View {
             notificationsSection.listRowBackground(Tokens.Colors.secondaryBackground)
             deliverySection.listRowBackground(Tokens.Colors.secondaryBackground)
             communicationSection.listRowBackground(Tokens.Colors.secondaryBackground)
+            uploadsSection.listRowBackground(Tokens.Colors.secondaryBackground)
             appearanceSection.listRowBackground(Tokens.Colors.secondaryBackground)
         }
         .scrollContentBackground(.hidden)
@@ -122,6 +124,21 @@ struct PreferencesView: View {
             Text("Communication")
         } footer: {
             Text("Choose what emails you receive from Tapes.")
+        }
+    }
+
+    // MARK: - Uploads
+
+    private var uploadsSection: some View {
+        Section {
+            Toggle("Allow Cellular Uploads", isOn: $allowCellularUploads)
+                .onChange(of: allowCellularUploads) { _, _ in
+                    BackgroundTransferManager.shared.refreshSession()
+                }
+        } header: {
+            Text("Uploads")
+        } footer: {
+            Text("When off, tape uploads and downloads will wait for a Wi-Fi connection.")
         }
     }
 

@@ -392,7 +392,8 @@ public class CollabSyncCoordinator: ObservableObject {
 
     private func handleBackgroundTaskExpiration() {
         if #available(iOS 26, *) {
-            continuedTask?.setTaskCompleted(success: false)
+            continuedTask?.updateTitle("Syncing Tape", subtitle: "Continuing in background…")
+            continuedTask?.setTaskCompleted(success: true)
             continuedTask = nil
         }
         beginBackgroundTask()

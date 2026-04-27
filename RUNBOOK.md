@@ -363,6 +363,16 @@ The sync system uses a three-layer event-driven architecture:
 2. **Lightweight status check (fallback):** `POST /sync/status` accepts an array of tape IDs and returns only those with pending downloads, using the authoritative `clip_download_tracking` table. One request replaces N manifest fetches. Runs every 5 minutes as a fallback for missed pushes.
 3. **Full manifest (download-only):** `GET /tapes/:id/manifest` is only called when the user taps a badge to actually download clips. Never for badge computation.
 
+### Background Transfers (Batch Architecture)
+
+All R2 uploads use a **batch-first architecture**: one API call (`POST /tapes/:id/prepare-upload`) creates all clip records and returns presigned URLs (2-hour expiry), all clip data is resolved locally, and all upload tasks are submitted to the background `URLSession` at once. When all uploads finish, one API call (`POST /tapes/:id/confirm-batch`) confirms them all. The OS daemon handles transfers outside the app process — they survive app suspension, termination, force-quit, and device lock.
+
+Downloads submit all background download tasks concurrently via `withTaskGroup`. Each creates a background URLSession task immediately; the OS manages them concurrently.
+
+The `BGContinuedProcessingTask` (Dynamic Island) shows progress while the system allows, then reports "Continuing in background…". A local notification fires on completion. A "Allow Cellular Uploads" toggle in Preferences controls `allowsCellularAccess` on the background session (defaults to on).
+
+See `docs/features/BackgroundTransfers.md` and `docs/plan/BatchBackgroundTransfers.md`.
+
 ### Configuration
 
 - Cloudflare secrets managed via `wrangler secret put` (JWT_SECRET, R2 credentials, `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`)

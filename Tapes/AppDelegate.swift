@@ -33,4 +33,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) {
         PushNotificationManager.shared.handleBackgroundPush(userInfo: userInfo, completionHandler: completionHandler)
     }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        guard identifier == BackgroundTransferManager.sessionIdentifier else {
+            completionHandler()
+            return
+        }
+        BackgroundTransferManager.shared.systemCompletionHandler = completionHandler
+        BackgroundTransferManager.shared.reconnect()
+    }
 }

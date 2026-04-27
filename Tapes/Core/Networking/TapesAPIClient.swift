@@ -459,6 +459,64 @@ actor TapesAPIClient {
         return try await postRaw(path: "/tapes/\(tapeId)/upload-batch", body: body)
     }
 
+    // MARK: - Batch Upload (prepare + confirm)
+
+    struct BatchClipUploadInfo: Decodable {
+        let clipId: String
+        let uploadUrl: String
+        let thumbnailUploadUrl: String
+        let livePhotoMovieUploadUrl: String?
+        let uploadUrlExpiresAt: String
+        let orderIndex: Int
+
+        enum CodingKeys: String, CodingKey {
+            case clipId = "clip_id"
+            case uploadUrl = "upload_url"
+            case thumbnailUploadUrl = "thumbnail_upload_url"
+            case livePhotoMovieUploadUrl = "live_photo_movie_upload_url"
+            case uploadUrlExpiresAt = "upload_url_expires_at"
+            case orderIndex = "order_index"
+        }
+    }
+
+    struct PrepareUploadResponse: Decodable {
+        let batchId: String
+        let clips: [BatchClipUploadInfo]
+        let expectedCount: Int
+
+        enum CodingKeys: String, CodingKey {
+            case batchId = "batch_id"
+            case clips
+            case expectedCount = "expected_count"
+        }
+    }
+
+    func prepareUploadBatch(tapeId: String, clips: [[String: Any]], batchType: String, mode: String) async throws -> PrepareUploadResponse {
+        let body: [String: Any] = [
+            "clips": clips,
+            "batch_type": batchType,
+            "mode": mode
+        ]
+        return try await postRaw(path: "/tapes/\(tapeId)/prepare-upload", body: body)
+    }
+
+    struct ConfirmBatchResponse: Decodable {
+        let confirmed: Int
+        let batchCompleted: Bool
+        let trackingRecordsCreated: Int
+
+        enum CodingKeys: String, CodingKey {
+            case confirmed
+            case batchCompleted = "batch_completed"
+            case trackingRecordsCreated = "tracking_records_created"
+        }
+    }
+
+    func confirmUploadBatch(tapeId: String, clips: [[String: String]]) async throws -> ConfirmBatchResponse {
+        let body: [String: Any] = ["clips": clips]
+        return try await postRaw(path: "/tapes/\(tapeId)/confirm-batch", body: body)
+    }
+
     // MARK: - Sync
 
     struct SyncStatusResponse: Decodable {
