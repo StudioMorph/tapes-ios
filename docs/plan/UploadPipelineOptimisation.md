@@ -1,6 +1,8 @@
 # Upload Pipeline Optimisation
 
-**Status:** implemented. See `docs/features/UploadPipelineOptimisation.md` for the shipped behaviour.
+**Status:** implemented (initial pass + file-streaming follow-up). See `docs/features/UploadPipelineOptimisation.md` for the shipped behaviour.
+
+> **Follow-up (post-merge):** the initial implementation kept regular videos and sandbox imports on the `Data`-buffer path. A second pass extended the file-URL overload to cover them as well, eliminating two more `Data(contentsOf:)` round-trips and consolidating the Live Photo flow to a single `PHAsset.fetchAssets` call. See "Follow-up" section at the bottom.
 **Scope:** iOS only. `ShareUploadCoordinator.swift`.
 **Risk:** low-medium. All changes are additive or safe refinements to the existing pipeline. No API contract changes, no backend changes.
 **Starting point:** `ShareUploadCoordinator.swift` as committed at `692a759`.
@@ -158,3 +160,38 @@ delete temp file
 | File | Change |
 |---|---|
 | `Tapes/Core/Networking/ShareUploadCoordinator.swift` | Mark extraction/upload functions `nonisolated static`. Add `requestAVAsset` path for videos with export-session fallback. Add `async let` lookahead pipelining to `uploadClip` loop in both `ensureTapeUploaded` and `contributeClips`. Add `uploadToR2(url:fileURL:contentType:)` overload. Route Live Photo uploads through the file-based overload. |
+
+---
+
+## Follow-up: extend file-streaming to all file-backed payloads
+
+The initial implementation left two paths still loading entire files into RAM before handing them to URLSession, and one redundant PhotoKit fetch. After observing real-device upload behaviour we applied three further refinements, all in `ShareUploadCoordinator.swift`.
+
+### Waste #1 — Regular videos read into `Data` before upload
+
+`exportVideoData(phAsset:)` returned `Data` for both the fast (`requestAVAsset`) and the fallback (`requestExportSession`) paths. For a 200 MB video that meant a full `Data(contentsOf:)` pass into RAM, then URLSession copied the buffer into its send buffer, and only then could the first byte hit the network.
+
+**Fix:** Replace `exportVideoData` with `exportVideoToFile(phAsset:) -> (url: URL, ownedTempFiles: [URL])`. The fast path returns the `AVURLAsset.url` directly (PhotoKit owns the file, no cleanup). The fallback writes to a temp `.mp4` we own and clean up. Both flow through `uploadToR2(url:fileURL:contentType:)`. URLSession reads chunks off disk and pushes them straight into the TLS socket; memory peak drops from "size of largest video" to "URLSession's internal chunk buffer".
+
+### Waste #2 — Sandbox imports read into `Data` before upload
+
+When `clip.localURL` exists (custom camera capture, video editor output, etc.), `prepareClip` was doing `Data(contentsOf: url)` and uploading the buffer. Same overhead as Waste #1.
+
+**Fix:** Pass the URL straight to `uploadToR2(url:fileURL:contentType:)`. Crucially, `clip.localURL` is **not** added to `tempFiles` — the file lives in the app's persistent imports store and must outlive the upload.
+
+### Waste #3 — Live Photos fetched twice
+
+`exportLivePhotoPhotoToFile(identifier:)` and `exportLivePhotoMovieToFile(identifier:)` each called `fetchPHAssetWithRetry`, doing two synchronous `PHAsset.fetchAssets` queries per Live Photo. Cheap individually but a multiplier on Live-Photo-heavy tapes.
+
+**Fix:** Inline the Live Photo branch in `prepareClip`: one `fetchPHAssetWithRetry` → one `PHAssetResource.assetResources(for:)` → two `writeAssetResource` calls. The `exportLivePhotoPhotoToFile` / `exportLivePhotoMovieToFile` helpers were removed; the writing helper (`writeAssetResource`) is unchanged.
+
+### Cancellation cleanup
+
+The orphan prefetch task (extraction of clip N+1 when the loop ends or is cancelled before consuming it) now has its temp files cleaned up. Without this, a cancelled upload of an export-session video could leave a `.mp4` in `tmp/` until the next system sweep.
+
+### Verification (follow-up)
+
+- Build clean on iOS Simulator (iPhone 16 Pro, iOS 26 SDK, deployment target 18.2).
+- Lints clean on `ShareUploadCoordinator.swift`.
+- No backend or API contract changes.
+- Behavioural acceptance: the same bytes are uploaded for every clip type; only the path bytes take from PhotoKit/disk to URLSession changes.
