@@ -21,8 +21,6 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
     @Published private(set) var resolvedMode: String?
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "SharedDownload")
 
-    
-
     /// When `true`, an external coordinator (e.g. `CollabSyncCoordinator`)
     /// owns the UI lifecycle. Dialog flags, completion feedback, and
     /// `BGContinuedProcessingTask` submission are suppressed.
@@ -137,6 +135,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 let uploadedClips = manifest.clips.filter { $0.cloudUrl != nil }
 
                 let tapeId = resolution.tapeId
+                let session = URLSession.shared
 
                 let existingTape = tapeStore.sharedTape(forRemoteId: tapeId)
                 let isReturning = existingTape != nil
@@ -183,47 +182,34 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 }
 
                 self.totalCount = clipsToDownload.count
-
-                // Download all clips concurrently — each downloadClip call creates
-                // a background URLSession task immediately. All tasks are queued with
-                // the OS daemon before any of them complete.
                 var clips: [Clip] = []
 
-                await withTaskGroup(of: (ManifestClip, Result<Clip, Error>).self) { group in
-                    for manifestClip in clipsToDownload {
-                        group.addTask { [weak self] in
-                            guard let self else {
-                                return (manifestClip, .failure(APIError.validation("Coordinator deallocated")))
-                            }
-                            do {
-                                let clip = try await self.downloadClip(manifestClip, tapeId: tapeId, api: api)
-                                return (manifestClip, .success(clip))
-                            } catch {
-                                return (manifestClip, .failure(error))
-                            }
-                        }
+                for manifestClip in clipsToDownload {
+                    guard !Task.isCancelled else { break }
+
+                    do {
+                        let clip = try await self.downloadClip(
+                            manifestClip,
+                            tapeId: tapeId,
+                            session: session,
+                            api: api
+                        )
+                        clips.append(clip)
+                        self.completedCount += 1
+                    } catch {
+                        self.log.error("Failed to download clip \(manifestClip.clipId): \(error.localizedDescription)")
+                        self.failedCount += 1
                     }
 
-                    for await (manifestClip, result) in group {
-                        switch result {
-                        case .success(let clip):
-                            clips.append(clip)
-                            self.completedCount += 1
-                        case .failure(let error):
-                            self.log.error("Failed to download clip \(manifestClip.clipId): \(error.localizedDescription)")
-                            self.failedCount += 1
-                        }
-
-                        if #available(iOS 26, *) {
-                            self.updateContinuedTaskProgress()
-                        }
+                    if #available(iOS 26, *) {
+                        self.updateContinuedTaskProgress()
                     }
                 }
 
-                self.log.info("[Download] done: succeeded=\(clips.count) failed=\(self.failedCount) cancelled=\(Task.isCancelled)")
+                self.log.info("[Download] loop done: succeeded=\(clips.count) failed=\(self.failedCount) cancelled=\(Task.isCancelled)")
 
                 guard !Task.isCancelled, !clips.isEmpty else {
-                    self.log.info("[Download] ABORT after process: clips empty, failed=\(self.failedCount)")
+                    self.log.info("[Download] ABORT after loop: clips empty, failed=\(self.failedCount)")
                     if self.failedCount > 0 {
                         self.downloadError = "\(self.failedCount) clip(s) failed to download.\nPlease try again later."
                     } else {
@@ -291,7 +277,6 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
     func cancelDownload() {
         downloadTask?.cancel()
         downloadTask = nil
-        BackgroundTransferManager.shared.cancelAllTasks()
         finishDownload(success: false)
         reset()
     }
@@ -330,20 +315,25 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
     private func downloadClip(
         _ manifestClip: ManifestClip,
         tapeId: String,
+        session: URLSession,
         api: TapesAPIClient
     ) async throws -> Clip {
         guard let cloudUrl = manifestClip.cloudUrl, let downloadURL = URL(string: cloudUrl) else {
             throw APIError.validation("Invalid download URL.")
         }
 
-        let bgTempURL = try await BackgroundTransferManager.shared.downloadFile(from: downloadURL)
+        let (tempURL, response) = try await session.download(for: URLRequest(url: downloadURL))
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw APIError.server("Download failed (HTTP \(code)).")
+        }
 
         let isLivePhoto = manifestClip.isLivePhoto
         let clipType: ClipType = isLivePhoto ? .image : ((manifestClip.type == "photo" || manifestClip.type == "image") ? .image : .video)
 
         let imageExt: String
         if isLivePhoto {
-            imageExt = Self.detectImageExtension(at: bgTempURL)
+            imageExt = Self.detectImageExtension(at: tempURL)
         } else {
             imageExt = clipType == .video ? "mp4" : "jpg"
         }
@@ -354,24 +344,43 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         if FileManager.default.fileExists(atPath: stableURL.path) {
             try FileManager.default.removeItem(at: stableURL)
         }
-        try FileManager.default.moveItem(at: bgTempURL, to: stableURL)
+        try FileManager.default.moveItem(at: tempURL, to: stableURL)
+
+        if isLivePhoto {
+            log.info("[DownloadClip] \(manifestClip.clipId) detected image format: .\(imageExt)")
+        }
 
         var movieStableURL: URL?
         if isLivePhoto, let movieUrlStr = manifestClip.livePhotoMovieUrl, let movieURL = URL(string: movieUrlStr) {
-            let movieBgTemp = try await BackgroundTransferManager.shared.downloadFile(from: movieURL)
+            log.info("[DownloadClip] \(manifestClip.clipId) downloading movie from \(movieUrlStr)")
+            let (movieTempURL, movieResp) = try await session.download(for: URLRequest(url: movieURL))
+            guard let movieHttp = movieResp as? HTTPURLResponse, (200...299).contains(movieHttp.statusCode) else {
+                let code = (movieResp as? HTTPURLResponse)?.statusCode ?? 0
+                throw APIError.server("Live Photo movie download failed (HTTP \(code)).")
+            }
             let movieDest = Self.stableTempURL(clipId: manifestClip.clipId, ext: "mov")
             if FileManager.default.fileExists(atPath: movieDest.path) {
                 try FileManager.default.removeItem(at: movieDest)
             }
-            try FileManager.default.moveItem(at: movieBgTemp, to: movieDest)
+            try FileManager.default.moveItem(at: movieTempURL, to: movieDest)
             movieStableURL = movieDest
+
+            let movieSize = (try? FileManager.default.attributesOfItem(atPath: movieDest.path)[.size] as? Int) ?? 0
+            log.info("[DownloadClip] \(manifestClip.clipId) movie saved: \(movieSize) bytes")
+        } else if isLivePhoto {
+            log.info("[DownloadClip] \(manifestClip.clipId) is live_photo but livePhotoMovieUrl=\(manifestClip.livePhotoMovieUrl ?? "nil")")
         }
+
+        let imageSize = (try? FileManager.default.attributesOfItem(atPath: stableURL.path)[.size] as? Int) ?? 0
+        log.info("[DownloadClip] \(manifestClip.clipId) image saved: \(imageSize) bytes, exists=\(FileManager.default.fileExists(atPath: stableURL.path))")
 
         let assetLocalId: String
         if isLivePhoto, let movieURL = movieStableURL {
+            log.info("[DownloadClip] \(manifestClip.clipId) saving Live Photo — image=\(stableURL.lastPathComponent) movie=\(movieURL.lastPathComponent)")
             do {
                 assetLocalId = try await Self.saveLivePhotoToLibrary(imageURL: stableURL, movieURL: movieURL)
             } catch {
+                log.warning("[DownloadClip] \(manifestClip.clipId) Live Photo save failed (\(error.localizedDescription)), falling back to regular photo")
                 assetLocalId = try await Self.saveToPhotosLibrary(fileURL: stableURL, clipType: .image)
             }
             try? FileManager.default.removeItem(at: movieURL)
@@ -389,10 +398,10 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         if clipType == .image, let image = await Self.loadImageFromPhotos(assetLocalId: assetLocalId) {
             thumbData = image.preparingThumbnail(of: CGSize(width: 480, height: 480))?.jpegData(compressionQuality: 0.8)
         } else if let thumbUrlStr = manifestClip.thumbnailUrl, let thumbURL = URL(string: thumbUrlStr) {
-            if let thumbTemp = try? await BackgroundTransferManager.shared.downloadFile(from: thumbURL),
+            if let (thumbTemp, thumbResp) = try? await session.download(for: URLRequest(url: thumbURL)),
+               let thumbHttp = thumbResp as? HTTPURLResponse, (200...299).contains(thumbHttp.statusCode),
                let data = try? Data(contentsOf: thumbTemp) {
                 thumbData = data
-                try? FileManager.default.removeItem(at: thumbTemp)
             }
         }
 
@@ -593,8 +602,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
 
     private func handleBackgroundTaskExpiration() {
         if #available(iOS 26, *) {
-            continuedTask?.updateTitle("Downloading Tape", subtitle: "Continuing in background…")
-            continuedTask?.setTaskCompleted(success: true)
+            continuedTask?.setTaskCompleted(success: false)
             continuedTask = nil
         }
         beginBackgroundTask()

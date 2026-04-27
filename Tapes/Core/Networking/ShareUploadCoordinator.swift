@@ -73,12 +73,6 @@ public class ShareUploadCoordinator: ObservableObject {
     private var pendingCreateResponse: TapesAPIClient.CreateTapeResponse?
     private(set) var sourceTape: Tape?
 
-    /// Batch transfer state — bridges the callback-based batch completion to async/await.
-    private var activeBatchContinuation: CheckedContinuation<Void, Error>?
-    private var activeBatchId: String?
-    private var activeBatchApi: TapesAPIClient?
-    private var activeBatchTapeId: String?
-
     enum ShareMode: String {
         case viewing, collaborating
     }
@@ -122,12 +116,6 @@ public class ShareUploadCoordinator: ObservableObject {
 
     var progress: Double {
         guard totalClips > 0 else { return 0 }
-        if let batchId = activeBatchId {
-            let bp = BackgroundTransferManager.shared.batchProgress(batchId: batchId)
-            if bp.total > 0 {
-                return Double(bp.completed + bp.failed) / Double(bp.total)
-            }
-        }
         return Double(completedClips + failedClipIndices.count) / Double(totalClips)
     }
 
@@ -152,11 +140,6 @@ public class ShareUploadCoordinator: ObservableObject {
     /// Guarantees the tape + all its real clips exist on the server.
     /// Calls `onCompleted` on the main actor with the create response
     /// (which carries all 4 share IDs) once the tape is fully uploaded.
-    ///
-    /// Uses the batch upload flow: all presigned URLs are requested upfront,
-    /// all clip data is resolved and written to temp files, and all upload
-    /// tasks are submitted to the background URLSession at once. The OS
-    /// daemon handles the actual transfers even if the app is killed.
     ///
     /// - Parameters:
     ///   - tape: The local tape the user is sharing.
@@ -197,7 +180,7 @@ public class ShareUploadCoordinator: ObservableObject {
             self.pendingTapeId = tapeId
 
             do {
-                // 1. Ensure the tape record exists on the server
+                // 1. Ensure the tape record exists on the server (with silent retries)
                 let response: TapesAPIClient.CreateTapeResponse
                 if let cached = self.pendingCreateResponse, cached.tapeId.lowercased() == tapeId {
                     response = cached
@@ -254,10 +237,44 @@ public class ShareUploadCoordinator: ObservableObject {
                         self.submitContinuedProcessingTask()
                     }
 
-                    // 3a. Delete removed clips from server + R2
+                    if !clipsToUpload.isEmpty {
+                        let batchType = (response.clipsUploaded == true) ? "update" : "invite"
+                        _ = try? await api.declareUploadBatch(
+                            tapeId: tapeId,
+                            clipCount: clipsToUpload.count,
+                            batchType: batchType,
+                            mode: apiMode
+                        )
+                    }
+
+                    // 3a. Upload new clips
+                    var newFailures: Set<Int> = []
+                    for (index, clip) in clipsToUpload.enumerated() {
+                        guard !Task.isCancelled else { break }
+
+                        self.statusMessage = "Uploading clip \(index + 1) of \(clipsToUpload.count)…"
+
+                        if #available(iOS 26, *) {
+                            self.updateContinuedTaskProgress()
+                        }
+
+                        do {
+                            try await Self.withRetry(maxAttempts: 3) {
+                                try await Self.uploadClip(clip, tapeId: tapeId, api: api)
+                            }
+                            self.completedClips += 1
+                        } catch {
+                            TapesLog.upload.error("Clip \(index) failed: \(error.localizedDescription)")
+                            newFailures.insert(index)
+                        }
+                    }
+
+                    // 3b. Delete removed clips from server + R2
                     for clipId in clipIdsToDelete {
                         guard !Task.isCancelled else { break }
+
                         self.statusMessage = "Syncing removed clips…"
+
                         do {
                             try await api.deleteClip(tapeId: tapeId, clipId: clipId)
                             self.completedClips += 1
@@ -266,133 +283,13 @@ public class ShareUploadCoordinator: ObservableObject {
                         }
                     }
 
-                    // 3b. Batch upload new clips
-                    if !clipsToUpload.isEmpty {
-                        self.statusMessage = "Preparing clips…"
+                    self.failedClipIndices = newFailures
 
-                        let batchType = (response.clipsUploaded == true) ? "update" : "invite"
-
-                        // Build clip metadata for the batch prepare call
-                        let clipMetadata: [[String: Any]] = clipsToUpload.map { clip in
-                            Self.clipMetadataDict(clip)
-                        }
-
-                        // One API call to get all presigned URLs
-                        let batchResponse = try await Self.withRetry(maxAttempts: 3) {
-                            try await api.prepareUploadBatch(
-                                tapeId: tapeId,
-                                clips: clipMetadata,
-                                batchType: batchType,
-                                mode: apiMode
-                            )
-                        }
-
-                        // Build a lookup from clip_id → presigned URLs
-                        let urlLookup = Dictionary(
-                            uniqueKeysWithValues: batchResponse.clips.map { ($0.clipId.lowercased(), $0) }
-                        )
-
-                        // Resolve all clip data and write to temp files
-                        self.statusMessage = "Preparing media files…"
-                        var batchTasks: [BackgroundTransferManager.BatchUploadTask] = []
-                        var failedPrepIndices: Set<Int> = []
-
-                        for (index, clip) in clipsToUpload.enumerated() {
-                            guard !Task.isCancelled else { break }
-
-                            let clipId = clip.id.uuidString.lowercased()
-                            guard let urls = urlLookup[clipId] else {
-                                TapesLog.upload.error("No presigned URLs for clip \(clipId)")
-                                failedPrepIndices.insert(index)
-                                continue
-                            }
-
-                            do {
-                                let mediaData = try await Self.resolveClipData(clip)
-                                let mediaTempFile = try Self.writeTempUploadFile(data: mediaData, name: "\(clipId)-media")
-                                guard let mediaURL = URL(string: urls.uploadUrl) else {
-                                    throw APIError.validation("Invalid upload URL.")
-                                }
-                                batchTasks.append(.init(
-                                    fileURL: mediaTempFile,
-                                    remoteURL: mediaURL,
-                                    contentType: clip.clipType == .video ? "video/mp4" : "image/jpeg",
-                                    clipId: clipId,
-                                    kind: .uploadMedia
-                                ))
-
-                                if clip.isLivePhoto, let movieUrlStr = urls.livePhotoMovieUploadUrl {
-                                    let movieData = try await Self.resolveLivePhotoMovieData(clip)
-                                    let movieTempFile = try Self.writeTempUploadFile(data: movieData, name: "\(clipId)-movie")
-                                    guard let movieURL = URL(string: movieUrlStr) else {
-                                        throw APIError.validation("Invalid movie upload URL.")
-                                    }
-                                    batchTasks.append(.init(
-                                        fileURL: movieTempFile,
-                                        remoteURL: movieURL,
-                                        contentType: "video/quicktime",
-                                        clipId: clipId,
-                                        kind: .uploadMovie
-                                    ))
-                                }
-
-                                if let thumbData = clip.thumbnail {
-                                    let thumbTempFile = try Self.writeTempUploadFile(data: thumbData, name: "\(clipId)-thumb")
-                                    guard let thumbURL = URL(string: urls.thumbnailUploadUrl) else {
-                                        throw APIError.validation("Invalid thumbnail upload URL.")
-                                    }
-                                    batchTasks.append(.init(
-                                        fileURL: thumbTempFile,
-                                        remoteURL: thumbURL,
-                                        contentType: "image/jpeg",
-                                        clipId: clipId,
-                                        kind: .uploadThumbnail
-                                    ))
-                                }
-                            } catch {
-                                TapesLog.upload.error("Failed to prepare clip \(index): \(error.localizedDescription)")
-                                failedPrepIndices.insert(index)
-                            }
-                        }
-
-                        if !failedPrepIndices.isEmpty && batchTasks.isEmpty {
-                            self.failedClipIndices = failedPrepIndices
-                            self.uploadError = "\(failedPrepIndices.count) clip(s) failed to prepare."
-                            self.pendingCreateResponse = nil
-                            self.finishUpload(success: false)
-                            return
-                        }
-
-                        guard !Task.isCancelled else {
-                            self.finishUpload(success: false)
-                            return
-                        }
-
-                        // Submit ALL upload tasks to the background session at once
-                        self.statusMessage = "Uploading…"
-                        let batchId = batchResponse.batchId
-
-                        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                            self.activeBatchContinuation = continuation
-                            self.activeBatchId = batchId
-                            self.activeBatchApi = api
-                            self.activeBatchTapeId = tapeId
-
-                            BackgroundTransferManager.shared.submitBatchUpload(
-                                batchId: batchId,
-                                tapeId: tapeId,
-                                tasks: batchTasks
-                            ) { [weak self] completedBatchId in
-                                Task { @MainActor in
-                                    self?.handleBatchCompletion(batchId: completedBatchId)
-                                }
-                            }
-                        }
-
-                        self.failedClipIndices = failedPrepIndices
-                        if !failedPrepIndices.isEmpty {
-                            self.uploadError = "\(failedPrepIndices.count) clip(s) failed to prepare."
-                        }
+                    if !newFailures.isEmpty {
+                        self.uploadError = "\(newFailures.count) clip(s) failed to upload."
+                        self.pendingCreateResponse = nil
+                        self.finishUpload(success: false)
+                        return
                     }
                 }
 
@@ -413,6 +310,10 @@ public class ShareUploadCoordinator: ObservableObject {
                 self.resultCreateResponse = finalResponse
                 self.resultRemoteTapeId = tapeId
                 self.lastUploadedClipCount = localClips.count
+                // After a successful ensureTapeUploaded run, every local clip
+                // is confirmed present on the server (either just uploaded or
+                // already there from a prior run). Broadcast the full set so
+                // observers can clear `isSynced = false` on all of them.
                 self.lastSyncedClipIds = localClips.map(\.id)
 
                 self.finishUpload(success: true)
@@ -496,152 +397,56 @@ public class ShareUploadCoordinator: ObservableObject {
         uploadTask = Task { [weak self] in
             guard let self else { return }
 
-            do {
-                self.statusMessage = "Preparing clips…"
+            _ = try? await api.declareUploadBatch(
+                tapeId: remoteTapeId,
+                clipCount: unsyncedClips.count,
+                batchType: "update",
+                mode: "collaborative"
+            )
 
-                let clipMetadata: [[String: Any]] = unsyncedClips.map {
-                    Self.clipMetadataDict($0)
+            var newFailures: Set<Int> = []
+
+            for (index, clip) in unsyncedClips.enumerated() {
+                guard !Task.isCancelled else { break }
+
+                self.statusMessage = "Uploading clip \(index + 1) of \(unsyncedClips.count)…"
+
+                if #available(iOS 26, *) {
+                    self.updateContinuedTaskProgress()
                 }
 
-                let batchResponse = try await Self.withRetry(maxAttempts: 3) {
-                    try await api.prepareUploadBatch(
-                        tapeId: remoteTapeId,
-                        clips: clipMetadata,
-                        batchType: "update",
-                        mode: "collaborative"
-                    )
-                }
-
-                let urlLookup = Dictionary(
-                    uniqueKeysWithValues: batchResponse.clips.map { ($0.clipId.lowercased(), $0) }
-                )
-
-                self.statusMessage = "Preparing media files…"
-                var batchTasks: [BackgroundTransferManager.BatchUploadTask] = []
-                var failedPrepIndices: Set<Int> = []
-
-                for (index, clip) in unsyncedClips.enumerated() {
-                    guard !Task.isCancelled else { break }
-
-                    let clipId = clip.id.uuidString.lowercased()
-                    guard let urls = urlLookup[clipId] else {
-                        TapesLog.upload.error("No presigned URLs for contribute clip \(clipId)")
-                        failedPrepIndices.insert(index)
-                        continue
+                do {
+                    try await Self.withRetry(maxAttempts: 3) {
+                        try await Self.uploadClip(clip, tapeId: remoteTapeId, api: api)
                     }
-
-                    do {
-                        let mediaData = try await Self.resolveClipData(clip)
-                        let mediaTempFile = try Self.writeTempUploadFile(data: mediaData, name: "\(clipId)-media")
-                        guard let mediaURL = URL(string: urls.uploadUrl) else {
-                            throw APIError.validation("Invalid upload URL.")
-                        }
-                        batchTasks.append(.init(
-                            fileURL: mediaTempFile,
-                            remoteURL: mediaURL,
-                            contentType: clip.clipType == .video ? "video/mp4" : "image/jpeg",
-                            clipId: clipId,
-                            kind: .uploadMedia
-                        ))
-
-                        if clip.isLivePhoto, let movieUrlStr = urls.livePhotoMovieUploadUrl {
-                            let movieData = try await Self.resolveLivePhotoMovieData(clip)
-                            let movieTempFile = try Self.writeTempUploadFile(data: movieData, name: "\(clipId)-movie")
-                            guard let movieURL = URL(string: movieUrlStr) else {
-                                throw APIError.validation("Invalid movie upload URL.")
-                            }
-                            batchTasks.append(.init(
-                                fileURL: movieTempFile,
-                                remoteURL: movieURL,
-                                contentType: "video/quicktime",
-                                clipId: clipId,
-                                kind: .uploadMovie
-                            ))
-                        }
-
-                        if let thumbData = clip.thumbnail {
-                            let thumbTempFile = try Self.writeTempUploadFile(data: thumbData, name: "\(clipId)-thumb")
-                            guard let thumbURL = URL(string: urls.thumbnailUploadUrl) else {
-                                throw APIError.validation("Invalid thumbnail upload URL.")
-                            }
-                            batchTasks.append(.init(
-                                fileURL: thumbTempFile,
-                                remoteURL: thumbURL,
-                                contentType: "image/jpeg",
-                                clipId: clipId,
-                                kind: .uploadThumbnail
-                            ))
-                        }
-                    } catch {
-                        TapesLog.upload.error("Failed to prepare contribute clip \(index): \(error.localizedDescription)")
-                        failedPrepIndices.insert(index)
-                    }
+                    self.completedClips += 1
+                    await MainActor.run { markSynced([clip.id]) }
+                } catch {
+                    TapesLog.upload.error("Contribute clip \(index) failed: \(error.localizedDescription)")
+                    newFailures.insert(index)
                 }
+            }
 
-                if !failedPrepIndices.isEmpty && batchTasks.isEmpty {
-                    self.failedClipIndices = failedPrepIndices
-                    self.uploadError = "\(failedPrepIndices.count) clip(s) failed to prepare."
-                    self.finishUpload(success: false)
-                    return
-                }
+            self.failedClipIndices = newFailures
 
-                guard !Task.isCancelled else {
-                    self.finishUpload(success: false)
-                    return
-                }
+            if !newFailures.isEmpty {
+                self.uploadError = "\(newFailures.count) clip(s) failed to upload."
+                self.finishUpload(success: false)
+                return
+            }
 
-                self.statusMessage = "Uploading…"
-                let batchId = batchResponse.batchId
+            self.finishUpload(success: true)
 
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    self.activeBatchContinuation = continuation
-                    self.activeBatchId = batchId
-                    self.activeBatchApi = api
-                    self.activeBatchTapeId = remoteTapeId
-
-                    BackgroundTransferManager.shared.submitBatchUpload(
-                        batchId: batchId,
-                        tapeId: remoteTapeId,
-                        tasks: batchTasks
-                    ) { [weak self] completedBatchId in
-                        Task { @MainActor in
-                            self?.handleBatchCompletion(batchId: completedBatchId)
-                        }
-                    }
-                }
-
-                // Mark all successfully uploaded clips as synced
-                let manifest = BackgroundTransferManager.shared.manifest
-                let completedEntries = manifest.completedEntries(forBatch: batchId)
-                let syncedClipIds = Set(completedEntries.map(\.clipId))
-                let syncedUUIDs = unsyncedClips.filter { syncedClipIds.contains($0.id.uuidString.lowercased()) }.map(\.id)
-                markSynced(syncedUUIDs)
-
-                self.failedClipIndices = failedPrepIndices
-
-                if !failedPrepIndices.isEmpty {
-                    self.uploadError = "\(failedPrepIndices.count) clip(s) failed to upload."
-                    self.finishUpload(success: false)
-                    return
-                }
-
-                self.finishUpload(success: true)
-
-                if !self.isManagedBySync {
-                    if UIApplication.shared.applicationState == .active {
-                        self.playCompletionFeedback()
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            self.showCompletionDialog = true
-                        }
-                    } else {
-                        self.sendContributionNotification()
+            if !self.isManagedBySync {
+                if UIApplication.shared.applicationState == .active {
+                    self.playCompletionFeedback()
+                    withAnimation(.easeInOut(duration: 0.2)) {
                         self.showCompletionDialog = true
                     }
+                } else {
+                    self.sendContributionNotification()
+                    self.showCompletionDialog = true
                 }
-            } catch {
-                TapesLog.upload.error("Contribute upload failed: \(error.localizedDescription)")
-                self.uploadError = error.localizedDescription
-                self.finishUpload(success: false)
             }
         }
     }
@@ -663,17 +468,6 @@ public class ShareUploadCoordinator: ObservableObject {
     func cancelUpload() {
         uploadTask?.cancel()
         uploadTask = nil
-        BackgroundTransferManager.shared.cancelAllTasks()
-
-        if let batchId = activeBatchId {
-            BackgroundTransferManager.shared.manifest.removeAll(batchId: batchId)
-        }
-        activeBatchContinuation?.resume(throwing: CancellationError())
-        activeBatchContinuation = nil
-        activeBatchId = nil
-        activeBatchApi = nil
-        activeBatchTapeId = nil
-
         finishUpload(success: false)
         statusMessage = ""
         totalClips = 0
@@ -744,78 +538,16 @@ public class ShareUploadCoordinator: ObservableObject {
         }
     }
 
-    // MARK: - Batch Completion Handler
+    // MARK: - Clip Upload (static so it doesn't capture self)
 
-    private func handleBatchCompletion(batchId: String) {
-        guard batchId == activeBatchId else { return }
+    private static let uploadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 600
+        return URLSession(configuration: config)
+    }()
 
-        let manifest = BackgroundTransferManager.shared.manifest
-        let completed = manifest.completedEntries(forBatch: batchId)
-        let failed = manifest.failedEntries(forBatch: batchId)
-
-        // Count completed clips (a clip is "done" when all its files uploaded)
-        let completedClipIds = Set(completed.map(\.clipId))
-        let failedClipIds = Set(failed.map(\.clipId)).subtracting(completedClipIds)
-
-        self.completedClips = completedClipIds.count
-        TapesLog.upload.info("Batch \(batchId): \(completedClipIds.count) clips uploaded, \(failedClipIds.count) failed")
-
-        // Send batch confirm for all successfully uploaded clips
-        Task { @MainActor [weak self] in
-            guard let self, let api = self.activeBatchApi, let tapeId = self.activeBatchTapeId else {
-                self?.activeBatchContinuation?.resume()
-                self?.activeBatchContinuation = nil
-                return
-            }
-
-            if !completedClipIds.isEmpty {
-                // Build confirm payload from manifest entries
-                var clipConfirms: [[String: String]] = []
-                for clipId in completedClipIds {
-                    let clipEntries = completed.filter { $0.clipId == clipId }
-                    let mediaEntry = clipEntries.first { $0.kind == .uploadMedia }
-                    let thumbEntry = clipEntries.first { $0.kind == .uploadThumbnail }
-                    let movieEntry = clipEntries.first { $0.kind == .uploadMovie }
-
-                    guard let cloudUrl = mediaEntry?.cloudUrl,
-                          let thumbUrl = thumbEntry?.cloudUrl else { continue }
-
-                    var entry: [String: String] = [
-                        "clip_id": clipId,
-                        "cloud_url": cloudUrl,
-                        "thumbnail_url": thumbUrl
-                    ]
-                    if let movieUrl = movieEntry?.cloudUrl {
-                        entry["live_photo_movie_url"] = movieUrl
-                    }
-                    clipConfirms.append(entry)
-                }
-
-                do {
-                    _ = try await api.confirmUploadBatch(tapeId: tapeId, clips: clipConfirms)
-                    TapesLog.upload.info("Batch confirm succeeded for \(clipConfirms.count) clips")
-                } catch {
-                    TapesLog.upload.error("Batch confirm failed: \(error.localizedDescription)")
-                }
-            }
-
-            manifest.removeAll(batchId: batchId)
-            self.activeBatchId = nil
-            self.activeBatchApi = nil
-            self.activeBatchTapeId = nil
-
-            if failedClipIds.isEmpty {
-                self.activeBatchContinuation?.resume()
-            } else {
-                self.activeBatchContinuation?.resume(throwing: APIError.server("\(failedClipIds.count) clip(s) failed to upload."))
-            }
-            self.activeBatchContinuation = nil
-        }
-    }
-
-    // MARK: - Clip Metadata
-
-    private static func clipMetadataDict(_ clip: Clip) -> [String: Any] {
+    private static func uploadClip(_ clip: Clip, tapeId: String, api: TapesAPIClient) async throws {
         let clipId = clip.id.uuidString.lowercased()
         let durationMs = Int(clip.duration * 1000)
 
@@ -828,30 +560,57 @@ public class ShareUploadCoordinator: ObservableObject {
             clipType = "photo"
         }
 
-        var dict: [String: Any] = [
-            "clip_id": clipId,
-            "type": clipType,
-            "duration_ms": durationMs
-        ]
-        if clip.trimStart > 0 { dict["trim_start_ms"] = Int(clip.trimStart * 1000) }
-        if clip.trimEnd > 0 { dict["trim_end_ms"] = Int(clip.trimEnd * 1000) }
-        dict["audio_level"] = clip.volume
-        dict["motion_style"] = clip.motionStyle.rawValue
-        if clip.clipType == .image { dict["image_duration_ms"] = Int(clip.imageDuration * 1000) }
-        if clip.rotateQuarterTurns != 0 { dict["rotate_quarter_turns"] = clip.rotateQuarterTurns }
-        if let scaleMode = clip.overrideScaleMode { dict["override_scale_mode"] = scaleMode.rawValue }
-        if clip.isLivePhoto { dict["live_photo_as_video"] = clip.livePhotoAsVideo ?? false }
-        if clip.isLivePhoto { dict["live_photo_sound"] = !(clip.livePhotoMuted ?? false) }
+        let createResponse = try await api.createClip(
+            tapeId: tapeId,
+            clipId: clipId,
+            type: clipType,
+            durationMs: durationMs,
+            trimStartMs: clip.trimStart > 0 ? Int(clip.trimStart * 1000) : nil,
+            trimEndMs: clip.trimEnd > 0 ? Int(clip.trimEnd * 1000) : nil,
+            audioLevel: clip.volume,
+            motionStyle: clip.motionStyle.rawValue,
+            imageDurationMs: clip.clipType == .image ? Int(clip.imageDuration * 1000) : nil,
+            rotateQuarterTurns: clip.rotateQuarterTurns != 0 ? clip.rotateQuarterTurns : nil,
+            overrideScaleMode: clip.overrideScaleMode?.rawValue,
+            livePhotoAsVideo: clip.isLivePhoto ? (clip.livePhotoAsVideo ?? false) : nil,
+            livePhotoSound: clip.isLivePhoto ? !(clip.livePhotoMuted ?? false) : nil
+        )
 
-        return dict
-    }
+        let fileData = try await resolveClipData(clip)
 
-    private static func writeTempUploadFile(data: Data, name: String) throws -> URL {
-        let dir = BackgroundTransferManager.uploadTempDir
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent(name)
-        try data.write(to: url, options: .atomic)
-        return url
+        try await uploadToR2(
+            url: createResponse.uploadUrl,
+            data: fileData,
+            contentType: clip.clipType == .video ? "video/mp4" : "image/jpeg"
+        )
+
+        if clip.isLivePhoto, let movieUploadUrl = createResponse.livePhotoMovieUploadUrl {
+            let movieData = try await resolveLivePhotoMovieData(clip)
+            try await uploadToR2(url: movieUploadUrl, data: movieData, contentType: "video/quicktime")
+        }
+
+        if let thumbData = clip.thumbnail {
+            try await uploadToR2(
+                url: createResponse.thumbnailUploadUrl,
+                data: thumbData,
+                contentType: "image/jpeg"
+            )
+        }
+
+        let baseUploadUrl = createResponse.uploadUrl.components(separatedBy: "?").first ?? createResponse.uploadUrl
+        let baseThumbUrl = createResponse.thumbnailUploadUrl.components(separatedBy: "?").first ?? createResponse.thumbnailUploadUrl
+        var baseMovieUrl: String?
+        if let movieUrl = createResponse.livePhotoMovieUploadUrl {
+            baseMovieUrl = movieUrl.components(separatedBy: "?").first ?? movieUrl
+        }
+
+        _ = try await api.confirmUpload(
+            tapeId: tapeId,
+            clipId: clipId,
+            cloudUrl: baseUploadUrl,
+            thumbnailUrl: baseThumbUrl,
+            livePhotoMovieUrl: baseMovieUrl
+        )
     }
 
     private static func resolveClipData(_ clip: Clip) async throws -> Data {
@@ -994,6 +753,40 @@ public class ShareUploadCoordinator: ObservableObject {
         }
     }
 
+    private static func uploadToR2(url: String, data: Data, contentType: String, maxRetries: Int = 3) async throws {
+        guard let uploadURL = URL(string: url) else {
+            throw APIError.validation("Invalid upload URL.")
+        }
+
+        var lastError: Error = APIError.server("Upload failed.")
+
+        for attempt in 0..<maxRetries {
+            if attempt > 0 {
+                let delay = pow(2.0, Double(attempt))
+                try await Task.sleep(for: .seconds(delay))
+            }
+
+            do {
+                var request = URLRequest(url: uploadURL)
+                request.httpMethod = "PUT"
+                request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+                request.setValue("\(data.count)", forHTTPHeaderField: "Content-Length")
+
+                let (_, response) = try await uploadSession.upload(for: request, from: data)
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    lastError = APIError.server("Upload failed (HTTP \(code)).")
+                    continue
+                }
+                return
+            } catch {
+                lastError = error
+            }
+        }
+
+        throw lastError
+    }
+
     // MARK: - Retry Helper
 
     private static func withRetry<T>(
@@ -1053,8 +846,7 @@ public class ShareUploadCoordinator: ObservableObject {
 
     private func handleBackgroundTaskExpiration() {
         if #available(iOS 26, *) {
-            continuedTask?.updateTitle("Sharing Tape", subtitle: "Continuing in background…")
-            continuedTask?.setTaskCompleted(success: true)
+            continuedTask?.setTaskCompleted(success: false)
             continuedTask = nil
         }
         beginBackgroundTask()

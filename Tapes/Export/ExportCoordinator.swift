@@ -272,8 +272,7 @@ public class ExportCoordinator: ObservableObject {
     private func handleBackgroundTaskExpiration() {
         TapesLog.export.warning("BGContinuedProcessingTask expired — export continues without background protection")
         if #available(iOS 26, *) {
-            continuedTask?.updateTitle("Exporting Tape", subtitle: "Continuing in background…")
-            continuedTask?.setTaskCompleted(success: true)
+            continuedTask?.setTaskCompleted(success: false)
             continuedTask = nil
         }
         beginBackgroundExportTask()
