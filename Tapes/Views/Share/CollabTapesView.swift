@@ -140,12 +140,9 @@ struct CollabTapesView: View {
                 }
             }
             .onAppear {
-                if navigationCoordinator.pendingCollabSegment == "contributingTo" {
-                    selectedSegment = .contributingTo
-                    navigationCoordinator.pendingCollabSegment = nil
-                }
                 if let shareId = navigationCoordinator.pendingCollabShareId {
                     navigationCoordinator.pendingCollabShareId = nil
+                    selectedSegment = .contributingTo
                     handleIncomingCollabShare(shareId: shareId)
                 }
                 refreshSortOrder()
