@@ -1375,11 +1375,11 @@ extension TapesStore {
 
         if animated {
             withAnimation(Animation.interactiveSpring(response: 0.42, dampingFraction: 0.82, blendDuration: 0.12)) {
-                tapes.append(newEmptyTape)
+                tapes.insert(newEmptyTape, at: 0)
             }
             autoSave()
         } else {
-            tapes.append(newEmptyTape)
+            tapes.insert(newEmptyTape, at: 0)
         }
     }
 
