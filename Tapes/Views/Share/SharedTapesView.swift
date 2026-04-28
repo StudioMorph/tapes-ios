@@ -181,8 +181,11 @@ struct SharedTapesView: View {
         GeometryReader { geometry in
             let contentWidth = geometry.size.width - (Tokens.Spacing.m * 2)
 
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: Tokens.Spacing.m) {
+                    Color.clear.frame(height: 0).id("sharedListTop")
+
                     ForEach(pendingInviteStore.viewOnlyInvites) { invite in
                         PendingInviteCard(
                             invite: invite,
@@ -253,6 +256,11 @@ struct SharedTapesView: View {
                 .padding(.vertical, Tokens.Spacing.s)
             }
             .scrollDisabled(tapesStore.isFloatingDragActive)
+            .onChange(of: downloadCoordinator.resultTape?.id) { _, newId in
+                guard newId != nil else { return }
+                withAnimation { proxy.scrollTo("sharedListTop", anchor: .top) }
+            }
+            } // ScrollViewReader
         }
     }
 

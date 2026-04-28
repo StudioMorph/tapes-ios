@@ -326,8 +326,11 @@ struct CollabTapesView: View {
         GeometryReader { geometry in
             let contentWidth = geometry.size.width - (Tokens.Spacing.m * 2)
 
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: Tokens.Spacing.m) {
+                    Color.clear.frame(height: 0).id("collabListTop")
+
                     switch selectedSegment {
                     case .createdByMe:
                         ForEach(ownerCollabTapes) { tape in
@@ -362,6 +365,11 @@ struct CollabTapesView: View {
                     isScrolled = scrolled
                 }
             }
+            .onChange(of: downloadCoordinator.resultTape?.id) { _, newId in
+                guard newId != nil else { return }
+                withAnimation { proxy.scrollTo("collabListTop", anchor: .top) }
+            }
+            } // ScrollViewReader
         }
     }
 
