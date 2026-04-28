@@ -1,12 +1,15 @@
 import Foundation
 import SwiftUI
 
-/// Unified access-control layer combining subscription + trial state.
+/// Unified access-control layer for Free vs Plus.
 @MainActor
 final class EntitlementManager: ObservableObject {
 
     let subscriptionManager: SubscriptionManager
-    let trialManager: TrialManager
+
+    // MARK: - Constants
+
+    static let maxFreeSharedTapes = 5
 
     // MARK: - Published
 
@@ -15,40 +18,31 @@ final class EntitlementManager: ObservableObject {
     enum AccessLevel: Equatable {
         case free
         case plus
-        case together
     }
 
     // MARK: - Lifecycle
 
-    init(subscriptionManager: SubscriptionManager? = nil,
-         trialManager: TrialManager? = nil) {
+    init(subscriptionManager: SubscriptionManager? = nil) {
         self.subscriptionManager = subscriptionManager ?? SubscriptionManager()
-        self.trialManager = trialManager ?? TrialManager()
         refresh()
     }
 
     // MARK: - Derived Helpers
 
-    var isPremium: Bool { accessLevel == .plus || accessLevel == .together }
-    var isTogether: Bool { accessLevel == .together }
-    var canUseFully: Bool { isPremium || trialManager.isTrialActive }
-    var shouldShowPaywall: Bool { !isPremium && trialManager.isTrialExpired }
+    var isPremium: Bool { accessLevel == .plus }
+    var isFreeUser: Bool { accessLevel == .free }
 
-    func canCreateTape(currentCount: Int) -> Bool {
+    func canShareOrCollab(lifetimeSharedCount: Int) -> Bool {
         if isPremium { return true }
-        return trialManager.canCreateTape(currentCount: currentCount)
+        return lifetimeSharedCount < Self.maxFreeSharedTapes
     }
 
     // MARK: - Refresh
 
     func refresh() {
-        if let tier = subscriptionManager.activeTier {
-            switch tier {
-            case .plus:     accessLevel = .plus
-            case .together: accessLevel = .together
-            }
+        if subscriptionManager.activeTier != nil {
+            accessLevel = .plus
         } else {
-            trialManager.refreshTrialState()
             accessLevel = .free
         }
     }

@@ -24,7 +24,7 @@
       "localizations" : [
 
       ],
-      "name" : "Tapes Premium",
+      "name" : "Tapes Plus",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -33,26 +33,46 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "2.99",
+          "displayPrice" : "3.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
-          "introductoryOffer" : {
-            "displayPrice" : "0.99",
-            "internalID" : "B2C3D4E5-F6A7-8901-BCDE-F12345678901",
-            "paymentMode" : "payUpFront",
-            "subscriptionPeriod" : "P1W"
-          },
+          "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Unlimited tapes, all features, cancel anytime.",
-              "displayName" : "Tapes Monthly",
+              "description" : "All features, no ads, unlimited sharing. Cancel anytime.",
+              "displayName" : "Tapes Plus Monthly",
               "locale" : "en_GB"
             }
           ],
-          "productID" : "com.tapes.premium.monthly",
+          "productID" : "com.tapes.plus.monthly",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Tapes Monthly",
+          "referenceName" : "Tapes Plus Monthly",
+          "subscriptionGroupID" : "group.tapes.premium",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "33.49",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "C3D4E5F6-A7B8-9012-CDEF-345678901234",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "All features, no ads, unlimited sharing. Save 30%.",
+              "displayName" : "Tapes Plus Annual",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "com.tapes.plus.annual",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Tapes Plus Annual",
           "subscriptionGroupID" : "group.tapes.premium",
           "type" : "RecurringSubscription"
         }

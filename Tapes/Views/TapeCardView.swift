@@ -775,7 +775,7 @@ struct TapeCardView: View {
     }
 
     private var isAtFreeLimit: Bool {
-        !entitlementManager.canCreateTape(currentCount: tapeStore.contentTapeCount)
+        false
     }
 
     private func beginEditingTitle() {

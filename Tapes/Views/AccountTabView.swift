@@ -4,6 +4,7 @@ struct AccountTabView: View {
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @Binding var showOnboarding: Bool
+    @State private var showingPaywall = false
 
     private var isSignedIn: Bool {
         authManager.isSignedIn
@@ -11,9 +12,8 @@ struct AccountTabView: View {
 
     private var tierDisplayName: String {
         switch entitlementManager.accessLevel {
-        case .free:     return "Free"
-        case .plus:     return "Plus"
-        case .together: return "Together"
+        case .free: return "Tapes Free"
+        case .plus: return "Tapes Plus"
         }
     }
 
@@ -42,6 +42,9 @@ struct AccountTabView: View {
                     Text(msg)
                 }
             }
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
         }
     }
 
@@ -81,11 +84,15 @@ struct AccountTabView: View {
 
             LabeledContent("Plan", value: tierDisplayName)
 
-            if !entitlementManager.isPremium {
+            if entitlementManager.isPremium {
                 Button("Manage Subscription") {
                     if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
                         UIApplication.shared.open(url)
                     }
+                }
+            } else {
+                Button("Upgrade to Tapes Plus") {
+                    showingPaywall = true
                 }
             }
         } header: {

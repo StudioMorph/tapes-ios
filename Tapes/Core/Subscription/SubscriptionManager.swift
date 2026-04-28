@@ -8,7 +8,6 @@ final class SubscriptionManager: ObservableObject {
 
     enum Tier: String, CaseIterable {
         case plus
-        case together
     }
 
     enum BillingCycle: String, CaseIterable {
@@ -16,18 +15,12 @@ final class SubscriptionManager: ObservableObject {
         case annually
     }
 
-    static let plusMonthlyID    = "com.tapes.plus.monthly"
-    static let plusAnnualID     = "com.tapes.plus.annual"
-    static let togetherMonthlyID = "com.tapes.together.monthly"
-    static let togetherAnnualID  = "com.tapes.together.annual"
+    static let plusMonthlyID = "com.tapes.plus.monthly"
+    static let plusAnnualID  = "com.tapes.plus.annual"
 
     static let allProductIDs: Set<String> = [
-        plusMonthlyID, plusAnnualID,
-        togetherMonthlyID, togetherAnnualID
+        plusMonthlyID, plusAnnualID
     ]
-
-    // Legacy alias kept for backward compatibility
-    static let monthlyProductID = plusMonthlyID
 
     // MARK: - Published State
 
@@ -56,16 +49,14 @@ final class SubscriptionManager: ObservableObject {
 
     var monthlyProduct: Product? { products[Self.plusMonthlyID] }
 
-    func product(for tier: Tier, cycle: BillingCycle) -> Product? {
-        products[Self.productID(tier: tier, cycle: cycle)]
+    func product(for cycle: BillingCycle) -> Product? {
+        products[Self.productID(cycle: cycle)]
     }
 
-    static func productID(tier: Tier, cycle: BillingCycle) -> String {
-        switch (tier, cycle) {
-        case (.plus, .monthly):    return plusMonthlyID
-        case (.plus, .annually):   return plusAnnualID
-        case (.together, .monthly):  return togetherMonthlyID
-        case (.together, .annually): return togetherAnnualID
+    static func productID(cycle: BillingCycle) -> String {
+        switch cycle {
+        case .monthly:  return plusMonthlyID
+        case .annually: return plusAnnualID
         }
     }
 
@@ -86,8 +77,8 @@ final class SubscriptionManager: ObservableObject {
 
     // MARK: - Purchase
 
-    func purchase(tier: Tier, cycle: BillingCycle) async {
-        let id = Self.productID(tier: tier, cycle: cycle)
+    func purchase(cycle: BillingCycle) async {
+        let id = Self.productID(cycle: cycle)
         guard let product = products[id] else {
             purchaseError = "Product not available."
             return
@@ -121,9 +112,8 @@ final class SubscriptionManager: ObservableObject {
         isLoading = false
     }
 
-    /// Legacy single-product purchase for backward compatibility.
     func purchase() async {
-        await purchase(tier: .plus, cycle: .monthly)
+        await purchase(cycle: .monthly)
     }
 
     // MARK: - Restore
@@ -145,14 +135,10 @@ final class SubscriptionManager: ObservableObject {
             guard transaction.revocationDate == nil else { continue }
             if let exp = transaction.expirationDate, exp < Date() { continue }
 
-            if transaction.productID == Self.togetherMonthlyID ||
-               transaction.productID == Self.togetherAnnualID {
-                resolved = .together
-                break
-            }
             if transaction.productID == Self.plusMonthlyID ||
                transaction.productID == Self.plusAnnualID {
                 resolved = .plus
+                break
             }
         }
 

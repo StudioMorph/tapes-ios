@@ -20,7 +20,6 @@ struct PaywallView: View {
 
                     VStack(spacing: Tokens.Spacing.s) {
                         plusCard
-                        togetherCard
                         freeCard
                     }
                 }
@@ -32,7 +31,7 @@ struct PaywallView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    TapesLogo(height: 20, forceDark: true)
+                    TapesLogo(height: 20)
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button { dismiss() } label: {
@@ -65,79 +64,107 @@ struct PaywallView: View {
     private var plusCard: some View {
         VStack(spacing: Tokens.Spacing.m) {
             VStack(spacing: Tokens.Spacing.m) {
-                tierHeader(suffix: "Plus", tier: .plus)
+                HStack {
+                    TapesLogo(height: 18, suffix: "Plus")
+                    Spacer()
+                    priceLabel
+                }
 
                 HStack(alignment: .top, spacing: Tokens.Spacing.m) {
                     featureColumn([
-                        .included("Unlimited TAPES"),
-                        .included("Unlimited share TAPES"),
-                        .included("No watermarks")
+                        .included("NO ADS"),
+                        .included("AI Background MUSIC")
                     ])
                     featureColumn([
-                        .included("12k music library"),
-                        .included("AI mood music"),
-                        .included("1 collab TAPE /month")
+                        .included("No Watermark export"),
+                        .included("12K Background tracks")
                     ])
                 }
             }
 
-            tierButton(
-                label: "Upgrade to",
-                suffix: "Plus",
-                style: .primary
-            ) {
-                Task { await subManager.purchase(tier: .plus, cycle: billingCycle) }
-            }
-        }
-        .padding(Tokens.Spacing.m)
-        .background(Tokens.Colors.tertiaryBackground, in: RoundedRectangle(cornerRadius: cardRadius))
-    }
+            heroFeature
 
-    // MARK: - Together Card
-
-    private var togetherCard: some View {
-        VStack(spacing: Tokens.Spacing.m) {
-            tierHeader(suffix: "Together", tier: .together)
-
-            VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
-                HStack(alignment: .top, spacing: Tokens.Spacing.m) {
-                    featureColumn([.included("Everything in Plus")])
-                    featureColumn([.included("AI prompt music")])
-                }
-
-                HStack(alignment: .top, spacing: Tokens.Spacing.xs) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Tokens.Colors.systemBlue)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Unlimited collaborative TAPES")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(Tokens.Colors.primaryText)
-
-                        (Text("Get your family, friends, to build ")
-                            + Text("TAPES").bold()
-                            + Text(" together with you"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Tokens.Colors.secondaryText)
-                    }
-                }
-            }
-
-            tierButton(
-                label: "Upgrade",
-                suffix: "Together",
-                style: .accent
-            ) {
-                Task { await subManager.purchase(tier: .together, cycle: billingCycle) }
-            }
+            tierButton(action: {
+                Task { await subManager.purchase(cycle: billingCycle) }
+            })
         }
         .padding(Tokens.Spacing.m)
         .background(Tokens.Colors.tertiaryBackground, in: RoundedRectangle(cornerRadius: cardRadius))
         .overlay(
             RoundedRectangle(cornerRadius: cardRadius)
-                .strokeBorder(Tokens.Colors.systemBlue, lineWidth: 4)
+                .strokeBorder(Tokens.Colors.systemBlue, lineWidth: 3)
         )
+    }
+
+    private var heroFeature: some View {
+        HStack(alignment: .top, spacing: Tokens.Spacing.xs) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Tokens.Colors.systemBlue)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Unlimited Share & Collab TAPES")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(Tokens.Colors.primaryText)
+
+                (Text("Get your family, friends, to build ")
+                    + Text("TAPES").bold()
+                    + Text(" together with you"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Tokens.Colors.secondaryText)
+            }
+        }
+    }
+
+    private var priceLabel: some View {
+        Group {
+            if let product = subManager.product(for: billingCycle) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(product.displayPrice)
+                        .font(.system(size: 20, weight: .semibold))
+                    Text(billingCycle == .monthly ? "/mo" : "/yr")
+                        .font(.system(size: 12))
+                }
+                .foregroundStyle(Tokens.Colors.primaryText)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(billingCycle == .monthly ? "£3.99" : "£33.49")
+                        .font(.system(size: 20, weight: .semibold))
+                    Text(billingCycle == .monthly ? "/mo" : "/yr")
+                        .font(.system(size: 12))
+                }
+                .foregroundStyle(Tokens.Colors.primaryText)
+            }
+        }
+    }
+
+    private func tierButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Group {
+                if subManager.isLoading {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    HStack(spacing: 0) {
+                        Text("Upgrade ")
+                            .font(.system(size: 16, weight: .medium))
+
+                        Text("TAPES")
+                            .font(.system(size: 16, weight: .heavy))
+
+                        Text("Plus")
+                            .font(.system(size: 16, weight: .light))
+                    }
+                    .foregroundStyle(.white)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: Tokens.HitTarget.minimum)
+            .background(Tokens.Colors.systemBlue, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(subManager.isLoading)
     }
 
     // MARK: - Free Card
@@ -146,7 +173,7 @@ struct PaywallView: View {
         VStack(spacing: Tokens.Spacing.m) {
             VStack(spacing: Tokens.Spacing.m) {
                 HStack {
-                    TapesLogo(height: 16, forceDark: true)
+                    TapesLogo(height: 18, suffix: "Free")
                     Spacer()
                     Text("Free")
                         .font(.system(size: 20, weight: .semibold))
@@ -154,17 +181,18 @@ struct PaywallView: View {
                 }
 
                 HStack(alignment: .top, spacing: Tokens.Spacing.m) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        freeFeatureText("3 tapes/month")
-                        freeFeatureText("1 shared tape")
-                        freeFeatureText("Music library")
-                    }
-
                     featureColumn([
-                        .limitation("Watermark export"),
-                        .excluded("No AI mood music"),
-                        .excluded("0 Collaboration Tapes")
+                        .included("Unlimited local tapes"),
+                        .included("5 Share/ collab Tapes"),
+                        .included("Background Music")
                     ])
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        freeDetailText("ADS before Playing")
+                        freeDetailText("Watermark on Export")
+                        featureRow(.excluded("No AI Music"))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
@@ -181,41 +209,8 @@ struct PaywallView: View {
 
     // MARK: - Shared Components
 
-    private func tierHeader(suffix: String, tier: SubscriptionManager.Tier) -> some View {
-        HStack {
-            TapesLogo(height: suffix == "Together" ? 20 : 16, suffix: suffix, forceDark: true)
-            Spacer()
-            priceLabel(for: tier)
-        }
-    }
-
-    private func priceLabel(for tier: SubscriptionManager.Tier) -> some View {
-        Group {
-            if let product = subManager.product(for: tier, cycle: billingCycle) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(product.displayPrice)
-                        .font(.system(size: 20, weight: .semibold))
-                    Text(billingCycle == .monthly ? "/mo" : "/yr")
-                        .font(.system(size: 12))
-                }
-                .foregroundStyle(Tokens.Colors.primaryText)
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(tier == .plus
-                         ? (billingCycle == .monthly ? "£2,99" : "£24,99")
-                         : (billingCycle == .monthly ? "£4,99" : "£41,99"))
-                        .font(.system(size: 20, weight: .semibold))
-                    Text(billingCycle == .monthly ? "/mo" : "/yr")
-                        .font(.system(size: 12))
-                }
-                .foregroundStyle(Tokens.Colors.primaryText)
-            }
-        }
-    }
-
     private enum FeatureItem {
         case included(String)
-        case limitation(String)
         case excluded(String)
     }
 
@@ -238,13 +233,6 @@ struct PaywallView: View {
                 Text(text)
                     .foregroundStyle(Tokens.Colors.primaryText)
 
-            case .limitation(let text):
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Tokens.Colors.systemRed)
-                Text(text)
-                    .foregroundStyle(Tokens.Colors.primaryText)
-
             case .excluded(let text):
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
@@ -257,53 +245,11 @@ struct PaywallView: View {
         .frame(height: 26)
     }
 
-    private func freeFeatureText(_ text: String) -> some View {
+    private func freeDetailText(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 14))
             .foregroundStyle(Tokens.Colors.primaryText)
             .frame(height: 26)
-    }
-
-    private enum TierButtonStyle {
-        case primary, accent
-    }
-
-    private func tierButton(
-        label: String,
-        suffix: String,
-        style: TierButtonStyle,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Group {
-                if subManager.isLoading {
-                    ProgressView()
-                        .tint(style == .primary ? Tokens.Colors.systemBlue : .white)
-                } else {
-                    HStack(spacing: 0) {
-                        Text("\(label) ")
-                            .font(.system(size: 16, weight: .medium))
-
-                        Text("TAPES")
-                            .font(.system(size: 16, weight: .heavy))
-
-                        Text(suffix)
-                            .font(.system(size: 16, weight: .light))
-                    }
-                    .foregroundStyle(style == .primary ? Tokens.Colors.systemBlue : Color.white)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: Tokens.HitTarget.minimum)
-            .background(
-                style == .primary
-                    ? AnyShapeStyle(Color.white)
-                    : AnyShapeStyle(Tokens.Colors.systemBlue),
-                in: Capsule()
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(subManager.isLoading)
     }
 
     // MARK: - Alert Binding
