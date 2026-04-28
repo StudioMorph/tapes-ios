@@ -67,10 +67,17 @@ final class SubscriptionManager: ObservableObject {
     func loadProducts() async {
         do {
             let loaded = try await Product.products(for: Self.allProductIDs)
+            #if DEBUG
+            print("[SubscriptionManager] Requested IDs: \(Self.allProductIDs)")
+            print("[SubscriptionManager] Loaded \(loaded.count) products: \(loaded.map { $0.id })")
+            #endif
             var map: [String: Product] = [:]
             for p in loaded { map[p.id] = p }
             products = map
         } catch {
+            #if DEBUG
+            print("[SubscriptionManager] Failed to load products: \(error)")
+            #endif
             purchaseError = "Failed to load subscriptions: \(error.localizedDescription)"
         }
     }
