@@ -110,7 +110,24 @@ struct TapesApp: App {
         }
     }
 
+    /// Single entry point for all deep links — universal links (shared tapes,
+    /// reset password) and the `tapes://` custom scheme (verified email,
+    /// shared tape fallback). One `.onOpenURL` is the Apple-recommended
+    /// shape; nesting handlers across the view tree has undocumented
+    /// resolution behaviour and silently drops links in some configurations.
     private func handleIncomingURL(_ url: URL) {
+        if url.scheme == "tapes" && url.host == "verified" {
+            authManager.markEmailVerified()
+            return
+        }
+
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           components.path.contains("reset-password"),
+           let token = components.queryItems?.first(where: { $0.name == "token" })?.value {
+            navigationCoordinator.pendingResetToken = token
+            return
+        }
+
         if let shareId = Self.shareId(from: url) {
             navigationCoordinator.handleShareLink(shareId: shareId)
         }

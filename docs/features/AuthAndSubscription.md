@@ -52,18 +52,24 @@ Email/password authentication with JWT sessions, email verification via Resend, 
 1. **Register** sends a verification email via Resend with a link to `GET /auth/verify-email?token=…`.
 2. User clicks link in email → browser hits the Worker endpoint.
 3. Worker sets `email_verified = 1` in D1, marks the token as used.
-4. Worker sends a **silent APNs push** (`action: "email_verified"`) to the user's registered device token.
+4. Worker sends a **silent APNs push** (`action: "email_verified"`) to the user's registered device token. If `device_token` is NULL on the user row (fresh account whose iOS app has not yet PUT a token), the Worker logs a warning and falls back to the deep-link path; it does not fail the request.
 5. Worker returns HTML confirmation page (`verifiedPageTemplate`) with an "Open Tapes" button linking to `tapes://verified`.
 6. **iOS receives the update** via two redundant paths:
    - **Silent push** → `PushNotificationManager` calls `authManager.markEmailVerified()`.
-   - **Deep link** → `ContentView` handles `tapes://verified` and calls `authManager.markEmailVerified()`.
+   - **Deep link** → `TapesApp.handleIncomingURL` (single top-level `.onOpenURL`) routes `tapes://verified` to `authManager.markEmailVerified()`.
 7. On next login, `email_verified` is also returned in the login response as a safety net.
+
+#### Device-token registration timing
+
+`PUT /users/me/device-token` is bearer-authed and idempotent. APNs delivers the token to `AppDelegate` only on demand, so the iOS app must explicitly nudge it whenever the JWT changes. `AuthManager.persistSession` calls `UIApplication.shared.registerForRemoteNotifications()` after every successful `register`, `login`, and `commitResetSession` — guaranteeing the new user's row gets `device_token` written before they have a chance to verify their email.
+
+Without that nudge, a fresh registration on a previously signed-out device would land in the `device_token IS NULL` branch on the Worker and the silent push would never be sent, leaving the user staring at an unverified-email banner until they tapped "Open App" or restarted the app.
 
 ### Password Reset Flow
 
 1. User taps "Forgot Password" → enters email → `POST /auth/forgot-password`.
 2. Worker sends a reset email with link to `/t/reset-password?token=…` (Universal Link format).
-3. **If opened on a device with Tapes installed:** Universal Link resolves → `ContentView.handleDeepLink` extracts the token → presents `ResetPasswordView`.
+3. **If opened on a device with Tapes installed:** Universal Link resolves → `TapesApp.handleIncomingURL` extracts the token → writes it to `NavigationCoordinator.pendingResetToken` → `ContentView` binds that to `AuthView`, which presents `ResetPasswordView`.
 4. **If opened in a browser without the app:** Worker serves `resetPasswordFallbackTemplate` — a branded page explaining the user needs the Tapes app, with a "Download on the App Store" badge.
 5. `ResetPasswordView` validates the token (`GET /auth/validate-reset-token`), accepts new password, calls `POST /auth/reset-password`, receives new JWT, and commits the session.
 

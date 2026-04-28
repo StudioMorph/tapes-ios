@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import os
 
 @MainActor
@@ -221,5 +222,13 @@ final class AuthManager: ObservableObject {
             UserDefaults.standard.set(email, forKey: Self.userEmailKey)
         }
         UserDefaults.standard.set(isEmailVerified, forKey: Self.emailVerifiedKey)
+
+        // Re-register for remote notifications under the freshly stored JWT.
+        // APNs delivers the device token to AppDelegate only on demand; without
+        // this nudge a brand-new account never gets `device_token` written to
+        // the backend, so silent pushes (e.g. `email_verified`) are dropped at
+        // the Worker. Idempotent: iOS returns the cached token immediately.
+        UIApplication.shared.registerForRemoteNotifications()
+        log.info("Requested device-token refresh for new session")
     }
 }
