@@ -354,6 +354,8 @@ public class ShareUploadCoordinator: ObservableObject {
                 self.finishUpload(success: true)
 
                 if hasWork && !self.isManagedBySync {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+
                     if UIApplication.shared.applicationState == .active {
                         self.playCompletionFeedback()
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -505,6 +507,8 @@ public class ShareUploadCoordinator: ObservableObject {
             self.finishUpload(success: true)
 
             if !self.isManagedBySync {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+
                 if UIApplication.shared.applicationState == .active {
                     self.playCompletionFeedback()
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -603,6 +607,16 @@ public class ShareUploadCoordinator: ObservableObject {
         if #available(iOS 26, *) {
             completeContinuedTask(success: success)
         }
+
+        if success {
+            Self.flushUploadSession()
+        }
+    }
+
+    /// Release URLSession connection pool and caches after upload so iOS
+    /// can reclaim resources before the share sheet launches.
+    private static func flushUploadSession() {
+        uploadSession.reset {}
     }
 
     // MARK: - Clip Upload (static so it doesn't capture self)
