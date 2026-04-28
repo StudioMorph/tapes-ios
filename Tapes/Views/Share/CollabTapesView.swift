@@ -144,7 +144,23 @@ struct CollabTapesView: View {
                     selectedSegment = .contributingTo
                     navigationCoordinator.pendingCollabSegment = nil
                 }
+                if let shareId = navigationCoordinator.pendingCollabShareId {
+                    navigationCoordinator.pendingCollabShareId = nil
+                    handleIncomingCollabShare(shareId: shareId)
+                }
                 refreshSortOrder()
+            }
+            .onChange(of: navigationCoordinator.pendingCollabShareId) { _, shareId in
+                if let shareId {
+                    navigationCoordinator.pendingCollabShareId = nil
+                    selectedSegment = .contributingTo
+                    handleIncomingCollabShare(shareId: shareId)
+                }
+            }
+            .onChange(of: receivedCollabTapes.isEmpty) { _, isEmpty in
+                if isEmpty && selectedSegment == .contributingTo {
+                    selectedSegment = .createdByMe
+                }
             }
             .onChange(of: scenePhase) { _, newPhase in
                 downloadCoordinator.handleScenePhaseChange(newPhase)
@@ -479,6 +495,20 @@ struct CollabTapesView: View {
         }
         editingTapeID = nil
         draftTitle = ""
+    }
+
+    // MARK: - Handle Incoming Collab Share
+
+    private func handleIncomingCollabShare(shareId: String) {
+        guard let api = authManager.apiClient else {
+            downloadCoordinator.downloadError = "Please sign in first to receive shared tapes."
+            return
+        }
+        downloadCoordinator.startDownload(
+            shareId: shareId,
+            api: api,
+            tapeStore: tapesStore
+        )
     }
 
     // MARK: - Handle Load Invite

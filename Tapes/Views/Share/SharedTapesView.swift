@@ -18,6 +18,7 @@ struct SharedTapesView: View {
     @State private var editingTapeID: UUID?
     @State private var draftTitle: String = ""
     @State private var inviteToDismiss: PendingInvite?
+    @State private var lastShareId: String?
     @State private var sortedTapeIDs: [UUID] = []
 
     private var viewOnlyTapes: [Tape] {
@@ -138,7 +139,10 @@ struct SharedTapesView: View {
                 downloadCoordinator.handleScenePhaseChange(newPhase)
             }
             .onChange(of: downloadCoordinator.resolvedMode) { _, mode in
-                if mode == "collaborative" {
+                if mode == "collaborative", let shareId = lastShareId {
+                    downloadCoordinator.cancelDownload()
+                    lastShareId = nil
+                    navigationCoordinator.pendingCollabShareId = shareId
                     navigationCoordinator.pendingCollabSegment = "contributingTo"
                     navigationCoordinator.selectedTab = .collab
                 }
@@ -358,6 +362,7 @@ struct SharedTapesView: View {
             downloadCoordinator.downloadError = "Please sign in first to receive shared tapes."
             return
         }
+        lastShareId = shareId
         downloadCoordinator.startDownload(
             shareId: shareId,
             api: api,

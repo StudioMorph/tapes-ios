@@ -7,6 +7,7 @@ final class NavigationCoordinator: ObservableObject {
     @Published var selectedTab: MainTabView.AppTab = .myTapes
     @Published var pendingSharedTapeId: String?
     @Published var pendingCollabSegment: String?
+    @Published var pendingCollabShareId: String?
     @Published var pendingResetToken: String?
     @Published var isResolvingDeepLink = false
     @Published var deepLinkError: String?
