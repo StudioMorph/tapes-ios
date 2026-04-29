@@ -317,7 +317,8 @@ struct TapeCardView: View {
             
             .frame(height: thumbH)
 
-            .padding(.vertical, Tokens.Spacing.m)
+            .padding(.top, Tokens.Spacing.m)
+            .padding(.bottom, Tokens.Spacing.s)
             .background(
                 GeometryReader { geometry in
                     Color.clear.preference(key: CardWidthKey.self, value: geometry.size.width)
@@ -330,7 +331,7 @@ struct TapeCardView: View {
             if !isJiggling {
                 musicBar
                     .padding(.horizontal, Tokens.Spacing.m)
-                    .padding(.bottom, Tokens.Spacing.m)
+                    .padding(.bottom, Tokens.Spacing.s)
             }
         }
         .background(
@@ -786,12 +787,13 @@ struct TapeCardView: View {
     private var musicBar: some View {
         HStack(spacing: Tokens.Spacing.s) {
             HStack(spacing: 4) {
-                Image(systemName: tape.musicMood == .none ? "music.note" : "music.note.list")
-                    .font(.system(size: 14, weight: .medium))
+                Image(systemName: "music.note")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Tokens.Colors.primaryText)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Tokens.Colors.systemBlue)
             }
-            .foregroundStyle(tape.musicMood == .none ? Tokens.Colors.tertiaryText : Tokens.Colors.systemBlue)
 
             MusicWaveView(state: musicWaveState, audioLevel: previewAudioLevel)
 
@@ -799,9 +801,13 @@ struct TapeCardView: View {
                 Button {
                     toggleMusicPreview()
                 } label: {
-                    Image(systemName: isPreviewingMusic ? "stop.fill" : "waveform")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Tokens.Colors.systemBlue)
+                    if isPreviewingMusic {
+                        SoundWaveAnimationView()
+                    } else {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(Tokens.Colors.systemBlue)
+                    }
                 }
                 .buttonStyle(.plain)
             }

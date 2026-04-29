@@ -11,22 +11,27 @@ struct MusicWaveView: View {
     var state: State
     var audioLevel: CGFloat = 0
 
-    private static let waveCount = 8
+    private static let waveCount = 12
 
     private static let baseOpacities: [Double] = [
-        0.95, 0.75, 0.85, 0.60, 0.90, 0.55, 0.70, 0.50
+        0.60, 0.12, 0.45, 0.25, 0.55, 0.18,
+        0.35, 0.30, 0.50, 0.15, 0.42, 0.28
     ]
     private static let strokeWidths: [CGFloat] = [
-        1.8, 1.2, 1.5, 0.9, 1.6, 0.8, 1.3, 0.7
+        1.8, 0.6, 1.5, 0.8, 1.6, 0.7,
+        1.2, 0.9, 1.4, 0.65, 1.3, 0.75
     ]
     private static let frequencies: [CGFloat] = [
-        0.8, 1.0, 0.65, 1.15, 0.9, 1.3, 0.75, 1.1
+        0.8, 1.1, 0.65, 1.15, 0.9, 1.25,
+        0.75, 1.05, 0.7, 1.2, 0.85, 1.0
     ]
     private static let phases: [CGFloat] = [
-        0, 0.9, 1.8, 2.7, 3.6, 4.5, 5.4, 0.5
+        0, 0.7, 1.4, 2.1, 2.8, 3.5,
+        4.2, 4.9, 5.6, 0.35, 1.05, 1.75
     ]
     private static let amplitudes: [CGFloat] = [
-        6.0, 7.5, 5.5, 7.0, 8.0, 5.0, 6.5, 5.8
+        6.0, 7.5, 5.5, 7.0, 8.0, 5.0,
+        6.5, 5.8, 7.2, 6.2, 5.3, 6.8
     ]
 
     private static let tealColors: [Color] = [
@@ -36,19 +41,23 @@ struct MusicWaveView: View {
         Color(red: 0.690, green: 0.961, blue: 0.882),
         Color(red: 0.427, green: 0.863, blue: 0.722),
         Color(red: 0.239, green: 0.659, blue: 0.557),
+        Color(red: 0.357, green: 0.812, blue: 0.706),
         Color(red: 0.549, green: 0.941, blue: 0.847),
-        Color(red: 0.357, green: 0.812, blue: 0.706)
+        Color(red: 0.290, green: 0.722, blue: 0.631),
+        Color(red: 0.690, green: 0.961, blue: 0.882),
+        Color(red: 0.427, green: 0.863, blue: 0.722),
+        Color(red: 0.239, green: 0.659, blue: 0.557)
     ]
 
     private static let driftSpeeds: [CGFloat] = [
-        0.013, 0.019, 0.011, 0.023, 0.017, 0.029, 0.015, 0.021
+        0.013, 0.019, 0.011, 0.023, 0.017, 0.029,
+        0.015, 0.021, 0.014, 0.025, 0.018, 0.022
     ]
     private static let driftAmplitudes: [CGFloat] = [
-        0.6, 0.8, 0.5, 0.9, 0.7, 1.0, 0.55, 0.75
+        0.6, 0.8, 0.5, 0.9, 0.7, 1.0,
+        0.55, 0.75, 0.65, 0.85, 0.6, 0.7
     ]
 
-    // Each wave line gets 2–3 spike positions at different places
-    // Stored as (position, width, strength) per wave
     private static let spikeSeeds: [[(pos: CGFloat, width: CGFloat, strength: CGFloat)]] = [
         [(0.25, 0.03, 1.0), (0.70, 0.035, 0.8)],
         [(0.40, 0.035, 0.9), (0.80, 0.03, 0.7), (0.15, 0.04, 0.6)],
@@ -57,7 +66,11 @@ struct MusicWaveView: View {
         [(0.60, 0.035, 0.9), (0.30, 0.03, 0.6), (0.85, 0.04, 0.7)],
         [(0.45, 0.03, 0.8), (0.15, 0.035, 0.9)],
         [(0.70, 0.04, 1.0), (0.35, 0.03, 0.7)],
-        [(0.50, 0.035, 0.9), (0.80, 0.03, 0.6), (0.20, 0.04, 0.8)]
+        [(0.50, 0.035, 0.9), (0.80, 0.03, 0.6), (0.20, 0.04, 0.8)],
+        [(0.30, 0.03, 0.9), (0.65, 0.04, 0.7)],
+        [(0.45, 0.035, 0.8), (0.75, 0.03, 1.0), (0.10, 0.035, 0.6)],
+        [(0.55, 0.04, 0.7), (0.25, 0.03, 0.9)],
+        [(0.40, 0.03, 1.0), (0.85, 0.035, 0.8)]
     ]
 
     @SwiftUI.State private var phase: CGFloat = 0
@@ -65,9 +78,9 @@ struct MusicWaveView: View {
 
     private var masterOpacity: Double {
         switch state {
-        case .disabled: return 0.2
-        case .idle:     return 0.6
-        case .playing:  return 1.0
+        case .disabled: return 0.3
+        case .idle:     return 0.7
+        case .playing:  return 0.85
         }
     }
 
