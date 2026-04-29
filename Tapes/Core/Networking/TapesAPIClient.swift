@@ -584,6 +584,11 @@ actor TapesAPIClient {
 
         var id: String { value }
 
+        init(value: String, tracksCount: Int) {
+            self.value = value
+            self.tracksCount = tracksCount
+        }
+
         enum CodingKeys: String, CodingKey {
             case value
             case tracksCount = "tracks_count"
@@ -595,6 +600,11 @@ actor TapesAPIClient {
         let values: [LibraryParamValue]
 
         var id: String { param }
+
+        init(param: String, values: [LibraryParamValue]) {
+            self.param = param
+            self.values = values
+        }
     }
 
     struct LibraryTrackGeneration: Decodable {

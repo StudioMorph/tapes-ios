@@ -10,9 +10,10 @@ struct LibraryFilterBar: View {
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Tokens.Spacing.s) {
-                    ForEach(viewModel.availableFilters) { filter in
+                    ForEach(viewModel.displayFilters) { filter in
                         FilterMenuButton(
                             filter: filter,
+                            displayName: viewModel.displayName(for: filter.param),
                             selectedValue: binding(for: filter.param),
                             onChange: { viewModel.requestTrackReload = true }
                         )
@@ -51,12 +52,13 @@ struct LibraryFilterBar: View {
 
 private struct FilterMenuButton: View {
     let filter: TapesAPIClient.LibraryParam
+    let displayName: String
     @Binding var selectedValue: String?
     let onChange: () -> Void
 
     var body: some View {
         Menu {
-            Picker(filter.param.capitalized, selection: $selectedValue) {
+            Picker(displayName, selection: $selectedValue) {
                 Text("All").tag(String?.none)
                 ForEach(filter.values) { value in
                     Text("\(value.value) (\(value.tracksCount))")
@@ -65,7 +67,7 @@ private struct FilterMenuButton: View {
             }
         } label: {
             HStack(spacing: 4) {
-                Text(selectedValue ?? filter.param.capitalized)
+                Text(selectedValue ?? displayName)
                     .font(.subheadline.weight(.medium))
                 Image(systemName: "chevron.down")
                     .font(.caption2.weight(.semibold))
@@ -332,12 +334,93 @@ final class LibraryBrowserViewModel: ObservableObject {
     private var player: AVPlayer?
     private var timeObserver: Any?
 
+    // MARK: - Filter Customisation
+
+    /// Params that we don't show in the filter bar.
+    private static let hiddenParams: Set<String> = ["mode", "key"]
+
+    /// User-facing names for raw API param keys.
+    private static let paramDisplayNames: [String: String] = [
+        "bpm": "Tempo",
+        "playlists": "Vibes"
+    ]
+
+    private struct BPMBucket {
+        let label: String
+        let lowerInclusive: Int
+        let upperInclusive: Int
+
+        func contains(_ bpm: Int) -> Bool {
+            bpm >= lowerInclusive && bpm <= upperInclusive
+        }
+    }
+
+    private static let bpmBuckets: [BPMBucket] = [
+        BPMBucket(label: "Slow", lowerInclusive: 0, upperInclusive: 99),
+        BPMBucket(label: "Medium", lowerInclusive: 100, upperInclusive: 130),
+        BPMBucket(label: "Fast", lowerInclusive: 131, upperInclusive: 1000)
+    ]
+
+    func displayName(for param: String) -> String {
+        Self.paramDisplayNames[param] ?? param.capitalized
+    }
+
+    /// Filter pills shown in the UI. Hides Mode/Key, replaces BPM values with 3 buckets.
+    var displayFilters: [TapesAPIClient.LibraryParam] {
+        availableFilters
+            .filter { !Self.hiddenParams.contains($0.param) }
+            .map { filter in
+                if filter.param == "bpm" {
+                    return TapesAPIClient.LibraryParam(
+                        param: "bpm",
+                        values: Self.bucketedBPMValues(from: filter.values)
+                    )
+                }
+                return filter
+            }
+    }
+
+    private static func bucketedBPMValues(from rawValues: [TapesAPIClient.LibraryParamValue]) -> [TapesAPIClient.LibraryParamValue] {
+        bpmBuckets.compactMap { bucket in
+            let count = rawValues
+                .compactMap { Int($0.value) != nil ? $0 : nil }
+                .filter { Int($0.value).map(bucket.contains) ?? false }
+                .reduce(0) { $0 + $1.tracksCount }
+            guard count > 0 else { return nil }
+            return TapesAPIClient.LibraryParamValue(value: bucket.label, tracksCount: count)
+        }
+    }
+
+    /// Converts the user-facing active filters into the raw query params Mubert expects.
+    /// For BPM buckets, expands the bucket label back into the actual BPM values.
+    private var apiFilters: [String: String] {
+        var result: [String: String] = [:]
+        for (param, value) in activeFilters {
+            if param == "bpm",
+               let bucket = Self.bpmBuckets.first(where: { $0.label == value }),
+               let rawBPM = availableFilters.first(where: { $0.param == "bpm" }) {
+                let matches = rawBPM.values
+                    .compactMap { Int($0.value) }
+                    .filter(bucket.contains)
+                    .map(String.init)
+                if !matches.isEmpty {
+                    result[param] = matches.joined(separator: ",")
+                }
+            } else {
+                result[param] = value
+            }
+        }
+        return result
+    }
+
+    // MARK: - Loading
+
     func loadParams(api: TapesAPIClient) async {
         isLoadingParams = true
         defer { isLoadingParams = false }
 
         do {
-            availableFilters = try await api.fetchLibraryParams(filters: activeFilters)
+            availableFilters = try await api.fetchLibraryParams(filters: apiFilters)
         } catch {
             errorMessage = error.localizedDescription
             showError = true
@@ -357,7 +440,7 @@ final class LibraryBrowserViewModel: ObservableObject {
 
         do {
             let response = try await api.fetchLibraryTracks(
-                filters: activeFilters,
+                filters: apiFilters,
                 offset: currentOffset,
                 limit: 50
             )
