@@ -18,6 +18,12 @@ final class TrackGenerationManager: ObservableObject {
     @Published private(set) var progress: Double = 0
     @Published private(set) var isPreviewing = false
 
+    /// Scratch metadata for the current prompt-generated track, if any.
+    @Published private(set) var scratchTrackID: String?
+    @Published private(set) var lastPrompt: String?
+    @Published private(set) var lastDuration: Int = 30
+    @Published private(set) var lastIntensity: String = "medium"
+
     private var generationTask: Task<Void, Never>?
     private var previewPlayer: AVAudioPlayer?
     private var cachedTrackURL: URL?
@@ -85,15 +91,20 @@ final class TrackGenerationManager: ObservableObject {
         intensity: String,
         api: TapesAPIClient
     ) {
+        stopPreview()
         cancelGeneration()
         discardScratch()
+
+        lastPrompt = prompt
+        lastDuration = duration
+        lastIntensity = intensity
 
         state = .generating
         progress = 0
 
         generationTask = Task {
             do {
-                let url = try await MubertAPIClient.shared.generateFromPromptScratch(
+                let result = try await MubertAPIClient.shared.generateFromPromptScratch(
                     prompt: prompt,
                     duration: duration,
                     intensity: intensity,
@@ -106,14 +117,15 @@ final class TrackGenerationManager: ObservableObject {
                 )
 
                 guard !Task.isCancelled else {
-                    await MubertAPIClient.shared.discardScratch(at: url)
+                    await MubertAPIClient.shared.discardScratch(at: result.localURL)
                     return
                 }
 
-                self.scratchTrackURL = url
+                self.scratchTrackURL = result.localURL
+                self.scratchTrackID = result.trackID
                 self.state = .ready
                 self.progress = 1.0
-                log.info("Prompt scratch ready")
+                log.info("Prompt scratch ready trackID=\(result.trackID.prefix(8))")
             } catch {
                 guard !Task.isCancelled else { return }
                 self.state = .failed(error.localizedDescription)
@@ -144,6 +156,7 @@ final class TrackGenerationManager: ObservableObject {
             Task { await MubertAPIClient.shared.discardScratch(at: url) }
         }
         scratchTrackURL = nil
+        scratchTrackID = nil
     }
 
     // MARK: - Cancel

@@ -154,6 +154,10 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var backgroundMusicMood: String?
     public var backgroundMusicVolume: Double?
     public var waveColorHue: Double?
+    /// The user's prompt text for AI-generated background music. Persisted so
+    /// the AI Prompt sheet can re-render the in-use card and regenerate the
+    /// same prompt across sessions.
+    public var backgroundMusicPrompt: String?
     public var exportOrientation: ExportOrientation
     public var blurExportBackground: Bool
     public var livePhotosAsVideo: Bool
@@ -227,7 +231,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case id, title, orientation, scaleMode, transition, transitionDuration
         case seamTransitions
         case clips, createdAt, updatedAt, hasReceivedFirstContent, albumLocalIdentifier
-        case backgroundMusicMood, backgroundMusicVolume, waveColorHue
+        case backgroundMusicMood, backgroundMusicVolume, waveColorHue, backgroundMusicPrompt
         case exportOrientation
         case blurExportBackground
         case livePhotosAsVideo
@@ -260,6 +264,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         backgroundMusicMood = try container.decodeIfPresent(String.self, forKey: .backgroundMusicMood)
         backgroundMusicVolume = try container.decodeIfPresent(Double.self, forKey: .backgroundMusicVolume)
         waveColorHue = try container.decodeIfPresent(Double.self, forKey: .waveColorHue)
+        backgroundMusicPrompt = try container.decodeIfPresent(String.self, forKey: .backgroundMusicPrompt)
         exportOrientation = try container.decodeIfPresent(ExportOrientation.self, forKey: .exportOrientation) ?? .auto
         blurExportBackground = try container.decodeIfPresent(Bool.self, forKey: .blurExportBackground) ?? true
         livePhotosAsVideo = try container.decodeIfPresent(Bool.self, forKey: .livePhotosAsVideo) ?? true

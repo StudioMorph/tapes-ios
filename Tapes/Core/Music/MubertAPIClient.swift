@@ -213,6 +213,11 @@ actor MubertAPIClient {
 
     // MARK: - Generate from Prompt (Text-to-Music)
 
+    struct ScratchResult: Sendable {
+        let localURL: URL
+        let trackID: String
+    }
+
     /// Generates a prompt-based track to a scratch (tmp) location.
     /// The tape's per-tape cache is left untouched until the caller commits.
     func generateFromPromptScratch(
@@ -221,7 +226,7 @@ actor MubertAPIClient {
         intensity: String = "medium",
         api: TapesAPIClient,
         onProgress: @Sendable @escaping (Double) -> Void
-    ) async throws -> URL {
+    ) async throws -> ScratchResult {
         onProgress(0.05)
         log.info("Requesting scratch prompt track: \"\(prompt.prefix(40))\"")
 
@@ -244,7 +249,7 @@ actor MubertAPIClient {
             onProgress(0.9)
             let local = try await downloadToScratch(from: url)
             onProgress(1.0)
-            return local
+            return ScratchResult(localURL: local, trackID: response.trackId)
         }
 
         log.info("Prompt track processing, polling id=\(response.trackId)")
@@ -255,7 +260,7 @@ actor MubertAPIClient {
         id: String,
         api: TapesAPIClient,
         onProgress: @Sendable @escaping (Double) -> Void
-    ) async throws -> URL {
+    ) async throws -> ScratchResult {
         for attempt in 0..<Self.maxPollAttempts {
             try await Task.sleep(nanoseconds: Self.pollInterval)
 
@@ -276,7 +281,7 @@ actor MubertAPIClient {
                 onProgress(0.95)
                 let local = try await downloadToScratch(from: url)
                 onProgress(1.0)
-                return local
+                return ScratchResult(localURL: local, trackID: id)
             }
         }
 

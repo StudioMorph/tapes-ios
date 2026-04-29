@@ -13,9 +13,37 @@ struct LibraryTrackRow: View {
     let isPlaying: Bool
     let isInUse: Bool
     let isCommitting: Bool
+    /// When non-nil, replaces the bpm/duration/intensity meta line.
+    let metaTextOverride: String?
+    /// When non-nil, renders a refresh icon to the left of the waveform icon.
+    let onRegenerate: (() -> Void)?
     let onTap: () -> Void
     let onTogglePreview: () -> Void
     let onUse: () -> Void
+
+    init(
+        track: TapesAPIClient.LibraryTrack,
+        isExpanded: Bool,
+        isPlaying: Bool,
+        isInUse: Bool,
+        isCommitting: Bool,
+        metaTextOverride: String? = nil,
+        onRegenerate: (() -> Void)? = nil,
+        onTap: @escaping () -> Void,
+        onTogglePreview: @escaping () -> Void,
+        onUse: @escaping () -> Void
+    ) {
+        self.track = track
+        self.isExpanded = isExpanded
+        self.isPlaying = isPlaying
+        self.isInUse = isInUse
+        self.isCommitting = isCommitting
+        self.metaTextOverride = metaTextOverride
+        self.onRegenerate = onRegenerate
+        self.onTap = onTap
+        self.onTogglePreview = onTogglePreview
+        self.onUse = onUse
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,6 +85,17 @@ struct LibraryTrackRow: View {
             }
 
             Spacer()
+
+            if let onRegenerate {
+                Button(action: onRegenerate) {
+                    Image(systemName: "arrow.trianglehead.2.clockwise")
+                        .font(.title3)
+                        .foregroundStyle(Tokens.Colors.secondaryText)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Regenerate track")
+            }
 
             previewIconButton
         }
@@ -145,6 +184,7 @@ struct LibraryTrackRow: View {
     }
 
     private var metaText: String {
+        if let metaTextOverride { return metaTextOverride }
         var parts: [String] = []
         if let bpm = track.bpm { parts.append("\(bpm) bpm") }
         if let duration = track.duration { parts.append(formatDuration(duration)) }
