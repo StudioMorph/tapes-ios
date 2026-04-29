@@ -5,33 +5,30 @@ struct AIPromptMusicView: View {
     let onTrackGenerated: () -> Void
 
     @EnvironmentObject private var authManager: AuthManager
+    @StateObject private var trackGen = TrackGenerationManager()
+
     @State private var promptText = ""
     @State private var duration: Double = 30
-    @State private var intensity: Intensity = .medium
-    @State private var isGenerating = false
-    @State private var progress: Double = 0
-    @State private var errorMessage: String?
-
-    enum Intensity: String, CaseIterable {
-        case low, medium, high
-    }
-
-    private let quickTags = ["Lo-fi", "Cinematic", "Ambient", "Upbeat", "Chill", "Electronic", "Jazz", "Dreamy"]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
                 promptSection
-                quickTagsSection
                 durationSection
-                intensitySection
                 generateButton
+                if trackGen.isReady {
+                    previewControls
+                    useButton
+                }
                 creditLabel
             }
             .padding(.horizontal, Tokens.Spacing.m)
             .padding(.vertical, Tokens.Spacing.l)
         }
         .background(Tokens.Colors.primaryBackground)
+        .onDisappear {
+            trackGen.cancel()
+        }
     }
 
     // MARK: - Prompt
@@ -43,6 +40,7 @@ struct AIPromptMusicView: View {
                 .foregroundStyle(Tokens.Colors.primaryText)
 
             TextEditor(text: $promptText)
+                .scrollContentBackground(.hidden)
                 .frame(minHeight: 80, maxHeight: 120)
                 .padding(Tokens.Spacing.s)
                 .background(Tokens.Colors.secondaryBackground, in: RoundedRectangle(cornerRadius: 12))
@@ -62,40 +60,6 @@ struct AIPromptMusicView: View {
                 Text("\(promptText.count)/200")
                     .font(.caption2)
                     .foregroundStyle(promptText.count > 200 ? Color.red : Tokens.Colors.tertiaryText)
-            }
-        }
-    }
-
-    // MARK: - Quick Tags
-
-    private var quickTagsSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
-            Text("Quick tags")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Tokens.Colors.primaryText)
-
-            WrappingHStack(spacing: Tokens.Spacing.s) {
-                ForEach(quickTags, id: \.self) { tag in
-                    let isActive = promptText.localizedCaseInsensitiveContains(tag)
-                    Button {
-                        toggleTag(tag)
-                    } label: {
-                        Text(tag)
-                            .font(.subheadline)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(isActive ? Tokens.Colors.systemBlue.opacity(0.15) : Tokens.Colors.secondaryBackground)
-                            )
-                            .overlay(
-                                Capsule()
-                                    .strokeBorder(isActive ? Tokens.Colors.systemBlue : Color.clear, lineWidth: 1)
-                            )
-                            .foregroundStyle(isActive ? Tokens.Colors.systemBlue : Tokens.Colors.primaryText)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
         }
     }
@@ -129,68 +93,110 @@ struct AIPromptMusicView: View {
         }
     }
 
-    // MARK: - Intensity
-
-    private var intensitySection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
-            Text("Energy")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Tokens.Colors.primaryText)
-
-            Picker("", selection: $intensity) {
-                ForEach(Intensity.allCases, id: \.self) { level in
-                    Text(level.rawValue.capitalized).tag(level)
-                }
-            }
-            .pickerStyle(.segmented)
-        }
-    }
-
     // MARK: - Generate
 
     private var generateButton: some View {
         VStack(spacing: Tokens.Spacing.s) {
             Button {
-                Task { await generate() }
+                generate()
             } label: {
-                ZStack {
-                    Text("Generate track")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            Tokens.Colors.systemBlue,
-                            in: RoundedRectangle(cornerRadius: 14)
-                        )
-                        .opacity(isGenerating ? 0 : 1)
-
-                    if isGenerating {
-                        VStack(spacing: Tokens.Spacing.s) {
-                            ProgressView(value: progress)
-                                .tint(.white)
-                            Text("Generating…")
-                                .font(.caption)
-                                .foregroundStyle(Tokens.Colors.secondaryText)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(
-                            Tokens.Colors.systemBlue.opacity(0.6),
-                            in: RoundedRectangle(cornerRadius: 14)
-                        )
+                HStack {
+                    if trackGen.isGenerating {
+                        ProgressView()
+                            .tint(.white)
+                        Text("Generating…")
+                    } else {
+                        Text(trackGen.isReady ? "Generate again" : "Generate track")
                     }
                 }
+                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.plain)
-            .disabled(isGenerating || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(trackGen.isGenerating || trimmedPrompt.isEmpty)
 
-            if let errorMessage {
-                Text(errorMessage)
+            if trackGen.isGenerating {
+                ProgressView(value: trackGen.progress)
+                    .tint(Tokens.Colors.systemBlue)
+            }
+
+            if case .failed(let message) = trackGen.state {
+                Text(message)
                     .font(.caption)
                     .foregroundStyle(Color.red)
             }
         }
+    }
+
+    // MARK: - Preview controls (after generation)
+
+    private var previewControls: some View {
+        VStack(spacing: Tokens.Spacing.m) {
+            HStack(spacing: Tokens.Spacing.xl) {
+                Button {
+                    trackGen.togglePreview(volume: tape.musicVolume)
+                } label: {
+                    HStack(spacing: Tokens.Spacing.s) {
+                        if trackGen.isPreviewing {
+                            SoundWaveAnimationView()
+                            Text("Stop")
+                        } else {
+                            Image(systemName: "play.fill")
+                            Text("Preview")
+                        }
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.blue)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Tokens.Spacing.s)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(Tokens.Spacing.s)
+            .background(Tokens.Colors.secondaryBackground, in: RoundedRectangle(cornerRadius: 12))
+
+            volumeSlider
+        }
+    }
+
+    private var volumeSlider: some View {
+        let volumeBinding = Binding<Double>(
+            get: { Double(tape.musicVolume) },
+            set: { tape.backgroundMusicVolume = $0 }
+        )
+
+        return HStack(spacing: Tokens.Spacing.s) {
+            Image(systemName: "speaker.fill")
+                .font(.caption)
+                .foregroundStyle(Tokens.Colors.secondaryText)
+
+            Slider(value: volumeBinding, in: 0.05...1.0, step: 0.05)
+                .tint(.blue)
+                .onChange(of: volumeBinding.wrappedValue) {
+                    trackGen.updatePreviewVolume(tape.musicVolume)
+                }
+
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.caption)
+                .foregroundStyle(Tokens.Colors.secondaryText)
+
+            Text("\(Int(volumeBinding.wrappedValue * 100))%")
+                .font(.caption)
+                .foregroundStyle(Tokens.Colors.secondaryText)
+                .frame(width: 36, alignment: .trailing)
+        }
+    }
+
+    private var useButton: some View {
+        Button {
+            Task { await useTrack() }
+        } label: {
+            Text("Use this track")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .tint(.green)
     }
 
     private var creditLabel: some View {
@@ -205,85 +211,31 @@ struct AIPromptMusicView: View {
 
     // MARK: - Actions
 
-    private func toggleTag(_ tag: String) {
-        if promptText.localizedCaseInsensitiveContains(tag) {
-            promptText = promptText
-                .replacingOccurrences(of: tag, with: "", options: .caseInsensitive)
-                .replacingOccurrences(of: "  ", with: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            if !promptText.isEmpty && !promptText.hasSuffix(" ") {
-                promptText += " "
-            }
-            promptText += tag
-        }
+    private var trimmedPrompt: String {
+        String(promptText.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
     }
 
-    private func generate() async {
+    private func generate() {
         guard let api = authManager.apiClient else { return }
-        let trimmed = String(promptText.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
-        guard !trimmed.isEmpty else { return }
+        let prompt = trimmedPrompt
+        guard !prompt.isEmpty else { return }
 
-        isGenerating = true
-        progress = 0
-        errorMessage = nil
-
-        do {
-            let localURL = try await MubertAPIClient.shared.generateFromPrompt(
-                prompt: trimmed,
-                duration: Int(duration),
-                intensity: intensity.rawValue,
-                tapeID: tape.id,
-                api: api,
-                onProgress: { p in
-                    Task { @MainActor in progress = p }
-                }
-            )
-            tape.backgroundMusicMood = "prompt"
-            if tape.waveColorHue == nil {
-                tape.waveColorHue = Double.random(in: 0...1)
-            }
-            _ = localURL
-            isGenerating = false
-            onTrackGenerated()
-        } catch {
-            isGenerating = false
-            errorMessage = error.localizedDescription
-        }
-    }
-}
-
-private struct WrappingHStack: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        arrange(proposal: proposal, subviews: subviews).size
+        trackGen.generateFromPrompt(
+            prompt: prompt,
+            duration: Int(duration),
+            intensity: "medium",
+            api: api
+        )
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrange(proposal: proposal, subviews: subviews)
-        for (i, subview) in subviews.enumerated() where i < result.positions.count {
-            subview.place(at: CGPoint(x: bounds.minX + result.positions[i].x,
-                                      y: bounds.minY + result.positions[i].y),
-                          proposal: .unspecified)
-        }
-    }
+    private func useTrack() async {
+        let committed = await trackGen.commitScratch(to: tape.id)
+        guard committed != nil else { return }
 
-    private func arrange(proposal: ProposedViewSize, subviews: Subviews) -> (positions: [CGPoint], size: CGSize) {
-        let maxWidth = proposal.width ?? .infinity
-        var positions: [CGPoint] = []
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, maxX: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth, x > 0 {
-                x = 0; y += rowHeight + spacing; rowHeight = 0
-            }
-            positions.append(CGPoint(x: x, y: y))
-            rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
-            maxX = max(maxX, x - spacing)
+        tape.backgroundMusicMood = "prompt"
+        if tape.waveColorHue == nil {
+            tape.waveColorHue = Double.random(in: 0...1)
         }
-        return (positions, CGSize(width: maxX, height: y + rowHeight))
+        onTrackGenerated()
     }
 }

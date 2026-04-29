@@ -99,15 +99,22 @@ struct LibraryBrowserView: View {
 
     @EnvironmentObject private var authManager: AuthManager
 
+    private var inUseTrackID: String? {
+        guard let mood = tape.backgroundMusicMood,
+              mood.hasPrefix("library:") else { return nil }
+        return String(mood.dropFirst("library:".count))
+    }
+
     var body: some View {
         Group {
             if viewModel.isLoadingParams {
                 VStack { Spacer(); ProgressView(); Spacer() }
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: Tokens.Spacing.s) {
                         trackListContent
                     }
+                    .padding(Tokens.Spacing.m)
                 }
             }
         }
@@ -129,6 +136,10 @@ struct LibraryBrowserView: View {
                 }
             }
         }
+        .onDisappear {
+            viewModel.stopPlayback()
+            viewModel.expandedTrackID = nil
+        }
         .alert("Error", isPresented: $viewModel.showError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -141,15 +152,25 @@ struct LibraryBrowserView: View {
     @ViewBuilder
     private var trackListContent: some View {
         ForEach(viewModel.tracks) { track in
-            trackRow(track)
-                .onAppear {
-                    if track.id == viewModel.tracks.last?.id {
-                        Task {
-                            guard let api = authManager.apiClient else { return }
-                            await viewModel.loadMore(api: api)
-                        }
+            let isInUse = track.id == inUseTrackID
+            LibraryTrackRow(
+                track: track,
+                isExpanded: viewModel.expandedTrackID == track.id || isInUse,
+                isPlaying: viewModel.playingTrackID == track.id,
+                isInUse: isInUse,
+                isCommitting: viewModel.committingTrackID == track.id,
+                onTap: { viewModel.selectTrack(track) },
+                onTogglePreview: { viewModel.togglePlayback(for: track) },
+                onUse: { Task { await commitTrack(track) } }
+            )
+            .onAppear {
+                if track.id == viewModel.tracks.last?.id {
+                    Task {
+                        guard let api = authManager.apiClient else { return }
+                        await viewModel.loadMore(api: api)
                     }
                 }
+            }
         }
 
         if viewModel.isLoadingTracks {
@@ -158,136 +179,17 @@ struct LibraryBrowserView: View {
         }
     }
 
-    private func trackRow(_ track: TapesAPIClient.LibraryTrack) -> some View {
-        let isExpanded = viewModel.expandedTrackID == track.id
-        let isPlaying = viewModel.playingTrackID == track.id
-
-        return VStack(spacing: 0) {
-            Button {
-                viewModel.selectTrack(track)
-            } label: {
-                HStack(spacing: 12) {
-                    waveformIcon(for: track, isPlaying: isPlaying)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(track.displayName)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Tokens.Colors.primaryText)
-                            .lineLimit(1)
-
-                        trackTags(track)
-                    }
-
-                    Spacer()
-
-                    Button {
-                        viewModel.togglePlayback(for: track)
-                    } label: {
-                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(Tokens.Colors.systemBlue)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, Tokens.Spacing.m)
-                .padding(.vertical, 10)
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                expandedSection(track)
-            }
-
-            Divider()
-                .padding(.leading, Tokens.Spacing.m + 36)
-        }
-    }
-
-    private func waveformIcon(for track: TapesAPIClient.LibraryTrack, isPlaying: Bool) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(waveformGradient(for: track))
-                .frame(width: 36, height: 36)
-
-            Image(systemName: isPlaying ? "waveform" : "music.note")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white)
-        }
-    }
-
-    private func waveformGradient(for track: TapesAPIClient.LibraryTrack) -> LinearGradient {
-        let hue = Double(abs(track.id.hashValue)) / Double(Int.max)
-        return LinearGradient(
-            colors: [Color(hue: hue, saturation: 0.6, brightness: 0.7),
-                     Color(hue: hue + 0.1, saturation: 0.5, brightness: 0.9)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    private func trackTags(_ track: TapesAPIClient.LibraryTrack) -> some View {
-        HStack(spacing: 6) {
-            if let bpm = track.bpm {
-                tagLabel("\(bpm) BPM")
-            }
-            if let key = track.key {
-                tagLabel(key)
-            }
-            if let duration = track.duration {
-                tagLabel(formatDuration(duration))
-            }
-            if let intensity = track.intensity {
-                tagLabel(intensity.capitalized)
-            }
-        }
-    }
-
-    private func tagLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2)
-            .foregroundStyle(Tokens.Colors.secondaryText)
-    }
-
-    private func expandedSection(_ track: TapesAPIClient.LibraryTrack) -> some View {
-        VStack(spacing: 10) {
-            if viewModel.playingTrackID == track.id {
-                ProgressView(value: viewModel.playbackProgress)
-                    .tint(Tokens.Colors.systemBlue)
-                    .padding(.horizontal, Tokens.Spacing.m)
-            }
-
-            Button {
-                Task { await selectLibraryTrack(track) }
-            } label: {
-                Text("Use this track")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Tokens.Colors.systemBlue, in: RoundedRectangle(cornerRadius: 10))
-            }
-            .padding(.horizontal, Tokens.Spacing.m)
-            .disabled(viewModel.isDownloading)
-            .overlay {
-                if viewModel.isDownloading {
-                    ProgressView()
-                }
-            }
-        }
-        .padding(.bottom, 10)
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
     // MARK: - Actions
 
-    private func selectLibraryTrack(_ track: TapesAPIClient.LibraryTrack) async {
+    private func commitTrack(_ track: TapesAPIClient.LibraryTrack) async {
         guard let streamURL = track.streamURL else { return }
 
-        viewModel.isDownloading = true
-        defer { viewModel.isDownloading = false }
+        viewModel.stopPlayback()
+        viewModel.committingTrackID = track.id
+        defer { viewModel.committingTrackID = nil }
 
         do {
-            let localURL = try await MubertAPIClient.shared.downloadLibraryTrack(
+            _ = try await MubertAPIClient.shared.downloadLibraryTrack(
                 from: streamURL,
                 tapeID: tape.id
             )
@@ -295,18 +197,11 @@ struct LibraryBrowserView: View {
             if tape.waveColorHue == nil {
                 tape.waveColorHue = Double.random(in: 0...1)
             }
-            _ = localURL
             onTrackSelected()
         } catch {
             viewModel.errorMessage = error.localizedDescription
             viewModel.showError = true
         }
-    }
-
-    private func formatDuration(_ seconds: Int) -> String {
-        let m = seconds / 60
-        let s = seconds % 60
-        return String(format: "%d:%02d", m, s)
     }
 }
 
@@ -327,12 +222,11 @@ final class LibraryBrowserViewModel: ObservableObject {
 
     @Published var expandedTrackID: String?
     @Published var playingTrackID: String?
-    @Published var playbackProgress: Double = 0
+    @Published var committingTrackID: String?
 
     private var currentOffset = 0
     private var hasMore = true
     private var player: AVPlayer?
-    private var timeObserver: Any?
 
     // MARK: - Filter Customisation
 
@@ -466,18 +360,26 @@ final class LibraryBrowserViewModel: ObservableObject {
         }
     }
 
+    /// Tap on the cell body. Opens the tapped cell, starts preview, and
+    /// closes any previously expanded (non-in-use) cell.
     func selectTrack(_ track: TapesAPIClient.LibraryTrack) {
+        guard expandedTrackID != track.id else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
-            expandedTrackID = expandedTrackID == track.id ? nil : track.id
+            expandedTrackID = track.id
         }
+        startPlayback(for: track)
     }
 
+    /// Tap on the icon. Toggles preview; cell stays open.
     func togglePlayback(for track: TapesAPIClient.LibraryTrack) {
         if playingTrackID == track.id {
             stopPlayback()
-            return
+        } else {
+            startPlayback(for: track)
         }
+    }
 
+    private func startPlayback(for track: TapesAPIClient.LibraryTrack) {
         stopPlayback()
         guard let url = track.streamURL else { return }
 
@@ -485,33 +387,15 @@ final class LibraryBrowserViewModel: ObservableObject {
         player = AVPlayer(playerItem: playerItem)
         player?.play()
         playingTrackID = track.id
-        expandedTrackID = track.id
-
-        timeObserver = player?.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            guard let self, let duration = self.player?.currentItem?.duration,
-                  duration.isValid, !duration.isIndefinite else { return }
-            self.playbackProgress = time.seconds / duration.seconds
-        }
     }
 
     func stopPlayback() {
-        if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
-            timeObserver = nil
-        }
         player?.pause()
         player = nil
         playingTrackID = nil
-        playbackProgress = 0
     }
 
     deinit {
-        if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
-        }
         player?.pause()
     }
 }

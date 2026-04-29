@@ -213,22 +213,17 @@ actor MubertAPIClient {
 
     // MARK: - Generate from Prompt (Text-to-Music)
 
-    func generateFromPrompt(
+    /// Generates a prompt-based track to a scratch (tmp) location.
+    /// The tape's per-tape cache is left untouched until the caller commits.
+    func generateFromPromptScratch(
         prompt: String,
         duration: Int = 30,
         intensity: String = "medium",
-        tapeID: UUID,
         api: TapesAPIClient,
         onProgress: @Sendable @escaping (Double) -> Void
     ) async throws -> URL {
-        if let cached = cachedTrackURL(for: tapeID) {
-            log.info("Using cached track for tape=\(tapeID.uuidString.prefix(8))")
-            onProgress(1.0)
-            return cached
-        }
-
         onProgress(0.05)
-        log.info("Requesting prompt track: \"\(prompt.prefix(40))\" tape=\(tapeID.uuidString.prefix(8))")
+        log.info("Requesting scratch prompt track: \"\(prompt.prefix(40))\"")
 
         let response: TapesAPIClient.MusicGenerateResponse
         do {
@@ -245,15 +240,86 @@ actor MubertAPIClient {
         onProgress(0.1)
 
         if response.status == "done", let urlStr = response.url, let url = URL(string: urlStr) {
-            log.info("Prompt track immediately ready")
+            log.info("Prompt track immediately ready (scratch)")
             onProgress(0.9)
-            let local = try await downloadTrack(from: url, tapeID: tapeID)
+            let local = try await downloadToScratch(from: url)
             onProgress(1.0)
             return local
         }
 
         log.info("Prompt track processing, polling id=\(response.trackId)")
-        return try await pollForTrack(id: response.trackId, tapeID: tapeID, api: api, onProgress: onProgress)
+        return try await pollForScratchTrack(id: response.trackId, api: api, onProgress: onProgress)
+    }
+
+    private func pollForScratchTrack(
+        id: String,
+        api: TapesAPIClient,
+        onProgress: @Sendable @escaping (Double) -> Void
+    ) async throws -> URL {
+        for attempt in 0..<Self.maxPollAttempts {
+            try await Task.sleep(nanoseconds: Self.pollInterval)
+
+            let fraction = 0.1 + 0.8 * (Double(attempt + 1) / Double(Self.maxPollAttempts))
+            onProgress(fraction)
+
+            let response: TapesAPIClient.MusicGenerateResponse
+            do {
+                response = try await api.pollMusicTrack(trackId: id)
+            } catch {
+                log.error("Music proxy poll failed: \(error.localizedDescription, privacy: .public)")
+                throw APIError.serverError(error.localizedDescription)
+            }
+
+            log.info("Scratch poll \(attempt + 1)/\(Self.maxPollAttempts): status=\(response.status, privacy: .public)")
+            if response.status == "done", let urlStr = response.url, let url = URL(string: urlStr) {
+                log.info("Scratch track ready")
+                onProgress(0.95)
+                let local = try await downloadToScratch(from: url)
+                onProgress(1.0)
+                return local
+            }
+        }
+
+        log.error("Scratch track generation timed out after \(Self.maxPollAttempts) attempts")
+        throw APIError.serverError("Track generation timed out.")
+    }
+
+    // MARK: - Scratch cache helpers
+
+    private func scratchDir() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("mubert_scratch", isDirectory: true)
+    }
+
+    private func downloadToScratch(from remoteURL: URL) async throws -> URL {
+        let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
+        let dir = scratchDir()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let localURL = dir.appendingPathComponent("\(UUID().uuidString).mp3")
+        try FileManager.default.moveItem(at: tempURL, to: localURL)
+        log.info("Downloaded scratch track: \(localURL.lastPathComponent)")
+        return localURL
+    }
+
+    /// Promotes a scratch file into the tape's per-tape cache slot,
+    /// replacing any existing cached track for that tape.
+    func commitScratch(at scratchURL: URL, to tapeID: UUID) throws -> URL {
+        let cacheDir = trackCacheDir()
+        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let dest = cacheDir.appendingPathComponent("\(tapeID.uuidString).mp3")
+
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.moveItem(at: scratchURL, to: dest)
+        log.info("Committed scratch → cache for tape=\(tapeID.uuidString.prefix(8))")
+        return dest
+    }
+
+    func discardScratch(at scratchURL: URL) {
+        try? FileManager.default.removeItem(at: scratchURL)
+        log.info("Discarded scratch: \(scratchURL.lastPathComponent)")
     }
 
     // MARK: - Download Library Track
