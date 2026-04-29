@@ -58,9 +58,7 @@ struct LibraryTrackRow: View {
 
             Spacer()
 
-            if isExpanded {
-                previewIconButton
-            }
+            previewIconButton
         }
         .padding(Tokens.Spacing.m)
     }
@@ -90,7 +88,7 @@ struct LibraryTrackRow: View {
     }
 
     private var previewIconButton: some View {
-        Button(action: onTogglePreview) {
+        Button(action: isExpanded ? onTogglePreview : onTap) {
             Group {
                 if isPlaying {
                     SoundWaveAnimationView()
@@ -143,10 +141,7 @@ struct LibraryTrackRow: View {
     // MARK: - Text helpers
 
     private var titleText: String {
-        if let key = track.key, !key.isEmpty {
-            return key
-        }
-        return "Untitled track"
+        track.displayTitle
     }
 
     private var metaText: String {
