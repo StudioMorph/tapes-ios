@@ -6,15 +6,30 @@ struct BackgroundMusicSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var libraryVM = LibraryBrowserViewModel()
 
+    /// Set to `true` to re-enable the Moods tab in the segmented
+    /// control. The mood enum, picker view, generation pipeline, and
+    /// playback / export plumbing are all left intact while this is
+    /// `false` — only the entry point in this sheet is hidden.
+    static let moodsTabEnabled = false
+
     enum Tab: String, CaseIterable, Identifiable {
         case library = "12k Library"
         case moods = "Moods"
         case aiPrompt = "AI Prompt"
 
         var id: String { rawValue }
+
+        static var visibleCases: [Tab] {
+            allCases.filter { tab in
+                switch tab {
+                case .moods: return BackgroundMusicSheet.moodsTabEnabled
+                default: return true
+                }
+            }
+        }
     }
 
-    @State private var selectedTab: Tab = .moods
+    @State private var selectedTab: Tab = .library
 
     var body: some View {
         NavigationStack {
@@ -65,7 +80,7 @@ private struct MusicBarModifier: ViewModifier {
 
     private var picker: some View {
         Picker("", selection: $selectedTab) {
-            ForEach(BackgroundMusicSheet.Tab.allCases) { tab in
+            ForEach(BackgroundMusicSheet.Tab.visibleCases) { tab in
                 Text(tab.rawValue).tag(tab)
             }
         }
