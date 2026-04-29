@@ -1,70 +1,52 @@
 import SwiftUI
 import AVFoundation
 
-struct LibraryBrowserView: View {
-    @Binding var tape: Tape
-    let onTrackSelected: () -> Void
+// MARK: - Filter Bar (used by BackgroundMusicSheet in the bar area)
 
-    @EnvironmentObject private var authManager: AuthManager
-    @StateObject private var viewModel = LibraryBrowserViewModel()
+struct LibraryFilterBar: View {
+    @ObservedObject var viewModel: LibraryBrowserViewModel
 
     var body: some View {
         VStack(spacing: 0) {
-            if viewModel.isLoadingParams {
-                Spacer()
-                ProgressView()
-                Spacer()
-            } else {
-                filterBar
-                trackCountBar
-                trackList
-            }
-        }
-        .task {
-            guard let api = authManager.apiClient else { return }
-            await viewModel.loadParams(api: api)
-            await viewModel.loadTracks(api: api)
-        }
-        .alert("Error", isPresented: $viewModel.showError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(viewModel.errorMessage)
-        }
-    }
-
-    // MARK: - Filter Bar
-
-    private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Tokens.Spacing.s) {
-                ForEach(viewModel.availableFilters) { filter in
-                    Menu {
-                        ForEach(filter.values) { value in
-                            Button {
-                                viewModel.toggleFilter(param: filter.param, value: value.value)
-                                Task {
-                                    guard let api = authManager.apiClient else { return }
-                                    await viewModel.loadTracks(api: api, reset: true)
-                                }
-                            } label: {
-                                HStack {
-                                    Text("\(value.value) (\(value.tracksCount))")
-                                    if viewModel.activeFilters[filter.param] == value.value {
-                                        Image(systemName: "checkmark")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Tokens.Spacing.s) {
+                    ForEach(viewModel.availableFilters) { filter in
+                        Menu {
+                            ForEach(filter.values) { value in
+                                Button {
+                                    viewModel.toggleFilter(param: filter.param, value: value.value)
+                                    viewModel.requestTrackReload = true
+                                } label: {
+                                    HStack {
+                                        Text("\(value.value) (\(value.tracksCount))")
+                                        if viewModel.activeFilters[filter.param] == value.value {
+                                            Image(systemName: "checkmark")
+                                        }
                                     }
                                 }
                             }
+                        } label: {
+                            filterPill(
+                                title: viewModel.activeFilters[filter.param] ?? filter.param.capitalized,
+                                isActive: viewModel.activeFilters[filter.param] != nil
+                            )
                         }
-                    } label: {
-                        filterPill(
-                            title: viewModel.activeFilters[filter.param] ?? filter.param.capitalized,
-                            isActive: viewModel.activeFilters[filter.param] != nil
-                        )
                     }
                 }
+                .padding(.horizontal, Tokens.Spacing.m)
+                .padding(.vertical, Tokens.Spacing.s)
+            }
+
+            HStack {
+                if let total = viewModel.totalTracks {
+                    Text("\(total) tracks")
+                        .font(.caption)
+                        .foregroundStyle(Tokens.Colors.secondaryText)
+                }
+                Spacer()
             }
             .padding(.horizontal, Tokens.Spacing.m)
-            .padding(.vertical, Tokens.Spacing.s)
+            .padding(.bottom, Tokens.Spacing.xs)
         }
     }
 
@@ -83,44 +65,73 @@ struct LibraryBrowserView: View {
             )
             .foregroundStyle(isActive ? Tokens.Colors.systemBlue : Tokens.Colors.primaryText)
     }
+}
 
-    // MARK: - Track Count
+// MARK: - Library Browser View
 
-    private var trackCountBar: some View {
-        HStack {
-            if let total = viewModel.totalTracks {
-                Text("\(total) tracks")
-                    .font(.caption)
-                    .foregroundStyle(Tokens.Colors.secondaryText)
+struct LibraryBrowserView: View {
+    @Binding var tape: Tape
+    @ObservedObject var viewModel: LibraryBrowserViewModel
+    let onTrackSelected: () -> Void
+
+    @EnvironmentObject private var authManager: AuthManager
+
+    var body: some View {
+        Group {
+            if viewModel.isLoadingParams {
+                VStack { Spacer(); ProgressView(); Spacer() }
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        trackListContent
+                    }
+                }
             }
-            Spacer()
         }
-        .padding(.horizontal, Tokens.Spacing.m)
-        .padding(.bottom, Tokens.Spacing.xs)
+        .task {
+            guard let api = authManager.apiClient else { return }
+            if viewModel.availableFilters.isEmpty {
+                await viewModel.loadParams(api: api)
+            }
+            if viewModel.tracks.isEmpty {
+                await viewModel.loadTracks(api: api)
+            }
+        }
+        .onChange(of: viewModel.requestTrackReload) { _, reload in
+            if reload {
+                viewModel.requestTrackReload = false
+                Task {
+                    guard let api = authManager.apiClient else { return }
+                    await viewModel.loadTracks(api: api, reset: true)
+                }
+            }
+        }
+        .alert("Error", isPresented: $viewModel.showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.errorMessage)
+        }
     }
 
     // MARK: - Track List
 
-    private var trackList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(viewModel.tracks) { track in
-                    trackRow(track)
-                        .onAppear {
-                            if track.id == viewModel.tracks.last?.id {
-                                Task {
-                                    guard let api = authManager.apiClient else { return }
-                                    await viewModel.loadMore(api: api)
-                                }
-                            }
+    @ViewBuilder
+    private var trackListContent: some View {
+        ForEach(viewModel.tracks) { track in
+            trackRow(track)
+                .onAppear {
+                    if track.id == viewModel.tracks.last?.id {
+                        Task {
+                            guard let api = authManager.apiClient else { return }
+                            await viewModel.loadMore(api: api)
                         }
+                    }
                 }
+        }
 
-                if viewModel.isLoadingTracks {
-                    ProgressView()
-                        .padding(Tokens.Spacing.l)
-                }
-            }
+        if viewModel.isLoadingTracks {
+            ProgressView()
+                .padding(Tokens.Spacing.l)
         }
     }
 
@@ -289,6 +300,7 @@ final class LibraryBrowserViewModel: ObservableObject {
     @Published var isDownloading = false
     @Published var showError = false
     @Published var errorMessage = ""
+    @Published var requestTrackReload = false
 
     @Published var expandedTrackID: String?
     @Published var playingTrackID: String?
