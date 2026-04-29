@@ -153,6 +153,7 @@ public struct Tape: Identifiable, Codable, Equatable {
     public var albumLocalIdentifier: String?
     public var backgroundMusicMood: String?
     public var backgroundMusicVolume: Double?
+    public var waveColorHue: Double?
     public var exportOrientation: ExportOrientation
     public var blurExportBackground: Bool
     public var livePhotosAsVideo: Bool
@@ -226,7 +227,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         case id, title, orientation, scaleMode, transition, transitionDuration
         case seamTransitions
         case clips, createdAt, updatedAt, hasReceivedFirstContent, albumLocalIdentifier
-        case backgroundMusicMood, backgroundMusicVolume
+        case backgroundMusicMood, backgroundMusicVolume, waveColorHue
         case exportOrientation
         case blurExportBackground
         case livePhotosAsVideo
@@ -258,6 +259,7 @@ public struct Tape: Identifiable, Codable, Equatable {
         albumLocalIdentifier = try container.decodeIfPresent(String.self, forKey: .albumLocalIdentifier)
         backgroundMusicMood = try container.decodeIfPresent(String.self, forKey: .backgroundMusicMood)
         backgroundMusicVolume = try container.decodeIfPresent(Double.self, forKey: .backgroundMusicVolume)
+        waveColorHue = try container.decodeIfPresent(Double.self, forKey: .waveColorHue)
         exportOrientation = try container.decodeIfPresent(ExportOrientation.self, forKey: .exportOrientation) ?? .auto
         blurExportBackground = try container.decodeIfPresent(Bool.self, forKey: .blurExportBackground) ?? true
         livePhotosAsVideo = try container.decodeIfPresent(Bool.self, forKey: .livePhotosAsVideo) ?? true

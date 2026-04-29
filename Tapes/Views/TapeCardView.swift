@@ -795,7 +795,7 @@ struct TapeCardView: View {
                     .foregroundStyle(Tokens.Colors.systemBlue)
             }
 
-            MusicWaveView(state: musicWaveState, audioLevel: previewAudioLevel)
+            MusicWaveView(state: musicWaveState, audioLevel: previewAudioLevel, colorHue: tape.waveColorHue)
 
             if tape.musicMood != .none {
                 Button {

@@ -10,6 +10,7 @@ struct MusicWaveView: View {
 
     var state: State
     var audioLevel: CGFloat = 0
+    var colorHue: Double?
 
     private static let waveCount = 12
 
@@ -34,20 +35,27 @@ struct MusicWaveView: View {
         6.5, 5.8, 7.2, 6.2, 5.3, 6.8
     ]
 
-    private static let tealColors: [Color] = [
-        Color(red: 0.357, green: 0.812, blue: 0.706),
-        Color(red: 0.549, green: 0.941, blue: 0.847),
-        Color(red: 0.290, green: 0.722, blue: 0.631),
-        Color(red: 0.690, green: 0.961, blue: 0.882),
-        Color(red: 0.427, green: 0.863, blue: 0.722),
-        Color(red: 0.239, green: 0.659, blue: 0.557),
-        Color(red: 0.357, green: 0.812, blue: 0.706),
-        Color(red: 0.549, green: 0.941, blue: 0.847),
-        Color(red: 0.290, green: 0.722, blue: 0.631),
-        Color(red: 0.690, green: 0.961, blue: 0.882),
-        Color(red: 0.427, green: 0.863, blue: 0.722),
-        Color(red: 0.239, green: 0.659, blue: 0.557)
+    private static let saturations: [Double] = [
+        0.55, 0.70, 0.45, 0.80, 0.60, 0.50,
+        0.65, 0.75, 0.55, 0.85, 0.60, 0.45
     ]
+    private static let brightnesses: [Double] = [
+        0.80, 0.92, 0.72, 0.95, 0.85, 0.68,
+        0.78, 0.88, 0.75, 0.90, 0.82, 0.70
+    ]
+
+    private var waveColors: [Color] {
+        guard let hue = colorHue else {
+            return (0..<Self.waveCount).map { i in
+                Color(hue: 0.47, saturation: Self.saturations[i], brightness: Self.brightnesses[i])
+            }
+        }
+        return (0..<Self.waveCount).map { i in
+            let hueVariation = hue + Double(i) * 0.012 - 0.066
+            let clampedHue = hueVariation - floor(hueVariation)
+            return Color(hue: clampedHue, saturation: Self.saturations[i], brightness: Self.brightnesses[i])
+        }
+    }
 
     private static let driftSpeeds: [CGFloat] = [
         0.013, 0.019, 0.011, 0.023, 0.017, 0.029,
@@ -84,7 +92,7 @@ struct MusicWaveView: View {
         }
     }
 
-    private static func drawSpeckles(context: inout GraphicsContext, width: CGFloat, midY: CGFloat, amplitudeScale: CGFloat, phase: CGFloat, masterOpacity: Double, audioLevel: CGFloat, isPlaying: Bool, isDisabled: Bool) {
+    private static func drawSpeckles(context: inout GraphicsContext, width: CGFloat, midY: CGFloat, amplitudeScale: CGFloat, phase: CGFloat, masterOpacity: Double, audioLevel: CGFloat, isPlaying: Bool, isDisabled: Bool, colors: [Color]) {
         let baseCount = 60
         let bonusCount = isPlaying ? Int(audioLevel * 40) : 0
         let speckleCount = baseCount + bonusCount
@@ -119,7 +127,7 @@ struct MusicWaveView: View {
             context.opacity = particleOpacity
             context.fill(
                 Path(ellipseIn: CGRect(x: x - halfSize, y: y - halfSize, width: particleSize, height: particleSize)),
-                with: .color(isDisabled ? Color.gray : tealColors[waveIndex])
+                with: .color(isDisabled ? Color.gray : colors[waveIndex])
             )
         }
     }
@@ -167,7 +175,7 @@ struct MusicWaveView: View {
                         }
                     }
 
-                    let color = state == .disabled ? Color.gray : Self.tealColors[i]
+                    let color = state == .disabled ? Color.gray : waveColors[i]
                     context.opacity = opacity
                     context.stroke(
                         path,
@@ -176,7 +184,7 @@ struct MusicWaveView: View {
                     )
                 }
 
-                Self.drawSpeckles(context: &context, width: width, midY: midY, amplitudeScale: amplitudeScale, phase: phase, masterOpacity: masterOpacity, audioLevel: smoothedLevel, isPlaying: state == .playing, isDisabled: state == .disabled)
+                Self.drawSpeckles(context: &context, width: width, midY: midY, amplitudeScale: amplitudeScale, phase: phase, masterOpacity: masterOpacity, audioLevel: smoothedLevel, isPlaying: state == .playing, isDisabled: state == .disabled, colors: waveColors)
             }
             .onChange(of: timeline.date) { _, _ in
                 phase += 0.05
