@@ -84,6 +84,46 @@ struct MusicWaveView: View {
         }
     }
 
+    private static func drawSpeckles(context: inout GraphicsContext, width: CGFloat, midY: CGFloat, amplitudeScale: CGFloat, phase: CGFloat, masterOpacity: Double, audioLevel: CGFloat, isPlaying: Bool) {
+        let baseCount = 60
+        let bonusCount = isPlaying ? Int(audioLevel * 40) : 0
+        let speckleCount = baseCount + bonusCount
+
+        for s in 0..<speckleCount {
+            let sf = CGFloat(s)
+            let seed1 = sf * 7.31 + phase * 0.08
+            let seed2 = sf * 13.17 + phase * 0.05
+            let seed3 = sf * 3.73 + phase * 0.12
+            let driftSeed = sf * 11.03
+
+            let baseX = fmod(abs(sin(sf * 4.19) * 137.3), 1.0)
+            let drift = sin(driftSeed + phase * 0.03) * 0.04
+            let normalizedX = min(1, max(0, baseX + drift))
+            let x = normalizedX * width
+
+            let waveIndex = s % waveCount
+            let amp = amplitudes[waveIndex] * amplitudeScale
+            let wavePhase = phase * frequencies[waveIndex] + phases[waveIndex]
+            let envelope = sin(normalizedX * .pi)
+            let waveY = midY + sin(normalizedX * .pi * 2 * frequencies[waveIndex] + wavePhase) * amp * envelope
+
+            let baseScatter = sin(seed2) * 5.0
+            let audioScatter = isPlaying ? sin(seed1 * 3.0) * audioLevel * 8.0 : 0
+            let y = waveY + baseScatter + audioScatter
+
+            let baseBrightness: CGFloat = isPlaying ? 0.6 + audioLevel * 0.4 : 0.5
+            let particleOpacity = (sin(seed3) * 0.3 + 0.7) * baseBrightness * masterOpacity
+            let particleSize: CGFloat = 1.5 + sin(seed2 * 0.7) * 1.0
+            let halfSize = particleSize / 2
+
+            context.opacity = particleOpacity
+            context.fill(
+                Path(ellipseIn: CGRect(x: x - halfSize, y: y - halfSize, width: particleSize, height: particleSize)),
+                with: .color(tealColors[waveIndex])
+            )
+        }
+    }
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             Canvas { context, size in
@@ -134,6 +174,8 @@ struct MusicWaveView: View {
                         lineWidth: Self.strokeWidths[i]
                     )
                 }
+
+                Self.drawSpeckles(context: &context, width: width, midY: midY, amplitudeScale: amplitudeScale, phase: phase, masterOpacity: masterOpacity, audioLevel: smoothedLevel, isPlaying: state == .playing)
             }
             .onChange(of: timeline.date) { _, _ in
                 phase += 0.05
