@@ -98,6 +98,7 @@ struct LibraryBrowserView: View {
     let onTrackSelected: () -> Void
 
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var tapesStore: TapesStore
 
     private var inUseTrackID: String? {
         guard let mood = tape.backgroundMusicMood,
@@ -194,9 +195,15 @@ struct LibraryBrowserView: View {
                 tapeID: tape.id
             )
             tape.backgroundMusicMood = "library:\(track.id)"
+            tape.backgroundMusicPrompt = nil
             if tape.waveColorHue == nil {
                 tape.waveColorHue = Double.random(in: 0...1)
             }
+            // Mutating the @Binding writes back into TapesStore.tapes[i]
+            // and updates the UI, but TapesStore only persists when one
+            // of its mutator methods explicitly schedules a save.
+            // updateTape replays the current value through that path.
+            tapesStore.updateTape(tape)
             onTrackSelected()
         } catch {
             viewModel.errorMessage = error.localizedDescription

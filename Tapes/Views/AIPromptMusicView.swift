@@ -5,6 +5,7 @@ struct AIPromptMusicView: View {
     let onTrackGenerated: () -> Void
 
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var tapesStore: TapesStore
     @StateObject private var trackGen = TrackGenerationManager()
 
     @State private var promptText = ""
@@ -260,6 +261,11 @@ struct AIPromptMusicView: View {
         if tape.waveColorHue == nil {
             tape.waveColorHue = Double.random(in: 0...1)
         }
+        // Mutating the @Binding writes back into TapesStore.tapes[i]
+        // and updates the UI, but TapesStore only persists when one
+        // of its mutator methods explicitly schedules a save.
+        // updateTape replays the current value through that path.
+        tapesStore.updateTape(tape)
         onTrackGenerated()
     }
 

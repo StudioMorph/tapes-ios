@@ -3,6 +3,7 @@ import SwiftUI
 struct BackgroundMusicPickerView: View {
     @Binding var tape: Tape
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var tapesStore: TapesStore
     @StateObject private var trackGen = TrackGenerationManager()
 
     var body: some View {
@@ -86,6 +87,11 @@ struct BackgroundMusicPickerView: View {
                 tape.waveColorHue = Double.random(in: 0...1)
             }
         }
+        // Same persistence caveat as the library / prompt flows: the
+        // @Binding setter updates TapesStore.tapes[i] but does not
+        // schedule a save. updateTape replays the value through the
+        // store's save path.
+        tapesStore.updateTape(tape)
         provideHapticFeedback()
 
         if mood != .none, let api = authManager.apiClient {
@@ -105,5 +111,6 @@ struct BackgroundMusicPickerView: View {
     NavigationView {
         BackgroundMusicPickerView(tape: .constant(Tape.sampleTapes[0]))
             .environmentObject(AuthManager())
+            .environmentObject(TapesStore())
     }
 }
