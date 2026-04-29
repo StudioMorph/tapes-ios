@@ -310,9 +310,8 @@ actor MubertAPIClient {
     /// Promotes a scratch file into the tape's per-tape cache slot,
     /// replacing any existing cached track for that tape.
     func commitScratch(at scratchURL: URL, to tapeID: UUID) throws -> URL {
-        let cacheDir = trackCacheDir()
-        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-        let dest = cacheDir.appendingPathComponent("\(tapeID.uuidString).mp3")
+        try ensureTrackStorageDir()
+        let dest = trackCacheDir().appendingPathComponent("\(tapeID.uuidString).mp3")
 
         if FileManager.default.fileExists(atPath: dest.path) {
             try FileManager.default.removeItem(at: dest)
@@ -337,11 +336,44 @@ actor MubertAPIClient {
         return try await downloadTrack(from: remoteURL, tapeID: tapeID)
     }
 
-    // MARK: - Cache (per-tape)
+    // MARK: - Per-tape track storage
+    //
+    // User-chosen tracks live in `Application Support/mubert_tracks/`
+    // rather than `Caches/`. Cache files can be purged by iOS at any
+    // time, which silently broke the "Use this track" promise across
+    // launches. Application Support is durable. We mark the directory
+    // as excluded from iCloud backup because these files are
+    // regenerable from the server (and we don't want to bloat backups
+    // with audio).
 
-    private func trackCacheDir() -> URL {
+    /// Where per-tape committed audio lives.
+    static func trackStorageDir() -> URL {
+        let appSupport = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return appSupport.appendingPathComponent("mubert_tracks", isDirectory: true)
+    }
+
+    /// Legacy location used before durable storage was introduced.
+    /// Kept around so the one-shot migration in `TapesApp` knows where
+    /// to look. New writes never touch this directory.
+    static func legacyTrackCacheDir() -> URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
             .appendingPathComponent("mubert_tracks", isDirectory: true)
+    }
+
+    private func trackCacheDir() -> URL { Self.trackStorageDir() }
+
+    /// Creates the storage directory if needed and excludes it from
+    /// iCloud backup. Safe to call multiple times.
+    private func ensureTrackStorageDir() throws {
+        var dir = trackCacheDir()
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: dir.path) {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? dir.setResourceValues(values)
     }
 
     func cachedTrackURL(for tapeID: UUID) -> URL? {
@@ -359,10 +391,8 @@ actor MubertAPIClient {
 
     private func downloadTrack(from remoteURL: URL, tapeID: UUID) async throws -> URL {
         let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
-        let cacheDir = trackCacheDir()
-        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-
-        let localURL = cacheDir.appendingPathComponent("\(tapeID.uuidString).mp3")
+        try ensureTrackStorageDir()
+        let localURL = trackCacheDir().appendingPathComponent("\(tapeID.uuidString).mp3")
 
         if FileManager.default.fileExists(atPath: localURL.path) {
             try FileManager.default.removeItem(at: localURL)

@@ -27,14 +27,11 @@ struct TapeSettingsView: View {
                     transitionSection
                         .accessibilitySortPriority(1)
 
-                    backgroundMusicSection
+                    livePhotosSection
                         .accessibilitySortPriority(2)
 
-                    livePhotosSection
-                        .accessibilitySortPriority(3)
-
                     destructiveActionSection
-                        .accessibilitySortPriority(4)
+                        .accessibilitySortPriority(3)
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
                 .padding(.vertical, Tokens.Spacing.l)
@@ -118,50 +115,6 @@ struct TapeSettingsView: View {
         }
     }
     
-    private var backgroundMusicSection: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
-            SectionHeader(title: "Background Music")
-
-            NavigationLink {
-                BackgroundMusicPickerView(tape: $tape)
-            } label: {
-                HStack(spacing: Tokens.Spacing.m) {
-                    Image(systemName: tape.musicMood.icon)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(Tokens.Colors.primaryText)
-                        .frame(width: 24)
-
-                    VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
-                        Text("Current mood")
-                            .font(Tokens.Typography.caption)
-                            .foregroundColor(Tokens.Colors.secondaryText)
-
-                        Text(tape.musicMood.displayName)
-                            .font(Tokens.Typography.headline)
-                            .foregroundColor(Tokens.Colors.primaryText)
-                    }
-
-                    Spacer()
-
-                    HStack(spacing: Tokens.Spacing.xs) {
-                        Text("Edit")
-                            .font(Tokens.Typography.body)
-                            .foregroundColor(Tokens.Colors.secondaryText)
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Tokens.Colors.secondaryText)
-                    }
-                }
-                .padding(.vertical, Tokens.Spacing.m)
-                .padding(.horizontal, Tokens.Spacing.m)
-                .background(Tokens.Colors.secondaryBackground)
-                .cornerRadius(Tokens.Radius.card)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
     private var livePhotosSection: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.s) {
             SectionHeader(title: "Live Photos")

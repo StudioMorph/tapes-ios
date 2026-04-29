@@ -10,13 +10,14 @@ struct BackgroundMusicPickerView: View {
             VStack(alignment: .leading, spacing: Tokens.Spacing.l) {
                 VStack(spacing: Tokens.Spacing.s) {
                     ForEach(MubertAPIClient.Mood.allCases) { mood in
+                        let selected = isSelected(mood)
                         MoodRowView(
                             mood: mood,
-                            isSelected: tape.musicMood == mood,
-                            isGenerating: tape.musicMood == mood && trackGen.isGenerating,
-                            isReady: tape.musicMood == mood && trackGen.isReady,
-                            isPreviewing: tape.musicMood == mood && trackGen.isPreviewing,
-                            progress: tape.musicMood == mood ? trackGen.progress : 0,
+                            isSelected: selected,
+                            isGenerating: selected && trackGen.isGenerating,
+                            isReady: selected && trackGen.isReady,
+                            isPreviewing: selected && trackGen.isPreviewing,
+                            progress: selected ? trackGen.progress : 0,
                             volume: Binding(
                                 get: { Double(tape.musicVolume) },
                                 set: { tape.backgroundMusicVolume = $0 }
@@ -39,23 +40,48 @@ struct BackgroundMusicPickerView: View {
         }
         .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
         .onAppear {
-            if tape.musicMood != .none {
+            if currentMood != nil {
                 trackGen.loadCachedState(for: tape.id)
             }
         }
         .onDisappear { trackGen.stopPreview() }
     }
 
+    /// The currently selected mood, *only* when `backgroundMusicMood`
+    /// holds a real mood rawValue. Returns `nil` for library / prompt
+    /// tracks (and for "no music"), so those don't accidentally light
+    /// up the "None" row.
+    private var currentMood: MubertAPIClient.Mood? {
+        guard let raw = tape.backgroundMusicMood,
+              let mood = MubertAPIClient.Mood(rawValue: raw),
+              mood != .none else { return nil }
+        return mood
+    }
+
+    /// Selection rule for a mood row.
+    /// - `.none` is selected only when there is genuinely no background
+    ///   music (`backgroundMusicMood == nil`). It does **not** show as
+    ///   selected when a library or prompt track is in use.
+    /// - Any other mood is selected only when its rawValue matches
+    ///   `backgroundMusicMood` exactly.
+    private func isSelected(_ mood: MubertAPIClient.Mood) -> Bool {
+        if mood == .none {
+            return tape.backgroundMusicMood == nil
+        }
+        return tape.backgroundMusicMood == mood.rawValue
+    }
+
     private func selectMood(_ mood: MubertAPIClient.Mood) {
-        guard mood != tape.musicMood else { return }
+        guard !isSelected(mood) else { return }
 
         trackGen.cancel()
-        if tape.musicMood != .none {
+        if tape.backgroundMusicMood != nil {
             Task { await MubertAPIClient.shared.clearCache(for: tape.id) }
         }
 
         withAnimation(.easeInOut(duration: 0.2)) {
             tape.backgroundMusicMood = mood == .none ? nil : mood.rawValue
+            tape.backgroundMusicPrompt = nil
             if mood != .none && tape.waveColorHue == nil {
                 tape.waveColorHue = Double.random(in: 0...1)
             }

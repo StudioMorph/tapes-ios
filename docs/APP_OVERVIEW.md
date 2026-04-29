@@ -203,8 +203,11 @@ Per-boundary transition overrides between specific clips:
 
 ### Background Music
 
-- AI-generated tracks via **Mubert API** — 16 mood categories
-- Tracks are generated per-tape, cached as MP3 in `Caches/mubert_tracks/{tapeID}.mp3`
+- AI-generated tracks via **Mubert API** — 16 mood categories, plus a
+  12K library and a free-form text prompt
+- Tracks are stored per-tape as MP3 in
+  `Application Support/mubert_tracks/{tapeID}.mp3` (durable; excluded
+  from iCloud backup)
 - Playback via a separate `AVAudioPlayer` (infinite loop) synced with the video player
 - Per-clip music volume levels supported (ducking/boosting at clip boundaries)
 - Audio session: `.playback` category with `.mixWithOthers`

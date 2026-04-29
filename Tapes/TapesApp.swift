@@ -16,6 +16,7 @@ struct TapesApp: App {
 
     init() {
         cleanupTempImports()
+        Self.migrateMubertTracksToApplicationSupport()
         Self.cleanupLegacyMockMusicTracks()
         Task.detached(priority: .utility) { Self.applyMediaFileProtection() }
         if #available(iOS 26, *) {
@@ -27,17 +28,58 @@ struct TapesApp: App {
     }
 
     /// One-shot cleanup for sine-wave WAV files that the old Mubert 401
-    /// fallback wrote with a `.mp3` extension. Runs once per device.
+    /// fallback wrote with a `.mp3` extension. Runs once per device,
+    /// against the legacy `Caches/mubert_tracks/` location only.
+    /// New installs / fresh users have nothing to clean.
     private static func cleanupLegacyMockMusicTracks() {
         let defaults = UserDefaults.standard
         let flagKey = "tapes_cleaned_mock_music_v1"
         guard !defaults.bool(forKey: flagKey) else { return }
 
-        let cacheDir = FileManager.default
-            .urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("mubert_tracks", isDirectory: true)
+        let legacyDir = MubertAPIClient.legacyTrackCacheDir()
+        try? FileManager.default.removeItem(at: legacyDir)
+        defaults.set(true, forKey: flagKey)
+    }
 
-        try? FileManager.default.removeItem(at: cacheDir)
+    /// One-shot migration that moves any per-tape audio files from the
+    /// old `Caches/mubert_tracks/` location into the durable
+    /// `Application Support/mubert_tracks/`. Runs before mock cleanup
+    /// so users who chose a legitimate library / prompt track in the
+    /// old build don't lose it on first launch of this build.
+    private static func migrateMubertTracksToApplicationSupport() {
+        let defaults = UserDefaults.standard
+        let flagKey = "tapes_migrated_mubert_to_app_support_v1"
+        guard !defaults.bool(forKey: flagKey) else { return }
+
+        let fm = FileManager.default
+        let legacyDir = MubertAPIClient.legacyTrackCacheDir()
+        guard fm.fileExists(atPath: legacyDir.path) else {
+            defaults.set(true, forKey: flagKey)
+            return
+        }
+
+        let destDir = MubertAPIClient.trackStorageDir()
+        do {
+            if !fm.fileExists(atPath: destDir.path) {
+                try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+            }
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            var dirURL = destDir
+            try? dirURL.setResourceValues(values)
+
+            let contents = (try? fm.contentsOfDirectory(atPath: legacyDir.path)) ?? []
+            for name in contents where name.hasSuffix(".mp3") {
+                let src = legacyDir.appendingPathComponent(name)
+                let dst = destDir.appendingPathComponent(name)
+                if fm.fileExists(atPath: dst.path) { continue }
+                try? fm.moveItem(at: src, to: dst)
+            }
+        } catch {
+            // Migration is best-effort. If it fails the user simply
+            // re-selects the track on the next "Use this track" tap.
+        }
+
         defaults.set(true, forKey: flagKey)
     }
 
