@@ -48,6 +48,8 @@ struct TapeCardView: View {
     @EnvironmentObject var tapeStore: TapesStore
     @EnvironmentObject var entitlementManager: EntitlementManager
     @EnvironmentObject var importCoordinator: MediaImportCoordinator
+    @EnvironmentObject var musicPreviewManager: MusicPreviewManager
+    @Environment(\.scenePhase) private var scenePhase
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
     @State private var showingSeamTransition = false
@@ -59,7 +61,6 @@ struct TapeCardView: View {
     
     @State private var showingDeleteTapeAlert = false
     @State private var showingPaywall = false
-    @State private var isPreviewingMusic = false
     @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
@@ -173,11 +174,13 @@ struct TapeCardView: View {
         if let resumeIndex = tape.resumeClipIndex, !disabled {
             Menu {
                 Button {
+                    stopPreviewIfNeeded()
                     onPlay(resumeIndex)
                 } label: {
                     Label("Pick up where you left off", systemImage: "play.fill")
                 }
                 Button {
+                    stopPreviewIfNeeded()
                     onPlay(0)
                 } label: {
                     Label("Start from the beginning", systemImage: "memories")
@@ -187,7 +190,7 @@ struct TapeCardView: View {
             }
         } else {
             icon
-                .onTapGesture { guard !disabled else { return }; onPlay(0) }
+                .onTapGesture { guard !disabled else { return }; stopPreviewIfNeeded(); onPlay(0) }
         }
     }
 
@@ -230,7 +233,7 @@ struct TapeCardView: View {
                         .foregroundColor(isShareIconDisabled || isJiggling ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
                         .accessibilityLabel("Share")
                         .accessibilityHint(isShareIconDisabled ? "Sharing is not available" : "")
-                        .onTapGesture { guard !isShareIconDisabled, !isJiggling else { return }; onShare() }
+                        .onTapGesture { guard !isShareIconDisabled, !isJiggling else { return }; stopPreviewIfNeeded(); onShare() }
                         .id("share-\(tapeID)")
 
                     Image(systemName: "slider.horizontal.3")
@@ -238,7 +241,7 @@ struct TapeCardView: View {
                         .foregroundColor(isTapeActionsDisabled || isJiggling ? Tokens.Colors.tertiaryText : Tokens.Colors.primaryText)
                         .accessibilityLabel("Tape settings")
                         .accessibilityHint(isTapeActionsDisabled ? "Add clips first" : "")
-                        .onTapGesture { guard !isTapeActionsDisabled, !isJiggling else { return }; onSettings() }
+                        .onTapGesture { guard !isTapeActionsDisabled, !isJiggling else { return }; stopPreviewIfNeeded(); onSettings() }
                         .id("settings-\(tapeID)")
                     
                     playButton
@@ -294,6 +297,7 @@ struct TapeCardView: View {
                             showingMediaPicker = true
                         case .camera:
                             importSource = .centerFAB
+                            stopPreviewIfNeeded()
                             onCameraCapture { capturedMedia in
                                 handleMediaInsertion(picked: capturedMedia, source: .centerFAB)
                             }
@@ -463,6 +467,14 @@ struct TapeCardView: View {
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
         }
+        .onDisappear { stopPreviewIfNeeded() }
+        .onChange(of: scenePhase) { _, p in if p != .active { stopPreviewIfNeeded() } }
+        .onChange(of: showingSeamTransition) { _, s in if s { stopPreviewIfNeeded() } }
+        .onChange(of: showingPaywall) { _, s in if s { stopPreviewIfNeeded() } }
+    }
+
+    private func stopPreviewIfNeeded() {
+        musicPreviewManager.stop()
     }
     
     // MARK: - Jiggle Mode
@@ -577,6 +589,8 @@ struct TapeCardView: View {
             return
         }
 
+        stopPreviewIfNeeded()
+
         switch item {
         case .startPlus:
             importSource = .leftPlaceholder
@@ -591,6 +605,7 @@ struct TapeCardView: View {
     private func handleClipTap(_ clip: Clip) {
         guard !clip.isPlaceholder else { return }
         if isJiggling { return }
+        stopPreviewIfNeeded()
         if clip.clipType == .video {
             clipToTrim = clip
         } else if clip.clipType == .image {
@@ -774,9 +789,9 @@ struct TapeCardView: View {
 
     // MARK: - Music Bar
 
-    @State private var previewAudioPlayer: AVAudioPlayer?
-    @State private var previewAudioLevel: CGFloat = 0
-    @State private var meterTimer: Timer?
+    private var isPreviewingMusic: Bool {
+        musicPreviewManager.isActive(for: tape.id)
+    }
 
     private var musicWaveState: MusicWaveView.State {
         if tape.musicMood == .none { return .disabled }
@@ -795,7 +810,7 @@ struct TapeCardView: View {
                     .foregroundStyle(Tokens.Colors.systemBlue)
             }
 
-            MusicWaveView(state: musicWaveState, audioLevel: previewAudioLevel, colorHue: tape.waveColorHue)
+            MusicWaveView(state: musicWaveState, audioLevel: musicPreviewManager.isActive(for: tape.id) ? musicPreviewManager.audioLevel : 0, colorHue: tape.waveColorHue)
 
             if tape.musicMood != .none {
                 Button {
@@ -815,48 +830,9 @@ struct TapeCardView: View {
     }
 
     private func toggleMusicPreview() {
-        if isPreviewingMusic {
-            stopMusicPreview()
-            return
-        }
-
         Task {
-            guard let cachedURL = await MubertAPIClient.shared.cachedTrackURL(for: tape.id) else {
-                return
-            }
-            do {
-                let player = try AVAudioPlayer(contentsOf: cachedURL)
-                player.numberOfLoops = -1
-                player.volume = tape.musicVolume
-                player.isMeteringEnabled = true
-                player.prepareToPlay()
-                player.play()
-                previewAudioPlayer = player
-                isPreviewingMusic = true
-                startMeterPolling()
-            } catch {
-                TapesLog.music.error("Preview failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func stopMusicPreview() {
-        meterTimer?.invalidate()
-        meterTimer = nil
-        previewAudioPlayer?.stop()
-        previewAudioPlayer = nil
-        isPreviewingMusic = false
-        previewAudioLevel = 0
-    }
-
-    private func startMeterPolling() {
-        meterTimer?.invalidate()
-        meterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { _ in
-            guard let player = previewAudioPlayer, player.isPlaying else { return }
-            player.updateMeters()
-            let power = player.averagePower(forChannel: 0)
-            let normalized = CGFloat(max(0, min(1, (power + 50) / 50)))
-            previewAudioLevel = normalized
+            let cachedURL = await MubertAPIClient.shared.cachedTrackURL(for: tape.id)
+            musicPreviewManager.toggle(tapeID: tape.id, cachedURL: cachedURL, volume: tape.musicVolume)
         }
     }
 

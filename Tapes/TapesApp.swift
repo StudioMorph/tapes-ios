@@ -10,6 +10,7 @@ struct TapesApp: App {
     @StateObject private var authManager = AuthManager()
     @StateObject private var entitlementManager = EntitlementManager()
     @StateObject private var navigationCoordinator = NavigationCoordinator()
+    @StateObject private var musicPreviewManager = MusicPreviewManager()
 
     private let apiClient = TapesAPIClient()
 
@@ -83,6 +84,7 @@ struct TapesApp: App {
                 .environmentObject(authManager)
                 .environmentObject(entitlementManager)
                 .environmentObject(navigationCoordinator)
+                .environmentObject(musicPreviewManager)
                 .preferredColorScheme(appearanceMode.colorScheme)
                 .onOpenURL { url in
                     handleIncomingURL(url)
