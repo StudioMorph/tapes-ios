@@ -59,6 +59,7 @@ struct TapeCardView: View {
     
     @State private var showingDeleteTapeAlert = false
     @State private var showingPaywall = false
+    @State private var isPreviewingMusic = false
     @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
@@ -324,6 +325,12 @@ struct TapeCardView: View {
             )
             .onPreferenceChange(CardWidthKey.self) { width in
                 if width > 0 { containerWidth = width }
+            }
+
+            if !isJiggling {
+                musicBar
+                    .padding(.horizontal, Tokens.Spacing.m)
+                    .padding(.bottom, Tokens.Spacing.m)
             }
         }
         .background(
@@ -762,6 +769,89 @@ struct TapeCardView: View {
 
     private var isEmptyTape: Bool {
         tape.clips.isEmpty && !tape.hasReceivedFirstContent
+    }
+
+    // MARK: - Music Bar
+
+    @State private var previewAudioPlayer: AVAudioPlayer?
+    @State private var previewAudioLevel: CGFloat = 0
+    @State private var meterTimer: Timer?
+
+    private var musicWaveState: MusicWaveView.State {
+        if tape.musicMood == .none { return .disabled }
+        if isPreviewingMusic { return .playing }
+        return .idle
+    }
+
+    private var musicBar: some View {
+        HStack(spacing: Tokens.Spacing.s) {
+            HStack(spacing: 4) {
+                Image(systemName: tape.musicMood == .none ? "music.note" : "music.note.list")
+                    .font(.system(size: 14, weight: .medium))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            .foregroundStyle(tape.musicMood == .none ? Tokens.Colors.tertiaryText : Tokens.Colors.systemBlue)
+
+            MusicWaveView(state: musicWaveState, audioLevel: previewAudioLevel)
+
+            if tape.musicMood != .none {
+                Button {
+                    toggleMusicPreview()
+                } label: {
+                    Image(systemName: isPreviewingMusic ? "stop.fill" : "waveform")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Tokens.Colors.systemBlue)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func toggleMusicPreview() {
+        if isPreviewingMusic {
+            stopMusicPreview()
+            return
+        }
+
+        Task {
+            guard let cachedURL = await MubertAPIClient.shared.cachedTrackURL(for: tape.id) else {
+                return
+            }
+            do {
+                let player = try AVAudioPlayer(contentsOf: cachedURL)
+                player.numberOfLoops = -1
+                player.volume = tape.musicVolume
+                player.isMeteringEnabled = true
+                player.prepareToPlay()
+                player.play()
+                previewAudioPlayer = player
+                isPreviewingMusic = true
+                startMeterPolling()
+            } catch {
+                TapesLog.music.error("Preview failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func stopMusicPreview() {
+        meterTimer?.invalidate()
+        meterTimer = nil
+        previewAudioPlayer?.stop()
+        previewAudioPlayer = nil
+        isPreviewingMusic = false
+        previewAudioLevel = 0
+    }
+
+    private func startMeterPolling() {
+        meterTimer?.invalidate()
+        meterTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { _ in
+            guard let player = previewAudioPlayer, player.isPlaying else { return }
+            player.updateMeters()
+            let power = player.averagePower(forChannel: 0)
+            let normalized = CGFloat(max(0, min(1, (power + 50) / 50)))
+            previewAudioLevel = normalized
+        }
     }
 
     /// Settings and play require at least one non-placeholder clip.
