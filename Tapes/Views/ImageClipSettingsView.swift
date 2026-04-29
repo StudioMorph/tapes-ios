@@ -45,7 +45,7 @@ struct ImageClipSettingsView: View {
         isLivePhoto && livePhotoAsVideo
     }
 
-    private var hasBackgroundMusic: Bool { tape.musicMood != .none }
+    private var hasBackgroundMusic: Bool { tape.hasBackgroundMusic }
 
     init(tape: Binding<Tape>, clipID: UUID, onDismiss: @escaping () -> Void) {
         self._tape = tape

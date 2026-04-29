@@ -2,15 +2,16 @@
 
 ## Summary
 
-AI-generated background music plays simultaneously with tape playback, controlled via a mood picker and volume slider in Tape Settings. Tracks are generated eagerly when a mood is selected, cached per-tape, and can be previewed and regenerated in the settings modal.
+AI-generated and library-sourced background music plays simultaneously with tape playback. Three entry methods via a unified sheet: **12K Library** (pre-made tracks), **Moods** (AI-generated mood-based), and **AI Prompt** (text-to-music). Tracks are cached per-tape and sync with video playback.
 
 ## Purpose & Scope
 
 - Allow users to add ambient/mood-based background music to their tapes
-- Music is generated via the Mubert AI Music API (royalty-free, DMCA-free)
-- Each tape stores its own mood, volume preference, and cached track
+- Music sourced via the Mubert AI Music API (royalty-free, DMCA-free)
+- Three selection methods: browse the 12K library, pick a mood, or describe a vibe via text prompt
+- Each tape stores its source, volume preference, wave colour, and cached track
 - Music plays in sync with the tape's video playback (play/pause/stop)
-- Users can preview and regenerate tracks before playing
+- Music is included in exported videos
 
 ## Architecture
 
@@ -18,67 +19,91 @@ AI-generated background music plays simultaneously with tape playback, controlle
 
 | File | Role |
 |------|------|
-| `MubertAPIClient.swift` | API client (actor) — handles track generation requests, response parsing, file download, per-tape caching, and mock fallback |
+| `MubertAPIClient.swift` | API client (actor) — handles track generation (mood + prompt), library track download, response parsing, file caching, and polling |
 | `BackgroundMusicPlayer.swift` | `AVAudioPlayer`-based background music controller with sync methods for coordinating with the main `AVPlayer` |
-| `TrackGenerationManager.swift` | Observable state machine for the settings UI — drives progress bar, preview playback, and regeneration |
+| `TrackGenerationManager.swift` | Observable state machine for the Moods tab — drives progress bar, preview playback, and regeneration |
+| `MusicPreviewManager.swift` | Shared `ObservableObject` managing a single active music preview across all `TapeCardView` instances |
+
+### Backend Routes (`tapes-api/src/routes/music.ts`)
+
+| Route | Purpose |
+|-------|---------|
+| `POST /music/generate` | Generate a track from mood (`mood_playlist`) or text prompt (`prompt`), with configurable `intensity` and `duration` |
+| `GET /music/tracks/:id` | Poll for track generation status |
+| `GET /music/library/params` | Fetch available filter categories (genres, moods, activities, BPM) for the 12K library |
+| `GET /music/library/tracks` | Browse/filter library tracks with pagination |
 
 ### Model Changes (`Tapes/Models/Tape.swift`)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `backgroundMusicMood` | `String?` | `nil` | Raw value of `MubertAPIClient.Mood` enum |
+| `backgroundMusicMood` | `String?` | `nil` | Mood raw value, `"library:{trackID}"`, or `"prompt"` |
 | `backgroundMusicVolume` | `Double?` | `nil` | 0.05–1.0, defaults to 0.3 if nil |
+| `waveColorHue` | `Double?` | `nil` | Random 0–1 hue for the animated wave visualisation |
 
-Computed helpers: `musicMood` (typed enum), `musicVolume` (Float).
+Computed helpers: `musicMood` (typed enum), `musicVolume` (Float), `hasBackgroundMusic` (true if any source is set).
 
 ### UI
 
-- **`MoodRowView.swift`**: List-style mood row with icon, label, animated preview button, regenerate button, and green progress bar
-- **`TapeSettingsView.swift`**: Integrates `TrackGenerationManager` for per-mood generation, preview, and regeneration
-- **Volume slider**: Shown when a mood is selected, 5%–100% range
+- **`BackgroundMusicSheet.swift`**: Full-height sheet with segmented control: 12K Library / Moods / AI Prompt
+- **`LibraryBrowserView.swift`**: Filter pills, track list with metadata tags, inline preview via `AVPlayer`, "Use this track" download button, pagination
+- **`BackgroundMusicPickerView.swift`**: Mood grid with generation, preview, volume control (reused from existing implementation)
+- **`AIPromptMusicView.swift`**: Multi-line text prompt, quick tags, duration slider (15–90s), energy picker (Low/Medium/High), generate button with progress
+- **`MusicWaveView.swift`**: Animated Canvas-based wave visualisation with 12 layered paths, audio-reactive spikes, speckle particles, and per-tape random colouring
+- **`MoodRowView.swift`**: List-style mood row with icon, label, animated preview button, regenerate button, and progress bar
+
+### Entry Points
+
+- **Music bar on TapeCardView**: Music note + chevron button opens `BackgroundMusicSheet`
+- **Waveform icon on TapeCardView**: Previews cached track via `MusicPreviewManager`
+- **Tape Settings**: Existing mood picker (retained for backwards compatibility)
 
 ### Playback Integration (`Tapes/Views/Player/TapePlayerViewModel.swift`)
 
-- `prepare()`: If mood is set, loads cached track or generates one. Uses `pendingPlay` mechanism for race-free sync with video
+- `prepare()`: If `hasBackgroundMusic`, loads cached track or generates one (mood-based only). Library/prompt tracks must already be cached
 - `togglePlayPause()`: Syncs background music play/pause with video
 - `shutdown()`: Stops background music
 - Playback finished: Pauses background music
 
+### Export Integration (`Tapes/Export/TapeExporter.swift`)
+
+- If `tape.hasBackgroundMusic`, mixes the cached track into the exported video
+
 ## Data Flow
 
 ```
-Tape Settings → user selects mood
-                    ↓
-                TrackGenerationManager.generate(mood, tapeID)
-                    ↓
-                MubertAPIClient.generateTrack(mood, tapeID, onProgress)
-                    ↓ (API call with polling, or cache hit)
-                Track cached at Caches/mubert_tracks/{tapeID}.mp3
-                    ↓
-                User can preview / regenerate in settings
-                    ↓
-                Save → mood + volume persisted to Tape model
-                    ↓
+BackgroundMusicSheet → user selects source
+                            ↓
+    Tab 1 (Library): Browse → Preview → "Use this track" → download MP3
+    Tab 2 (Moods):   Select mood → generate via API → cache
+    Tab 3 (Prompt):  Type description → generate via API → poll → cache
+                            ↓
+    Track cached at Caches/mubert_tracks/{tapeID}.mp3
+    tape.backgroundMusicMood = "library:{id}" | "{mood}" | "prompt"
+    tape.waveColorHue assigned if nil
+                            ↓
 Playback starts → BackgroundMusicPlayer.prepare(mood, tapeID, volume)
-                    ↓ (loads from cache or waits for generation)
+                            ↓ (loads from cache)
                 AVAudioPlayer loops alongside AVPlayer
 ```
 
 ## Caching Strategy
 
-- Tracks are cached per-tape at `Caches/mubert_tracks/{tapeID}.mp3`
-- 30-second MP3 loops (small file, fast to generate)
-- Selecting a different mood clears the previous tape's cache
+- Tracks cached per-tape at `Caches/mubert_tracks/{tapeID}.mp3`
+- 30-second MP3 loops for mood/prompt tracks (~470KB)
+- Library tracks are variable duration
+- Selecting a different source clears the previous tape's cache
 - Regenerating replaces the existing cached track
 - Cache persists across app sessions (cleared by iOS storage management)
 
 ## Mubert API
 
-- **Endpoint**: `POST https://music-api.mubert.com/api/v3/public/tracks`
-- **Auth**: `customer-id` + `access-token` headers
-- **Track duration**: 30s (loops infinitely during playback)
-- **Format**: MP3 at 128kbps (~470KB per track)
-- **Moods**: Mapped to `playlist_index` values
+- **Track generation**: `POST /music/generate` (proxied through Tapes API)
+- **Library params**: `GET /music/library/params` (genres, moods, activities, BPM)
+- **Library tracks**: `GET /music/library/tracks` (filterable, paginated, with stream URLs)
+- **Auth**: `customer-id` + `access-token` headers (server-side only)
+- **Track duration**: 30s default (mood/prompt), variable (library)
+- **Format**: MP3 at 128kbps
 
 ## Available Moods
 
@@ -86,21 +111,22 @@ None, Chill, Cinematic, Dramatic, Dreamy, Energetic, Epic, Happy, Inspiring, Mel
 
 ## Testing
 
-- Select a mood in Tape Settings → green progress bar shows generation
-- When complete, tap the waveform icon to preview the track
-- Tap the regenerate icon to get a fresh variation
-- Switch moods → previous generation cancels, new one starts
-- Save → Play the tape → music and video start together
-- If track is still generating at playback, loading wheel shows until ready
-- Play/pause syncs with the main playback controls
+- Tap music note + chevron on any non-empty tape → sheet opens
+- **12K Library tab**: Filters load, tracks list, tap play to stream, tap "Use this track" to assign
+- **Moods tab**: Select mood → generation progress → preview → regenerate
+- **AI Prompt tab**: Type description, adjust duration/energy, generate → progress → assigned
+- All three sources: play the tape → music and video start together
+- Export with background music → music mixed into output
+- Preview stops when: switching tapes, opening modals, starting playback, backgrounding the app
 
 ## Dependencies
 
-- `AVFoundation` (Apple framework — `AVAudioPlayer`)
+- `AVFoundation` (Apple framework — `AVAudioPlayer`, `AVPlayer`)
 - Mubert AI Music API v3 (REST, no SDK)
 
 ## Known Limitations
 
-- Background music is not mixed into exported videos (playback-only for now)
-- First generation per mood takes ~15–30s (API processing time)
-- Mock fallback generates a 220Hz tone when API returns 401
+- Library tracks don't have human-readable names — display names are derived from metadata (key, BPM, intensity)
+- Library track artwork is not available from the API
+- First generation per mood/prompt takes ~15–30s (API processing time)
+- Library/prompt tracks require the Mubert Startup plan or above

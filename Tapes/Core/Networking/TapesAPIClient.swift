@@ -563,14 +563,101 @@ actor TapesAPIClient {
         return try await postRaw(path: "/music/generate", body: body)
     }
 
+    func generateMusicFromPrompt(prompt: String, duration: Int, intensity: String = "medium") async throws -> MusicGenerateResponse {
+        let body: [String: Any] = [
+            "prompt": String(prompt.prefix(200)),
+            "duration": duration,
+            "intensity": intensity,
+        ]
+        return try await postRaw(path: "/music/generate", body: body)
+    }
+
     func pollMusicTrack(trackId: String) async throws -> MusicGenerateResponse {
         try await get(path: "/music/tracks/\(trackId)")
     }
 
+    // MARK: - Music Library (12K)
+
+    struct LibraryParamValue: Decodable, Identifiable {
+        let value: String
+        let tracksCount: Int
+
+        var id: String { value }
+
+        enum CodingKeys: String, CodingKey {
+            case value
+            case tracksCount = "tracks_count"
+        }
+    }
+
+    struct LibraryParam: Decodable, Identifiable {
+        let param: String
+        let values: [LibraryParamValue]
+
+        var id: String { param }
+    }
+
+    struct LibraryTrackGeneration: Decodable {
+        let status: String
+        let url: String?
+    }
+
+    struct LibraryTrack: Decodable, Identifiable {
+        let id: String
+        let bpm: Int?
+        let key: String?
+        let duration: Int?
+        let intensity: String?
+        let mode: String?
+        let playlistIndex: String?
+        let generations: [LibraryTrackGeneration]?
+
+        var streamURL: URL? {
+            guard let urlStr = generations?.first?.url else { return nil }
+            return URL(string: urlStr)
+        }
+
+        var displayName: String {
+            var parts: [String] = []
+            if let key { parts.append(key) }
+            if let bpm { parts.append("\(bpm) BPM") }
+            if let intensity { parts.append(intensity.capitalized) }
+            return parts.isEmpty ? "Track \(id.prefix(6))" : parts.joined(separator: " · ")
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, bpm, key, duration, intensity, mode, generations
+            case playlistIndex = "playlist_index"
+        }
+    }
+
+    struct LibraryTracksMeta: Decodable {
+        let total: Int
+        let limit: Int
+        let offset: Int
+    }
+
+    struct LibraryTracksResponse: Decodable {
+        let data: [LibraryTrack]
+        let meta: LibraryTracksMeta?
+    }
+
+    func fetchLibraryParams(filters: [String: String] = [:]) async throws -> [LibraryParam] {
+        let items = filters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        return try await get(path: "/music/library/params", queryItems: items)
+    }
+
+    func fetchLibraryTracks(filters: [String: String] = [:], offset: Int = 0, limit: Int = 50) async throws -> LibraryTracksResponse {
+        var items = filters.map { URLQueryItem(name: $0.key, value: $0.value) }
+        items.append(URLQueryItem(name: "offset", value: "\(offset)"))
+        items.append(URLQueryItem(name: "limit", value: "\(limit)"))
+        return try await get(path: "/music/library/tracks", queryItems: items)
+    }
+
     // MARK: - HTTP Primitives
 
-    private func get<T: Decodable>(path: String) async throws -> T {
-        let request = try buildRequest(method: "GET", path: path)
+    private func get<T: Decodable>(path: String, queryItems: [URLQueryItem] = []) async throws -> T {
+        let request = try buildRequest(method: "GET", path: path, queryItems: queryItems)
         return try await execute(request)
     }
 
@@ -625,8 +712,14 @@ actor TapesAPIClient {
 
     // MARK: - Request Building
 
-    private func buildRequest(method: String, path: String, authenticated: Bool = true) throws -> URLRequest {
-        let url = baseURL.appendingPathComponent(path)
+    private func buildRequest(method: String, path: String, queryItems: [URLQueryItem] = [], authenticated: Bool = true) throws -> URLRequest {
+        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let url = components.url else {
+            throw APIError.network(URLError(.badURL))
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method
 

@@ -211,6 +211,61 @@ actor MubertAPIClient {
         throw APIError.serverError("Track generation timed out.")
     }
 
+    // MARK: - Generate from Prompt (Text-to-Music)
+
+    func generateFromPrompt(
+        prompt: String,
+        duration: Int = 30,
+        intensity: String = "medium",
+        tapeID: UUID,
+        api: TapesAPIClient,
+        onProgress: @Sendable @escaping (Double) -> Void
+    ) async throws -> URL {
+        if let cached = cachedTrackURL(for: tapeID) {
+            log.info("Using cached track for tape=\(tapeID.uuidString.prefix(8))")
+            onProgress(1.0)
+            return cached
+        }
+
+        onProgress(0.05)
+        log.info("Requesting prompt track: \"\(prompt.prefix(40))\" tape=\(tapeID.uuidString.prefix(8))")
+
+        let response: TapesAPIClient.MusicGenerateResponse
+        do {
+            response = try await api.generateMusicFromPrompt(
+                prompt: prompt,
+                duration: duration,
+                intensity: intensity
+            )
+        } catch {
+            log.error("Music proxy prompt generate failed: \(error.localizedDescription, privacy: .public)")
+            throw APIError.serverError(error.localizedDescription)
+        }
+
+        onProgress(0.1)
+
+        if response.status == "done", let urlStr = response.url, let url = URL(string: urlStr) {
+            log.info("Prompt track immediately ready")
+            onProgress(0.9)
+            let local = try await downloadTrack(from: url, tapeID: tapeID)
+            onProgress(1.0)
+            return local
+        }
+
+        log.info("Prompt track processing, polling id=\(response.trackId)")
+        return try await pollForTrack(id: response.trackId, tapeID: tapeID, api: api, onProgress: onProgress)
+    }
+
+    // MARK: - Download Library Track
+
+    func downloadLibraryTrack(
+        from remoteURL: URL,
+        tapeID: UUID
+    ) async throws -> URL {
+        clearCache(for: tapeID)
+        return try await downloadTrack(from: remoteURL, tapeID: tapeID)
+    }
+
     // MARK: - Cache (per-tape)
 
     private func trackCacheDir() -> URL {

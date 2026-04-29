@@ -28,11 +28,6 @@ final class BackgroundMusicPlayer: ObservableObject {
     /// If the video already called syncPlay() before this finishes, playback starts automatically.
     /// `api` is required when the track isn't cached — generation goes through the backend proxy.
     func prepare(mood: MubertAPIClient.Mood, tapeID: UUID, volume: Float, api: TapesAPIClient?) async {
-        guard mood != .none else {
-            stop()
-            return
-        }
-
         isLoading = true
         error = nil
         pendingPlay = false
@@ -45,7 +40,7 @@ final class BackgroundMusicPlayer: ObservableObject {
             if let cached = await MubertAPIClient.shared.cachedTrackURL(for: tapeID) {
                 log.info("Track already cached")
                 localURL = cached
-            } else {
+            } else if mood != .none {
                 guard let api else {
                     log.warning("No API client available — skipping music generation")
                     isLoading = false
@@ -58,6 +53,10 @@ final class BackgroundMusicPlayer: ObservableObject {
                     api: api,
                     onProgress: { _ in }
                 )
+            } else {
+                log.info("No cached track and no mood — nothing to prepare")
+                isLoading = false
+                return
             }
 
             guard !Task.isCancelled else { return }

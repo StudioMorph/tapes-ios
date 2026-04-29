@@ -25,7 +25,7 @@ struct ClipTrimView: View {
     @StateObject private var musicPlayer = BackgroundMusicPlayer()
     @EnvironmentObject private var authManager: AuthManager
 
-    private var hasBackgroundMusic: Bool { tape.musicMood != .none }
+    private var hasBackgroundMusic: Bool { tape.hasBackgroundMusic }
 
     private var totalDuration: TimeInterval {
         assetDuration > 0 ? assetDuration : clip.duration

@@ -292,6 +292,11 @@ public struct Tape: Identifiable, Codable, Equatable {
         return mood
     }
 
+    var hasBackgroundMusic: Bool {
+        guard let raw = backgroundMusicMood, !raw.isEmpty else { return false }
+        return true
+    }
+
     var musicVolume: Float {
         Float(backgroundMusicVolume ?? 0.3)
     }

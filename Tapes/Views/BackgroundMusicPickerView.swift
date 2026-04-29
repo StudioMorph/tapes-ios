@@ -38,8 +38,6 @@ struct BackgroundMusicPickerView: View {
             .padding(.vertical, Tokens.Spacing.l)
         }
         .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
-        .navigationTitle("Background Music")
-        .navigationBarTitleDisplayMode(.large)
         .onAppear {
             if tape.musicMood != .none {
                 trackGen.loadCachedState(for: tape.id)

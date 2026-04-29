@@ -165,7 +165,7 @@ final class TapePlayerViewModel: ObservableObject {
         registerSystemObservers()
 
         let startIndex = min(max(startAtClip, 0), tape.clips.count - 1)
-        let hasMood = tape.musicMood != .none
+        let hasMood = tape.hasBackgroundMusic
 
         let musicTask: Task<Void, Never>? = hasMood ? Task {
             await backgroundMusic.prepare(
@@ -1027,7 +1027,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     // MARK: - Per-Clip Volume
 
-    var hasBackgroundMusic: Bool { tape.musicMood != .none }
+    var hasBackgroundMusic: Bool { tape.hasBackgroundMusic }
 
     var hasClipAudio: Bool {
         let clip = tape.clips[currentClipIndex]

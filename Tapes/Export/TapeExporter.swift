@@ -46,7 +46,7 @@ public final class TapeExportSession: @unchecked Sendable {
             log.info("  clip[\(i)] kind=\(kind), isLivePhoto=\(clip.isLivePhoto), duration=\(clip.duration)s, assetId=\(clip.assetLocalId ?? "nil")")
         }
 
-        if tape.musicMood != .none {
+        if tape.hasBackgroundMusic {
             let musicURL = await MubertAPIClient.shared.cachedTrackURL(for: tape.id)
             if let musicURL {
                 try await Self.addBackgroundMusic(

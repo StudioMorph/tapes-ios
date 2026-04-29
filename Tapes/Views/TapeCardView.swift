@@ -61,6 +61,7 @@ struct TapeCardView: View {
     
     @State private var showingDeleteTapeAlert = false
     @State private var showingPaywall = false
+    @State private var showingMusicSheet = false
     @FocusState private var isTitleFocused: Bool
     
     // Carousel position tracking - all in clip-space
@@ -467,10 +468,14 @@ struct TapeCardView: View {
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
         }
+        .sheet(isPresented: $showingMusicSheet) {
+            BackgroundMusicSheet(tape: $tape)
+        }
         .onDisappear { stopPreviewIfNeeded() }
         .onChange(of: scenePhase) { _, p in if p != .active { stopPreviewIfNeeded() } }
         .onChange(of: showingSeamTransition) { _, s in if s { stopPreviewIfNeeded() } }
         .onChange(of: showingPaywall) { _, s in if s { stopPreviewIfNeeded() } }
+        .onChange(of: showingMusicSheet) { _, s in if s { stopPreviewIfNeeded() } }
     }
 
     private func stopPreviewIfNeeded() {
@@ -794,25 +799,31 @@ struct TapeCardView: View {
     }
 
     private var musicWaveState: MusicWaveView.State {
-        if tape.musicMood == .none { return .disabled }
+        if !tape.hasBackgroundMusic { return .disabled }
         if isPreviewingMusic { return .playing }
         return .idle
     }
 
     private var musicBar: some View {
         HStack(spacing: Tokens.Spacing.s) {
-            HStack(spacing: 4) {
-                Image(systemName: "music.note")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(Tokens.Colors.primaryText)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Tokens.Colors.systemBlue)
+            Button {
+                stopPreviewIfNeeded()
+                showingMusicSheet = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Tokens.Colors.primaryText)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Tokens.Colors.systemBlue)
+                }
             }
+            .buttonStyle(.plain)
 
             MusicWaveView(state: musicWaveState, audioLevel: musicPreviewManager.isActive(for: tape.id) ? musicPreviewManager.audioLevel : 0, colorHue: tape.waveColorHue)
 
-            if tape.musicMood != .none {
+            if tape.hasBackgroundMusic {
                 Button {
                     toggleMusicPreview()
                 } label: {
