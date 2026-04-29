@@ -143,7 +143,9 @@ struct MusicWaveView: View {
                 smoothedLevel += (target - smoothedLevel) * attack
             }
         }
-        .frame(height: 32)
+        .frame(height: 60)
         .drawingGroup()
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(height: 32)
     }
 }
