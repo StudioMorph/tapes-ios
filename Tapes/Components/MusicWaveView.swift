@@ -14,8 +14,8 @@ struct MusicWaveView: View {
     private static let waveCount = 12
 
     private static let baseOpacities: [Double] = [
-        0.60, 0.12, 0.45, 0.25, 0.55, 0.18,
-        0.35, 0.30, 0.50, 0.15, 0.42, 0.28
+        0.35, 0.08, 0.25, 0.14, 0.30, 0.10,
+        0.20, 0.16, 0.28, 0.09, 0.22, 0.13
     ]
     private static let strokeWidths: [CGFloat] = [
         1.8, 0.6, 1.5, 0.8, 1.6, 0.7,
@@ -79,8 +79,8 @@ struct MusicWaveView: View {
     private var masterOpacity: Double {
         switch state {
         case .disabled: return 0.3
-        case .idle:     return 0.7
-        case .playing:  return 0.85
+        case .idle:     return 0.6
+        case .playing:  return 0.7
         }
     }
 
@@ -111,7 +111,7 @@ struct MusicWaveView: View {
             let audioScatter = isPlaying ? sin(seed1 * 3.0) * audioLevel * 8.0 : 0
             let y = waveY + baseScatter + audioScatter
 
-            let baseBrightness: CGFloat = isPlaying ? 0.6 + audioLevel * 0.4 : 0.5
+            let baseBrightness: CGFloat = isPlaying ? 0.35 + audioLevel * 0.25 : 0.3
             let particleOpacity = (sin(seed3) * 0.3 + 0.7) * baseBrightness * masterOpacity
             let particleSize: CGFloat = 1.5 + sin(seed2 * 0.7) * 1.0
             let halfSize = particleSize / 2
