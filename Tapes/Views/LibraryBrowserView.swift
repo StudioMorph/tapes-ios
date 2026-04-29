@@ -11,26 +11,11 @@ struct LibraryFilterBar: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Tokens.Spacing.s) {
                     ForEach(viewModel.availableFilters) { filter in
-                        Menu {
-                            ForEach(filter.values) { value in
-                                Button {
-                                    viewModel.toggleFilter(param: filter.param, value: value.value)
-                                    viewModel.requestTrackReload = true
-                                } label: {
-                                    HStack {
-                                        Text("\(value.value) (\(value.tracksCount))")
-                                        if viewModel.activeFilters[filter.param] == value.value {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        } label: {
-                            filterPill(
-                                title: viewModel.activeFilters[filter.param] ?? filter.param.capitalized,
-                                isActive: viewModel.activeFilters[filter.param] != nil
-                            )
-                        }
+                        FilterMenuButton(
+                            filter: filter,
+                            selectedValue: binding(for: filter.param),
+                            onChange: { viewModel.requestTrackReload = true }
+                        )
                     }
                 }
                 .padding(.horizontal, Tokens.Spacing.m)
@@ -50,20 +35,56 @@ struct LibraryFilterBar: View {
         }
     }
 
-    private func filterPill(title: String, isActive: Bool) -> some View {
-        Text(title)
-            .font(.subheadline.weight(.medium))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(isActive ? Tokens.Colors.systemBlue.opacity(0.15) : Tokens.Colors.secondaryBackground)
-            )
-            .overlay(
-                Capsule()
-                    .strokeBorder(isActive ? Tokens.Colors.systemBlue : Color.clear, lineWidth: 1)
-            )
-            .foregroundStyle(isActive ? Tokens.Colors.systemBlue : Tokens.Colors.primaryText)
+    private func binding(for param: String) -> Binding<String?> {
+        Binding(
+            get: { viewModel.activeFilters[param] },
+            set: { newValue in
+                if let newValue {
+                    viewModel.activeFilters[param] = newValue
+                } else {
+                    viewModel.activeFilters.removeValue(forKey: param)
+                }
+            }
+        )
+    }
+}
+
+private struct FilterMenuButton: View {
+    let filter: TapesAPIClient.LibraryParam
+    @Binding var selectedValue: String?
+    let onChange: () -> Void
+
+    var body: some View {
+        Menu {
+            Picker(filter.param.capitalized, selection: $selectedValue) {
+                Text("All").tag(String?.none)
+                ForEach(filter.values) { value in
+                    Text("\(value.value) (\(value.tracksCount))")
+                        .tag(String?.some(value.value))
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(selectedValue ?? filter.param.capitalized)
+                    .font(.subheadline.weight(.medium))
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+            }
+            .frame(minHeight: 28)
+            .padding(.horizontal, 4)
+        }
+        .modifier(GlassPillStyle())
+        .onChange(of: selectedValue) { _, _ in onChange() }
+    }
+}
+
+private struct GlassPillStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered).buttonBorderShape(.capsule)
+        }
     }
 }
 
