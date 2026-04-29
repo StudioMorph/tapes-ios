@@ -318,7 +318,7 @@ struct TapeCardView: View {
             .frame(height: thumbH)
 
             .padding(.top, Tokens.Spacing.m)
-            .padding(.bottom, Tokens.Spacing.s)
+            .padding(.bottom, isEmptyTape ? Tokens.Spacing.m : Tokens.Spacing.s)
             .background(
                 GeometryReader { geometry in
                     Color.clear.preference(key: CardWidthKey.self, value: geometry.size.width)
@@ -328,7 +328,7 @@ struct TapeCardView: View {
                 if width > 0 { containerWidth = width }
             }
 
-            if !isJiggling {
+            if !isJiggling && !isEmptyTape {
                 musicBar
                     .padding(.horizontal, Tokens.Spacing.m)
                     .padding(.bottom, Tokens.Spacing.s)

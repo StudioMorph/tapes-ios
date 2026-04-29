@@ -84,7 +84,7 @@ struct MusicWaveView: View {
         }
     }
 
-    private static func drawSpeckles(context: inout GraphicsContext, width: CGFloat, midY: CGFloat, amplitudeScale: CGFloat, phase: CGFloat, masterOpacity: Double, audioLevel: CGFloat, isPlaying: Bool) {
+    private static func drawSpeckles(context: inout GraphicsContext, width: CGFloat, midY: CGFloat, amplitudeScale: CGFloat, phase: CGFloat, masterOpacity: Double, audioLevel: CGFloat, isPlaying: Bool, isDisabled: Bool) {
         let baseCount = 60
         let bonusCount = isPlaying ? Int(audioLevel * 40) : 0
         let speckleCount = baseCount + bonusCount
@@ -119,7 +119,7 @@ struct MusicWaveView: View {
             context.opacity = particleOpacity
             context.fill(
                 Path(ellipseIn: CGRect(x: x - halfSize, y: y - halfSize, width: particleSize, height: particleSize)),
-                with: .color(tealColors[waveIndex])
+                with: .color(isDisabled ? Color.gray : tealColors[waveIndex])
             )
         }
     }
@@ -167,15 +167,16 @@ struct MusicWaveView: View {
                         }
                     }
 
+                    let color = state == .disabled ? Color.gray : Self.tealColors[i]
                     context.opacity = opacity
                     context.stroke(
                         path,
-                        with: .color(Self.tealColors[i]),
+                        with: .color(color),
                         lineWidth: Self.strokeWidths[i]
                     )
                 }
 
-                Self.drawSpeckles(context: &context, width: width, midY: midY, amplitudeScale: amplitudeScale, phase: phase, masterOpacity: masterOpacity, audioLevel: smoothedLevel, isPlaying: state == .playing)
+                Self.drawSpeckles(context: &context, width: width, midY: midY, amplitudeScale: amplitudeScale, phase: phase, masterOpacity: masterOpacity, audioLevel: smoothedLevel, isPlaying: state == .playing, isDisabled: state == .disabled)
             }
             .onChange(of: timeline.date) { _, _ in
                 phase += 0.05
