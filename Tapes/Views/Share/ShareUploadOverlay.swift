@@ -102,6 +102,7 @@ struct ShareUploadCompletionDialog: View {
 
 struct SharePostUploadDialog: View {
     @ObservedObject var coordinator: ShareUploadCoordinator
+    @EnvironmentObject private var entitlementManager: EntitlementManager
     @State private var copiedConfirmation = false
     @State private var shareActivityURL: URL?
 
@@ -140,6 +141,9 @@ struct SharePostUploadDialog: View {
                             Button {
                                 UIPasteboard.general.string = url.absoluteString
                                 copiedConfirmation = true
+                                if let tapeID = coordinator.sourceTape?.id {
+                                    entitlementManager.markTapeActivated(tapeID)
+                                }
                                 let gen = UINotificationFeedbackGenerator()
                                 gen.notificationOccurred(.success)
                                 Task { @MainActor in
@@ -171,8 +175,13 @@ struct SharePostUploadDialog: View {
                 }
             }
         )) { item in
-            SharePostUploadActivityView(url: item.url)
-                .ignoresSafeArea()
+            SharePostUploadActivityView(url: item.url) { completed, activityType in
+                if completed, activityType != nil,
+                   let tapeID = coordinator.sourceTape?.id {
+                    entitlementManager.markTapeActivated(tapeID)
+                }
+            }
+            .ignoresSafeArea()
         }
     }
 }
@@ -184,9 +193,18 @@ private struct SharePostUploadURLItem: Identifiable {
 
 private struct SharePostUploadActivityView: UIViewControllerRepresentable {
     let url: URL
+    /// Same shape as the inline `ShareActivityView` in `ShareLinkSection` —
+    /// fires only when the OS-level share completes with a chosen activity.
+    var onCompleted: (_ completed: Bool, _ activityType: UIActivity.ActivityType?) -> Void = { _, _ in }
+
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        vc.completionWithItemsHandler = { activityType, completed, _, _ in
+            onCompleted(completed, activityType)
+        }
+        return vc
     }
+
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 

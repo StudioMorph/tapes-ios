@@ -40,10 +40,25 @@ The Free-tier "5 lifetime" cap is enforced as a **set of activated tape UUIDs**,
 
 ### Activation increment points
 
-The set is added to in two places, both idempotent:
+The set is added to wherever the user takes a deliberate share / collab action. All sites are idempotent — a tape that's already in the set is a no-op.
 
-1. **`ShareLinkSection.finaliseShareInfo`** — runs after every successful `ensureTapeUploaded`, regardless of view-only vs collab mode. Marks the tape as activated.
-2. **`TapeCardView.checkAndCreateEmptyTapeIfNeeded`** — when an empty Collab tape receives its first clip. Marks the tape activated before inserting the next empty placeholder at the top.
+**Sharing a tape (any of the following):**
+
+1. **Copy Link** — `ShareLinkSection.copyLinkTapped`, after the URL is placed on the clipboard. By the time the "Link copied" toast fires the user has clearly committed; we can't tell if they actually paste it.
+2. **System share sheet completed with a destination** — `ShareLinkSection.shareLinkTapped` → `ShareActivityView.onCompleted`. Fires only when `completed == true` *and* `activityType != nil` (i.e. they picked Messages/Mail/AirDrop/etc. and the OS-level share went through). Swipe-to-dismiss does **not** count.
+3. **Email invite sent** — `ShareLinkSection.inviteTapped`, after `inviteCollaborator` returns successfully. Most deliberate of the three: the user typed a specific recipient.
+
+The same three triggers fire in the post-upload dialog (`SharePostUploadDialog`) for the case where the user dismissed the upload modal mid-share and is finishing from the lightweight follow-up sheet.
+
+**Activating a collab tape:**
+
+4. **First clip on an empty Collab tape** — `TapeCardView.checkAndCreateEmptyTapeIfNeeded`. Adding the first clip to a `tape.isCollabTape` placeholder commits a brand-new collab tape; that's an unambiguous activation.
+
+**What does *not* increment:**
+
+- Tape upload alone (`ensureTapeUploaded` success). Uploading is just "the tape exists on the server"; a user can open the share sheet, upload, then close without sharing with anyone. We never count for that.
+- Tapping Copy Link → opening the share sheet → dismissing it without picking a destination.
+- A recipient opening the share link or contributing — currently *not* a trigger because the iOS app doesn't poll for remote view events. If we add that signal later it's a backlog candidate; the current model is "count when the user *acts*", not "when the recipient acts".
 
 ## Gate sites
 
@@ -91,7 +106,8 @@ Subscription cancellation makes `accessLevel` flip back to `.free` on the next S
 | `Tapes/Views/TapesListView.swift` | Hosts paywall sheet, gates share button on My Tapes. |
 | `Tapes/Views/Share/CollabTapesView.swift` | Hosts paywall sheet, gates share button + empty collab placeholder taps via `TapeCardView.onActivationBlocked`. |
 | `Tapes/Views/TapeCardView.swift` | Gates `FabSwipableIcon` (gallery/camera) and `handlePlaceholderTap` on empty collab tapes. Marks tape activated when first clip lands. |
-| `Tapes/Views/Share/ShareLinkSection.swift` | Marks tape activated after every successful `ensureTapeUploaded`. |
+| `Tapes/Views/Share/ShareLinkSection.swift` | Marks tape activated on the three deliberate share triggers: Copy Link, completed system share sheet, and email invite success. |
+| `Tapes/Views/Share/ShareUploadOverlay.swift` | Same three triggers in the post-upload dialog (when the user dismissed the upload modal mid-share). |
 | `Tapes/Views/BackgroundMusicSheet.swift` | Hosts paywall sheet, gates AI Prompt segment via picker binding interception. Wires `onUpgradeTapped` for the library toolbar. |
 | `Tapes/Views/LibraryBrowserView.swift` | Threads `trackCap` into the view model, renders bottom upgrade toolbar for Free. |
 

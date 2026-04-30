@@ -105,8 +105,15 @@ struct ShareLinkSection: View {
             get: { shareActivityURL.map(ShareURLItem.init) },
             set: { if $0 == nil { shareActivityURL = nil } }
         )) { item in
-            ShareActivityView(url: item.url)
-                .ignoresSafeArea()
+            ShareActivityView(url: item.url) { completed, activityType in
+                // Only count when the user actually picked a destination
+                // and the OS-level share completed. Swipe-to-dismiss yields
+                // completed=false, no activityType — that's not a share.
+                if completed, activityType != nil {
+                    entitlementManager.markTapeActivated(tape.id)
+                }
+            }
+            .ignoresSafeArea()
         }
         .overlay(alignment: .top) {
             if copiedConfirmation {
@@ -349,6 +356,10 @@ struct ShareLinkSection: View {
                     uploadCoordinator.showPostUploadDialog = true
                 } else {
                     UIPasteboard.general.string = url.absoluteString
+                    // Copying the link is the user's commitment to share —
+                    // count it against the Free-tier activation cap. Idempotent;
+                    // re-copying the same tape later is a no-op.
+                    entitlementManager.markTapeActivated(tape.id)
                     flashCopiedToast()
                 }
             }
@@ -384,13 +395,11 @@ struct ShareLinkSection: View {
     }
 
     /// After the first successful upload of a collab tape, persist ShareInfo.
-    /// Also marks the tape as activated against the Free-tier cap — runs for
-    /// every successful share (collab *or* view-only) because either path
-    /// makes the tape externally accessible. Idempotent thanks to the set
-    /// semantics in `EntitlementManager`.
+    /// Activation against the Free-tier cap is **not** triggered here — upload
+    /// alone doesn't count as sharing. The cap moves at the moment the user
+    /// commits to a share action: copying the link, completing a system share
+    /// sheet with a destination, or sending an in-app email invite.
     private func finaliseShareInfo(response: TapesAPIClient.CreateTapeResponse) {
-        entitlementManager.markTapeActivated(tape.id)
-
         guard isCollabTape, tape.shareInfo == nil else { return }
         let info = ShareInfo(
             shareId: response.shareIdCollab,
@@ -455,6 +464,10 @@ struct ShareLinkSection: View {
                     email: trimmed,
                     shareVariant: variant
                 )
+                // Inviting by email is the most deliberate share action the
+                // user can take — they typed a specific recipient and we sent
+                // mail. Counts against the Free-tier activation cap.
+                entitlementManager.markTapeActivated(tape.id)
                 emailInput = ""
                 await reloadCollaborators(using: api, tapeId: remoteTapeId)
             } catch {
@@ -576,9 +589,19 @@ private struct ShareURLItem: Identifiable {
 
 private struct ShareActivityView: UIViewControllerRepresentable {
     let url: URL
+    /// Fires when the system share sheet finishes. `completed` is true only
+    /// when the user picked a destination and the share went through (not
+    /// when they swiped down to dismiss). Used to drive the Free-tier
+    /// activation count: a completed share with a chosen activity is the
+    /// user committing to share this tape.
+    var onCompleted: (_ completed: Bool, _ activityType: UIActivity.ActivityType?) -> Void = { _, _ in }
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        vc.completionWithItemsHandler = { activityType, completed, _, _ in
+            onCompleted(completed, activityType)
+        }
+        return vc
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
