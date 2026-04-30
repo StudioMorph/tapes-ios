@@ -155,7 +155,13 @@ struct PaywallView: View {
                         Spacer(minLength: Tokens.Spacing.s)
 
                         if cycle == .annually {
+                            // Optical-centre nudge: HStack `.center` aligns
+                            // bounding boxes, but the price label box is
+                            // taller (18pt cap-height + descenders + leading),
+                            // so the pill ends up ~2pt below the visual
+                            // mid-line of the price text. Lift it.
                             discountPill
+                                .offset(y: -2)
                         }
 
                         priceLabel(for: product, cycle: cycle)
