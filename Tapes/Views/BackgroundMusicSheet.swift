@@ -15,7 +15,7 @@ struct BackgroundMusicSheet: View {
     static let moodsTabEnabled = false
 
     enum Tab: String, CaseIterable, Identifiable {
-        case library = "12k Library"
+        case library = "Music Library"
         case moods = "Moods"
         case aiPrompt = "AI Prompt"
 

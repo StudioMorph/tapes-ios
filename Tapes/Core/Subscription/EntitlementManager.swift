@@ -25,7 +25,11 @@ final class EntitlementManager: ObservableObject {
     static let freeShareCollabCap: Int = 5
 
     /// Maximum library tracks visible to Free users (out of ~12,000).
-    static let freeLibraryTrackCap: Int = 1000
+    /// Currently dialled down to **100** for on-device QA — flip back to
+    /// 1000 (or whatever the final ship value is) before TestFlight. The
+    /// "Upgrade to unlock 12,000 tracks" toolbar copy is independent of
+    /// this number; it always reads the full library size.
+    static let freeLibraryTrackCap: Int = 100
 
     // MARK: - UserDefaults keys
 

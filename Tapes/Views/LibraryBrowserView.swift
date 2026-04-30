@@ -5,6 +5,7 @@ import AVFoundation
 
 struct LibraryFilterBar: View {
     @ObservedObject var viewModel: LibraryBrowserViewModel
+    @EnvironmentObject private var entitlementManager: EntitlementManager
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,8 +25,8 @@ struct LibraryFilterBar: View {
             }
 
             HStack {
-                if let total = viewModel.totalTracks {
-                    Text("\(total) tracks")
+                if let label = trackCountLabel {
+                    Text(label)
                         .font(.caption)
                         .foregroundStyle(Tokens.Colors.secondaryText)
                 }
@@ -34,6 +35,22 @@ struct LibraryFilterBar: View {
             .padding(.horizontal, Tokens.Spacing.m)
             .padding(.bottom, Tokens.Spacing.xs)
         }
+    }
+
+    /// Track-count copy. Rules:
+    ///   • Filters active → use the actual loaded count (`tracks.count`),
+    ///     so the user sees what their filter narrowed down to.
+    ///   • No filters → show the access ceiling: the Free cap for Free
+    ///     users, or the server-reported library total for Plus.
+    private var trackCountLabel: String? {
+        if !viewModel.activeFilters.isEmpty {
+            return "\(viewModel.tracks.count) tracks"
+        }
+        if let cap = entitlementManager.libraryTrackCap {
+            return "\(cap) tracks"
+        }
+        guard let total = viewModel.totalTracks else { return nil }
+        return "\(total) tracks"
     }
 
     private func binding(for param: String) -> Binding<String?> {
