@@ -2,14 +2,15 @@ import Foundation
 import SwiftUI
 
 /// Unified access-control layer for Free vs Plus.
+///
+/// Currently only exposes the binary access level (`free` / `plus`)
+/// derived from `SubscriptionManager.activeTier`. All previous
+/// "free-tier limit" helpers have been removed pending the new paywall
+/// design — re-introduce gates here when the new limits are decided.
 @MainActor
 final class EntitlementManager: ObservableObject {
 
     let subscriptionManager: SubscriptionManager
-
-    // MARK: - Constants
-
-    static let maxFreeSharedTapes = 5
 
     // MARK: - Published
 
@@ -31,11 +32,6 @@ final class EntitlementManager: ObservableObject {
 
     var isPremium: Bool { accessLevel == .plus }
     var isFreeUser: Bool { accessLevel == .free }
-
-    func canShareOrCollab(lifetimeSharedCount: Int) -> Bool {
-        if isPremium { return true }
-        return lifetimeSharedCount < Self.maxFreeSharedTapes
-    }
 
     // MARK: - Refresh
 

@@ -46,7 +46,6 @@ struct TapeCardView: View {
     let titleEditingConfig: TitleEditingConfig?
 
     @EnvironmentObject var tapeStore: TapesStore
-    @EnvironmentObject var entitlementManager: EntitlementManager
     @EnvironmentObject var importCoordinator: MediaImportCoordinator
     @EnvironmentObject var musicPreviewManager: MusicPreviewManager
     @Environment(\.scenePhase) private var scenePhase
@@ -60,7 +59,6 @@ struct TapeCardView: View {
     @State private var showingDeleteConfirmation = false
     
     @State private var showingDeleteTapeAlert = false
-    @State private var showingPaywall = false
     @State private var showingMusicSheet = false
     @FocusState private var isTitleFocused: Bool
     
@@ -287,11 +285,6 @@ struct TapeCardView: View {
                         mode: $fabMode,
                         disabledModes: isAtSeamEnd ? [.transition] : []
                     ) {
-                        if isEmptyTape && isAtFreeLimit {
-                            showingPaywall = true
-                            return
-                        }
-
                         switch fabMode {
                         case .gallery:
                             importSource = .centerFAB
@@ -465,16 +458,12 @@ struct TapeCardView: View {
         } message: {
             Text("This will delete the Tape and its album. Your photos and videos remain in your device's Library.")
         }
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView()
-        }
         .sheet(isPresented: $showingMusicSheet) {
             BackgroundMusicSheet(tape: $tape)
         }
         .onDisappear { stopPreviewIfNeeded() }
         .onChange(of: scenePhase) { _, p in if p != .active { stopPreviewIfNeeded() } }
         .onChange(of: showingSeamTransition) { _, s in if s { stopPreviewIfNeeded() } }
-        .onChange(of: showingPaywall) { _, s in if s { stopPreviewIfNeeded() } }
         .onChange(of: showingMusicSheet) { _, s in if s { stopPreviewIfNeeded() } }
     }
 
@@ -586,11 +575,6 @@ struct TapeCardView: View {
     private func handlePlaceholderTap(_ item: CarouselItem) {
         guard !isJiggling else {
             exitJiggleMode()
-            return
-        }
-
-        if isEmptyTape && isAtFreeLimit {
-            showingPaywall = true
             return
         }
 
@@ -857,16 +841,8 @@ struct TapeCardView: View {
         isTapeActionsDisabled || isShareDisabled
     }
 
-    private var isAtFreeLimit: Bool {
-        false
-    }
-
     private func beginEditingTitle() {
         guard titleEditingConfig == nil else { return }
-        if isEmptyTape && isAtFreeLimit {
-            showingPaywall = true
-            return
-        }
         onTitleFocusRequest()
     }
 
