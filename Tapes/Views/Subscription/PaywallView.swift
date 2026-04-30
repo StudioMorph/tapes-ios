@@ -161,7 +161,7 @@ struct PaywallView: View {
                             // so the pill ends up ~2pt below the visual
                             // mid-line of the price text. Lift it.
                             discountPill
-                                .offset(y: -2)
+                                .offset(y: -1)
                         }
 
                         priceLabel(for: product, cycle: cycle)
