@@ -27,7 +27,7 @@ struct PaywallView: View {
                     headline
                     featureList
                     cycleCards
-                    upgradeButton
+                    upgradeGroup
                     footer
                 }
                 .padding(.horizontal, Tokens.Spacing.l)
@@ -40,10 +40,8 @@ struct PaywallView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Tokens.Colors.primaryText)
-                            .frame(width: Tokens.HitTarget.minimum, height: Tokens.HitTarget.minimum)
-                            .background(Tokens.Colors.secondaryBackground, in: Circle())
                     }
                     .accessibilityLabel("Close")
                 }
@@ -149,16 +147,16 @@ struct PaywallView: View {
                 selectionMark(isSelected: isSelected)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: Tokens.Spacing.s) {
+                    HStack(alignment: .center, spacing: Tokens.Spacing.s) {
                         Text(cycle == .annually ? "Annual" : "Monthly")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(Tokens.Colors.primaryText)
 
+                        Spacer(minLength: Tokens.Spacing.s)
+
                         if cycle == .annually {
                             discountPill
                         }
-
-                        Spacer(minLength: Tokens.Spacing.s)
 
                         priceLabel(for: product, cycle: cycle)
                     }
@@ -229,7 +227,19 @@ struct PaywallView: View {
             .foregroundStyle(Tokens.Colors.secondaryText)
     }
 
-    // MARK: - Upgrade CTA
+    // MARK: - Upgrade CTA + auto-renew caption
+
+    /// Auto-renew caption belongs visually with the button — it's a
+    /// disclosure about *that* action, not a footer line. Keeping them
+    /// in the same VStack with an 8pt gap groups them correctly.
+    private var upgradeGroup: some View {
+        VStack(spacing: Tokens.Spacing.s) {
+            upgradeButton
+            Text("Will auto-renew unless cancelled")
+                .font(.system(size: 12))
+                .foregroundStyle(Tokens.Colors.tertiaryText)
+        }
+    }
 
     private var upgradeButton: some View {
         Button {
@@ -257,14 +267,10 @@ struct PaywallView: View {
         .accessibilityLabel("Upgrade to Tapes Plus")
     }
 
-    // MARK: - Footer (legal + restore + auto-renew)
+    // MARK: - Footer (legal + restore)
 
     private var footer: some View {
         VStack(spacing: Tokens.Spacing.m) {
-            Text("Will auto-renew unless cancelled")
-                .font(.system(size: 12))
-                .foregroundStyle(Tokens.Colors.tertiaryText)
-
             Button {
                 Task { await subManager.restore() }
             } label: {
