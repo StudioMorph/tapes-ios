@@ -400,7 +400,7 @@ struct CollabTapesView: View {
             tapeWidth: width,
             isLandscape: false,
             isShareDisabled: false,
-            onShare: { handleShareIntent(for: tape) },
+            onShare: { tapeToShare = tape },
             onSettings: { tapeToSettings = tape },
             onPlay: { startIndex in
                 tapesStore.clearUnseenContent(for: tape.id)
@@ -493,20 +493,6 @@ struct CollabTapesView: View {
 
             Spacer()
         }
-    }
-
-    // MARK: - Share Intent
-
-    /// Free-tier gate before opening the share sheet. Tapes that have
-    /// already been activated (counted) bypass the gate; new ones present
-    /// `PaywallView` if the user has hit the lifetime cap.
-    private func handleShareIntent(for tape: Tape) {
-        if !entitlementManager.isTapeAlreadyActivated(tape.id),
-           !entitlementManager.canActivateNewTape() {
-            showingPaywall = true
-            return
-        }
-        tapeToShare = tape
     }
 
     // MARK: - Title Editing

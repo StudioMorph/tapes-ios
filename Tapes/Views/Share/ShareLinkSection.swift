@@ -32,6 +32,7 @@ struct ShareLinkSection: View {
     @State private var shareActivityURL: URL?
     @State private var copiedConfirmation = false
     @State private var errorMessage: String?
+    @State private var showingPaywall = false
 
     // MARK: - Derived
 
@@ -123,6 +124,20 @@ struct ShareLinkSection: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: copiedConfirmation)
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
+        }
+    }
+
+    /// Free-tier gate. Returns `true` if the action should proceed; `false`
+    /// (and presents `PaywallView`) when the cap has been hit and this tape
+    /// is not yet in the activation set. Already-activated tapes — including
+    /// everything grandfathered on first launch — always pass.
+    private func passesActivationGate() -> Bool {
+        if entitlementManager.isTapeAlreadyActivated(tape.id) { return true }
+        if entitlementManager.canActivateNewTape() { return true }
+        showingPaywall = true
+        return false
     }
 
     // MARK: - Secured Toggle
@@ -147,10 +162,28 @@ struct ShareLinkSection: View {
 
             Spacer()
 
-            Toggle("", isOn: $securedByEmail)
+            Toggle("", isOn: securedByEmailBinding)
                 .labelsHidden()
                 .disabled(!authManager.isSignedIn)
         }
+    }
+
+    /// Toggle binding that gates the *on-flip* against the Free-tier
+    /// activation cap. Same pattern as the AI Prompt segment in
+    /// `BackgroundMusicSheet`: tapping the toggle while at the cap on a
+    /// not-yet-activated tape opens the paywall and the toggle stays OFF.
+    /// Turning the toggle off, or flipping it on for a tape that's already
+    /// activated, is always allowed.
+    private var securedByEmailBinding: Binding<Bool> {
+        Binding(
+            get: { securedByEmail },
+            set: { newValue in
+                if newValue, !passesActivationGate() {
+                    return
+                }
+                securedByEmail = newValue
+            }
+        )
     }
 
     // MARK: - Link Block (URL row + Share Link button in one container)
@@ -336,6 +369,8 @@ struct ShareLinkSection: View {
     private func copyLinkTapped() {
         errorMessage = nil
 
+        guard passesActivationGate() else { return }
+
         guard let api = authManager.apiClient else {
             errorMessage = "Please sign in to share tapes."
             return
@@ -368,6 +403,8 @@ struct ShareLinkSection: View {
 
     private func shareLinkTapped() {
         errorMessage = nil
+
+        guard passesActivationGate() else { return }
 
         guard let api = authManager.apiClient else {
             errorMessage = "Please sign in to share tapes."

@@ -64,11 +64,13 @@ The same three triggers fire in the post-upload dialog (`SharePostUploadDialog`)
 
 All four gates present the same `PaywallView` sheet — there's no tier-specific UI variant.
 
-### 1. Share button (My Tapes, Collab tab — owner cards only)
+### 1. Share triggers inside the Share modal (Copy Link, Share Link, "Secured by email" toggle)
 
-- **Where:** `TapesListView.handleShare(_:)` and `CollabTapesView.handleShareIntent(for:)`.
-- **Behaviour:** if the tape isn't yet in the activation set and the user is at the cap, show paywall instead of opening `ShareModalView`. Already-activated tapes always open the share sheet.
-- **Visual:** the share button itself is unchanged — discovery happens at the moment of intent. Received tapes (`SharedTapesView`) hard-disable the share affordance, so no gate is needed there.
+- **Why not the share button on the card?** `ShareModalView` hosts both `ShareLinkSection` (sharing) *and* the merge/save export flow. Gating the icon would block users from reaching their own export. So the icon always opens the modal; the gate fires inside, on the actual share triggers.
+- **Where:** `ShareLinkSection.passesActivationGate()`, called from `copyLinkTapped`, `shareLinkTapped`, and `securedByEmailBinding` (the toggle).
+- **Behaviour:** if the tape isn't yet in the activation set and the user is at the cap, paywall opens and the action is refused. Already-activated tapes always pass. The "Secured by email" toggle stays OFF if the gate fires, mirroring the AI Prompt segment pattern (early discovery — user doesn't see the email form, type an address, *then* get blocked).
+- **Visual:** the share icon on the card is unchanged. The `ShareModalView`'s merge / export section is always reachable.
+- Received tapes (`SharedTapesView`) hard-disable the share affordance, so no gate is needed there.
 
 ### 2. Empty Collab tape — Media picker / Camera
 
@@ -103,11 +105,11 @@ Subscription cancellation makes `accessLevel` flip back to `.free` on the next S
 | `Tapes/Core/Subscription/EntitlementManager.swift` | Counter, gates, migration helper. Single ask-point for all access checks. |
 | `Tapes/TapesApp.swift` | Calls `migrateActivatedTapeIDs` on launch. |
 | `Tapes/Views/Subscription/PaywallView.swift` | The sheet presented by every gate. |
-| `Tapes/Views/TapesListView.swift` | Hosts paywall sheet, gates share button on My Tapes. |
-| `Tapes/Views/Share/CollabTapesView.swift` | Hosts paywall sheet, gates share button + empty collab placeholder taps via `TapeCardView.onActivationBlocked`. |
+| `Tapes/Views/TapesListView.swift` | Opens the share modal for My Tapes. No gate — the share modal hosts export too, which must remain reachable. |
+| `Tapes/Views/Share/CollabTapesView.swift` | Opens the share modal for Collab tapes. Hosts the paywall sheet for the empty-collab gate via `TapeCardView.onActivationBlocked`. |
 | `Tapes/Views/TapeCardView.swift` | Gates `FabSwipableIcon` (gallery/camera) and `handlePlaceholderTap` on empty collab tapes. Marks tape activated when first clip lands. |
-| `Tapes/Views/Share/ShareLinkSection.swift` | Marks tape activated on the three deliberate share triggers: Copy Link, completed system share sheet, and email invite success. |
-| `Tapes/Views/Share/ShareUploadOverlay.swift` | Same three triggers in the post-upload dialog (when the user dismissed the upload modal mid-share). |
+| `Tapes/Views/Share/ShareLinkSection.swift` | Hosts the gate (Copy Link, Share Link, "Secured by email" toggle) and marks tape activated on the three deliberate share triggers. Owns its own paywall sheet. |
+| `Tapes/Views/Share/ShareUploadOverlay.swift` | Marks tape activated on the post-upload dialog's Copy / Share Now actions. No gate — these only appear after the user already passed the gate at the original button. |
 | `Tapes/Views/BackgroundMusicSheet.swift` | Hosts paywall sheet, gates AI Prompt segment via picker binding interception. Wires `onUpgradeTapped` for the library toolbar. |
 | `Tapes/Views/LibraryBrowserView.swift` | Threads `trackCap` into the view model, renders bottom upgrade toolbar for Free. |
 
