@@ -5,6 +5,7 @@ struct TapesListView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject var tapesStore: TapesStore
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var entitlementManager: EntitlementManager
     @StateObject private var exportCoordinator = ExportCoordinator()
     @EnvironmentObject private var shareUploadCoordinator: ShareUploadCoordinator
     @StateObject private var cameraCoordinator = CameraCoordinator()
@@ -17,6 +18,7 @@ struct TapesListView: View {
     @State private var showInlineTitle = false
     @State private var tapeToShare: Tape?
     @State private var pendingMergeTape: Tape?
+    @State private var showingPaywall = false
     private var isMyTapeUpload: Bool {
         guard let source = shareUploadCoordinator.sourceTape else { return false }
         return !source.isCollabTape && source.shareInfo?.mode != "collaborative"
@@ -157,12 +159,25 @@ struct TapesListView: View {
             CameraView(coordinator: cameraCoordinator)
                 .ignoresSafeArea(.all, edges: .all)
         }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
+        }
         .overlay(exportOverlay)
     }
 
     // MARK: - Action Handlers
 
+    /// Free-tier gate: if this tape would create a *new* activation
+    /// (i.e. it's never been shared/collab before) and the user is over
+    /// the lifetime cap, present `PaywallView` instead of the share sheet.
+    /// Already-activated tapes — including everything grandfathered on
+    /// first launch — open the share modal as normal.
     private func handleShare(_ tape: Tape) {
+        if !entitlementManager.isTapeAlreadyActivated(tape.id),
+           !entitlementManager.canActivateNewTape() {
+            showingPaywall = true
+            return
+        }
         tapeToShare = tape
     }
 

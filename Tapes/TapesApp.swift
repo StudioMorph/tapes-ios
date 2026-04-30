@@ -145,6 +145,12 @@ struct TapesApp: App {
 
                     AdManager.shared.preWarm()
 
+                    // One-time grandfather pass: seed the activation set with
+                    // every tape that was already shared/collab before the
+                    // monetisation gates shipped. Idempotent — flagged in
+                    // UserDefaults so it only runs once per install.
+                    entitlementManager.migrateActivatedTapeIDs(from: tapeStore.tapes)
+
                     if authManager.isSignedIn {
                         await authManager.refreshProfile()
                     }

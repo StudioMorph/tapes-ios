@@ -3,8 +3,10 @@ import SwiftUI
 struct BackgroundMusicSheet: View {
     @Binding var tape: Tape
     @EnvironmentObject private var authManager: AuthManager
+    @EnvironmentObject private var entitlementManager: EntitlementManager
     @Environment(\.dismiss) private var dismiss
     @StateObject private var libraryVM = LibraryBrowserViewModel()
+    @State private var showingPaywall = false
 
     /// Set to `true` to re-enable the Moods tab in the segmented
     /// control. The mood enum, picker view, generation pipeline, and
@@ -34,7 +36,7 @@ struct BackgroundMusicSheet: View {
     var body: some View {
         NavigationStack {
             tabContent
-                .modifier(MusicBarModifier(selectedTab: $selectedTab, libraryVM: libraryVM))
+                .modifier(MusicBarModifier(selectedTab: pickerBinding, libraryVM: libraryVM))
                 .modifier(ScrollEdgeSoftModifier())
                 .background(Tokens.Colors.primaryBackground.ignoresSafeArea())
                 .navigationTitle("Background Music")
@@ -45,13 +47,39 @@ struct BackgroundMusicSheet: View {
                     }
                 }
         }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
+        }
+    }
+
+    /// Picker binding that gates the AI Prompt segment for Free users.
+    /// Tapping `.aiPrompt` while not entitled opens the paywall and the
+    /// `selectedTab` value stays unchanged — the segmented control snaps
+    /// back to its previous state automatically because the binding setter
+    /// rejects the change.
+    private var pickerBinding: Binding<Tab> {
+        Binding(
+            get: { selectedTab },
+            set: { newValue in
+                if newValue == .aiPrompt && !entitlementManager.canUseAIPrompt {
+                    showingPaywall = true
+                    return
+                }
+                selectedTab = newValue
+            }
+        )
     }
 
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
         case .library:
-            LibraryBrowserView(tape: $tape, viewModel: libraryVM, onTrackSelected: handleDismiss)
+            LibraryBrowserView(
+                tape: $tape,
+                viewModel: libraryVM,
+                onTrackSelected: handleDismiss,
+                onUpgradeTapped: { showingPaywall = true }
+            )
         case .moods:
             BackgroundMusicPickerView(tape: $tape)
         case .aiPrompt:

@@ -140,3 +140,29 @@ Implemented: `AuthManager.refreshProfile()` calls `getMe` on every app launch (w
 The Shared and Collab tabs already show a "Verify your email" prompt with a "Resend Verification Email" button. If the initial email fails, the user has the resend action immediately visible. No fix needed.
 
 ---
+
+## Subscription / Monetisation
+
+### 11. Watermark on export (Free tier)
+
+**Context**: The new Tapes Plus paywall promises "No Watermark on export" as a Plus benefit, which implies Free exports carry one. The watermark itself is not yet in the export pipeline.
+
+**Plan summary** (not yet approved): overlay a small "Made with Tapes" wordmark in a fixed corner of the composition during `AVAssetExportSession` setup, gated by `entitlementManager.isFreeUser`. Needs decisions on placement, opacity, scaling for portrait vs landscape exports, and whether it animates or sits static. Likely a `CALayer` composited via `AVVideoCompositionCoreAnimationTool`.
+
+**Files likely involved**: `Tapes/Export/ExportCoordinator.swift`, the underlying `AVMutableComposition` setup helpers, and a new asset for the wordmark.
+
+**Trigger**: tackle alongside any other export-pipeline overhaul — touching the composition graph for one isolated feature is more risk than reward.
+
+---
+
+### 12. Server-side persistence of activation count
+
+**Context**: Free-tier "5 activated tapes lifetime" cap is currently per-install (UserDefaults). A reinstall resets the count, which is fine for now but trivially exploitable.
+
+**Approach**: Move `activatedTapeIDs` to the server keyed by Apple ID once user accounts carry monetisation state. iOS reads the count on launch and writes through on every `markTapeActivated`. Local set becomes a cache with last-known-good fallback for offline.
+
+**Files likely involved**: `tapes-api/src/routes/`, `Tapes/Core/Subscription/EntitlementManager.swift`.
+
+**Trigger**: post-launch, once we have evidence that the per-install cap is being routinely bypassed.
+
+---

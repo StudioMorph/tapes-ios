@@ -44,10 +44,17 @@ struct TapeCardView: View {
     let onCameraCapture: (@escaping ([PickedMedia]) -> Void) -> Void
     let onTitleFocusRequest: () -> Void
     let titleEditingConfig: TitleEditingConfig?
+    /// Called when the user attempts an action that's blocked by the
+    /// free-tier cap (currently: adding the first clip to a brand-new
+    /// collab tape when the lifetime activation cap is hit). Hosts use
+    /// this to present `PaywallView`. Defaults to no-op so existing
+    /// call sites compile unchanged.
+    let onActivationBlocked: () -> Void
 
     @EnvironmentObject var tapeStore: TapesStore
     @EnvironmentObject var importCoordinator: MediaImportCoordinator
     @EnvironmentObject var musicPreviewManager: MusicPreviewManager
+    @EnvironmentObject var entitlementManager: EntitlementManager
     @Environment(\.scenePhase) private var scenePhase
     @State private var fabMode: FABMode = .camera
     @State private var showingMediaPicker = false
@@ -145,7 +152,8 @@ struct TapeCardView: View {
         onThumbnailDelete: @escaping (Clip) -> Void,
         onCameraCapture: @escaping (@escaping ([PickedMedia]) -> Void) -> Void = { _ in },
         onTitleFocusRequest: @escaping () -> Void = {},
-        titleEditingConfig: TitleEditingConfig? = nil
+        titleEditingConfig: TitleEditingConfig? = nil,
+        onActivationBlocked: @escaping () -> Void = {}
     ) {
         self._tape = tape
         self.tapeID = tapeID
@@ -159,6 +167,7 @@ struct TapeCardView: View {
         self.onCameraCapture = onCameraCapture
         self.onTitleFocusRequest = onTitleFocusRequest
         self.titleEditingConfig = titleEditingConfig
+        self.onActivationBlocked = onActivationBlocked
     }
 
     @ViewBuilder
@@ -287,9 +296,17 @@ struct TapeCardView: View {
                     ) {
                         switch fabMode {
                         case .gallery:
+                            if isBlockedByCollabActivationCap {
+                                onActivationBlocked()
+                                return
+                            }
                             importSource = .centerFAB
                             showingMediaPicker = true
                         case .camera:
+                            if isBlockedByCollabActivationCap {
+                                onActivationBlocked()
+                                return
+                            }
                             importSource = .centerFAB
                             stopPreviewIfNeeded()
                             onCameraCapture { capturedMedia in
@@ -578,6 +595,11 @@ struct TapeCardView: View {
             return
         }
 
+        if isBlockedByCollabActivationCap {
+            onActivationBlocked()
+            return
+        }
+
         stopPreviewIfNeeded()
 
         switch item {
@@ -766,6 +788,10 @@ struct TapeCardView: View {
         tapeStore.updateTape(updated)
 
         if tape.isCollabTape {
+            // First clip on a brand-new collab tape — counts as one
+            // activation against the Free-tier cap. Idempotent: a no-op
+            // if this tape ID has already been counted (e.g. via share).
+            entitlementManager.markTapeActivated(tape.id)
             tapeStore.insertEmptyCollabTapeAtTop()
         } else {
             tapeStore.insertEmptyTapeAtTop()
@@ -774,6 +800,15 @@ struct TapeCardView: View {
 
     private var isEmptyTape: Bool {
         tape.clips.isEmpty && !tape.hasReceivedFirstContent
+    }
+
+    /// True when this is an empty Collab tape and the Free user has already
+    /// hit the lifetime activation cap. Adding a first clip would create a
+    /// new collab activation, which we block before any media-picker UI runs.
+    private var isBlockedByCollabActivationCap: Bool {
+        guard tape.isCollabTape, isEmptyTape else { return false }
+        if entitlementManager.isTapeAlreadyActivated(tape.id) { return false }
+        return !entitlementManager.canActivateNewTape()
     }
 
     // MARK: - Music Bar

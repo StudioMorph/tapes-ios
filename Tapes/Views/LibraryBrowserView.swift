@@ -90,21 +90,72 @@ private struct GlassPillStyle: ViewModifier {
     }
 }
 
+/// Bottom safe-area bar that promotes the upgrade-to-Plus action when
+/// the Free-tier track cap is in effect. Sits below the scroll content
+/// and above the system home indicator. Hidden for Plus users.
+private struct UpgradeBottomBar: ViewModifier {
+    let visible: Bool
+    let onTap: () -> Void
+
+    func body(content: Content) -> some View {
+        if visible {
+            if #available(iOS 26.0, *) {
+                content.safeAreaBar(edge: .bottom) { bar }
+            } else {
+                content.safeAreaInset(edge: .bottom, spacing: 0) {
+                    bar.background(.bar)
+                }
+            }
+        } else {
+            content
+        }
+    }
+
+    private var bar: some View {
+        Button(action: onTap) {
+            HStack(spacing: Tokens.Spacing.s) {
+                Text("Upgrade to unlock 12,000 tracks")
+                    .font(.system(size: 15, weight: .semibold))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Tokens.Spacing.s)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .buttonBorderShape(.capsule)
+        .tint(Tokens.Colors.systemBlue)
+        .padding(.horizontal, Tokens.Spacing.m)
+        .padding(.vertical, Tokens.Spacing.s)
+    }
+}
+
 // MARK: - Library Browser View
 
 struct LibraryBrowserView: View {
     @Binding var tape: Tape
     @ObservedObject var viewModel: LibraryBrowserViewModel
     let onTrackSelected: () -> Void
+    /// Called by the bottom upgrade toolbar (Free tier only). Hosts use
+    /// this to flip their `showingPaywall` state.
+    var onUpgradeTapped: () -> Void = {}
 
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tapesStore: TapesStore
+    @EnvironmentObject private var entitlementManager: EntitlementManager
 
     private var inUseTrackID: String? {
         guard let mood = tape.backgroundMusicMood,
               mood.hasPrefix("library:") else { return nil }
         return String(mood.dropFirst("library:".count))
     }
+
+    /// Number of tracks the current tier can browse. `nil` for Plus.
+    private var trackCap: Int? { entitlementManager.libraryTrackCap }
+
+    /// Whether to show the bottom upgrade toolbar. Free tier only.
+    private var showsUpgradeToolbar: Bool { trackCap != nil }
 
     var body: some View {
         Group {
@@ -119,13 +170,14 @@ struct LibraryBrowserView: View {
                 }
             }
         }
+        .modifier(UpgradeBottomBar(visible: showsUpgradeToolbar, onTap: onUpgradeTapped))
         .task {
             guard let api = authManager.apiClient else { return }
             if viewModel.availableFilters.isEmpty {
                 await viewModel.loadParams(api: api)
             }
             if viewModel.tracks.isEmpty {
-                await viewModel.loadTracks(api: api)
+                await viewModel.loadTracks(api: api, trackCap: trackCap)
             }
         }
         .onChange(of: viewModel.requestTrackReload) { _, reload in
@@ -136,7 +188,7 @@ struct LibraryBrowserView: View {
                     // Refresh both: params (so chip visibility updates with
                     // the new context) and tracks (the actual list).
                     async let params: Void = viewModel.loadParams(api: api)
-                    async let list: Void = viewModel.loadTracks(api: api, reset: true)
+                    async let list: Void = viewModel.loadTracks(api: api, reset: true, trackCap: trackCap)
                     _ = await (params, list)
                 }
             }
@@ -172,7 +224,7 @@ struct LibraryBrowserView: View {
                 if track.id == viewModel.tracks.last?.id {
                     Task {
                         guard let api = authManager.apiClient else { return }
-                        await viewModel.loadMore(api: api)
+                        await viewModel.loadMore(api: api, trackCap: trackCap)
                     }
                 }
             }
@@ -338,7 +390,12 @@ final class LibraryBrowserViewModel: ObservableObject {
         }
     }
 
-    func loadTracks(api: TapesAPIClient, reset: Bool = false) async {
+    /// Loads the next page of tracks. Respects an optional `trackCap`
+    /// (Free-tier limit): once the loaded count reaches the cap, the
+    /// remaining server-side tracks are simply not fetched. Filter counts
+    /// returned by the params endpoint are unchanged — we still tell Free
+    /// users the true library size, just don't surface the tracks.
+    func loadTracks(api: TapesAPIClient, reset: Bool = false, trackCap: Int? = nil) async {
         if reset {
             currentOffset = 0
             tracks = []
@@ -346,27 +403,43 @@ final class LibraryBrowserViewModel: ObservableObject {
         }
         guard hasMore, !isLoadingTracks else { return }
 
+        if let cap = trackCap, tracks.count >= cap {
+            hasMore = false
+            return
+        }
+
         isLoadingTracks = true
         defer { isLoadingTracks = false }
+
+        let pageSize = 50
+        let limit: Int
+        if let cap = trackCap {
+            limit = max(1, min(pageSize, cap - tracks.count))
+        } else {
+            limit = pageSize
+        }
 
         do {
             let response = try await api.fetchLibraryTracks(
                 filters: apiFilters,
                 offset: currentOffset,
-                limit: 50
+                limit: limit
             )
             tracks.append(contentsOf: response.data)
             totalTracks = response.meta?.total
             currentOffset += response.data.count
-            hasMore = response.data.count == 50
+            hasMore = response.data.count == limit
+            if let cap = trackCap, tracks.count >= cap {
+                hasMore = false
+            }
         } catch {
             errorMessage = error.localizedDescription
             showError = true
         }
     }
 
-    func loadMore(api: TapesAPIClient) async {
-        await loadTracks(api: api)
+    func loadMore(api: TapesAPIClient, trackCap: Int? = nil) async {
+        await loadTracks(api: api, trackCap: trackCap)
     }
 
     func toggleFilter(param: String, value: String) {

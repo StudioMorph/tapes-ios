@@ -2,17 +2,16 @@
 
 ## Summary
 
-Email/password authentication with JWT sessions, email verification via Resend, password reset with Universal Links, and StoreKit 2 subscription with a 3-day free trial and two paid tiers: **TAPES Plus** and **TAPES Together**.
+Email/password authentication with JWT sessions, email verification via Resend, password reset with Universal Links, and StoreKit 2 subscription with a single paid tier (**Tapes Plus**) gated by a 7-day free trial. Free-tier limits and gate sites are documented separately in [`SubscriptionTiers.md`](./SubscriptionTiers.md).
 
 ## Purpose & Scope
 
 - Gate the app behind email/password sign-in (no anonymous or skip option in current build)
 - Email verification enforced post-registration via transactional email (Resend)
 - Password reset flow via email link with Universal Link deep linking back to the app
-- Enforce a 3-day free trial limited to 3 tapes
-- Present a paywall after the trial expires
+- Present a paywall when a Free user hits any gated capability (see `SubscriptionTiers.md`)
 - Manage subscription lifecycle via StoreKit 2 (on-device)
-- Two paid tiers: Plus (core premium) and Together (collaboration-focused)
+- Single paid tier: Tapes Plus, with monthly and annual options, both with a 7-day free trial
 
 ## Architecture
 
@@ -91,9 +90,8 @@ All templates are defined in `tapes-api/src/lib/email-templates.ts`:
 
 | File | Role |
 |------|------|
-| `Subscription/SubscriptionManager.swift` | StoreKit 2 multi-product loading, purchasing, transaction listening, tier resolution |
-| `Subscription/TrialManager.swift` | Install date tracking, 3-day free trial logic, tape count limits |
-| `Subscription/EntitlementManager.swift` | Unified access-control layer combining subscription tiers + trial state |
+| `Subscription/SubscriptionManager.swift` | StoreKit 2 product loading, purchasing, transaction listening, intro-offer eligibility |
+| `Subscription/EntitlementManager.swift` | Unified access-control layer (Free vs Plus) and the activation-set counter that drives the share/collab cap. See `SubscriptionTiers.md` for the gate matrix. |
 
 #### Views (`Tapes/Views/`)
 
@@ -115,34 +113,33 @@ TapesApp
 │   └── TapesAPIClient (Keychain JWT, all auth HTTP calls)
 ├── PushNotificationManager (silent push → markEmailVerified)
 ├── EntitlementManager
-│   ├── SubscriptionManager (StoreKit 2, multi-tier)
-│   └── TrialManager (install date + limits)
+│   ├── SubscriptionManager (StoreKit 2)
+│   └── activatedTapeIDs (UserDefaults set, share/collab cap counter)
 └── ContentView
     ├── AuthView (if not signed in)
     │   ├── ForgotPasswordView (sheet)
     │   └── ResetPasswordView (sheet, via deep link token)
-    └── TapesListView (if signed in)
-        └── PaywallView (sheet if trial expired)
+    └── MainTabView (if signed in)
+        └── PaywallView (sheet, presented by gate sites — see SubscriptionTiers.md)
 ```
 
 ## Access Levels
 
-| Level | Condition | Capabilities |
-|-------|-----------|--------------|
-| `free` | Free tier or within 3 days of install | Max 3 tapes/month, 1 shared tape, watermark exports |
-| `plus` | Active Plus subscription | Unlimited tapes, no watermarks, 12k music library, AI mood music, 1 collab TAPE/month |
-| `together` | Active Together subscription | Everything in Plus, AI prompt music, unlimited collaborative tapes |
+Two tiers. Gate sites and the activation-set counter are documented in [`SubscriptionTiers.md`](./SubscriptionTiers.md).
+
+| Level | Condition |
+|-------|-----------|
+| `free` | No active subscription |
+| `plus` | Active Tapes Plus subscription |
 
 ## Subscription Products
 
-| Product ID | Tier | Billing |
-|------------|------|---------|
-| `com.tapes.plus.monthly` | Plus | Monthly |
-| `com.tapes.plus.annual` | Plus | Annual (-30%) |
-| `com.tapes.together.monthly` | Together | Monthly |
-| `com.tapes.together.annual` | Together | Annual (-30%) |
+| Product ID | Tier | Billing | Trial |
+|------------|------|---------|-------|
+| `com.tapes.plus.monthly` | Plus | Monthly | 7 days |
+| `com.tapes.plus.annual` | Plus | Annual | 7 days |
 
-Legacy alias `com.tapes.premium.monthly` maps to `com.tapes.plus.monthly` for backward compatibility.
+Trial eligibility is checked at runtime via `Product.SubscriptionInfo.isEligibleForIntroOffer` and surfaced through `SubscriptionManager.isEligibleForTrial(cycle:)`.
 
 ## Security
 
@@ -162,9 +159,9 @@ Legacy alias `com.tapes.premium.monthly` maps to `com.tapes.plus.monthly` for ba
 ## Testing
 
 - Use the `TapesProducts.storekit` configuration file in Xcode scheme settings for local StoreKit testing.
-- `TrialManager.resetTrial()` available in DEBUG builds to reset the install date.
 - Email verification can be tested by checking the Resend dashboard for sent emails.
 - Reset password flow requires a valid email in D1 and a device with Universal Links configured.
+- For Free-tier gate testing, see the QA section in [`SubscriptionTiers.md`](./SubscriptionTiers.md).
 
 ## QA Considerations
 

@@ -4,6 +4,7 @@ struct CollabTapesView: View {
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tapesStore: TapesStore
     @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
+    @EnvironmentObject private var entitlementManager: EntitlementManager
     @StateObject private var downloadCoordinator = SharedTapeDownloadCoordinator()
     @StateObject private var syncCoordinator = CollabSyncCoordinator()
     @StateObject private var importCoordinator = MediaImportCoordinator()
@@ -24,6 +25,7 @@ struct CollabTapesView: View {
     @State private var isScrolled = false
     @State private var sortedOwnerIDs: [UUID] = []
     @State private var sortedReceivedIDs: [UUID] = []
+    @State private var showingPaywall = false
 
     enum CollabSegment: String, CaseIterable, Identifiable {
         case createdByMe = "Created by me"
@@ -183,6 +185,9 @@ struct CollabTapesView: View {
             if let binding = tapesStore.bindingForTape(id: shareTape.id) {
                 ShareModalView(tape: binding, pendingMergeTape: .constant(nil))
             }
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
         }
         .sheet(item: $tapeToSettings) { settingsTape in
             if let binding = tapesStore.bindingForTape(id: settingsTape.id) {
@@ -395,7 +400,7 @@ struct CollabTapesView: View {
             tapeWidth: width,
             isLandscape: false,
             isShareDisabled: false,
-            onShare: { tapeToShare = tape },
+            onShare: { handleShareIntent(for: tape) },
             onSettings: { tapeToSettings = tape },
             onPlay: { startIndex in
                 tapesStore.clearUnseenContent(for: tape.id)
@@ -414,7 +419,8 @@ struct CollabTapesView: View {
                 editingTapeID = tapeID
                 draftTitle = tape.title
             },
-            titleEditingConfig: titleConfig
+            titleEditingConfig: titleConfig,
+            onActivationBlocked: { showingPaywall = true }
         )
         .background(Tokens.Colors.primaryBackground)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.card))
@@ -487,6 +493,20 @@ struct CollabTapesView: View {
 
             Spacer()
         }
+    }
+
+    // MARK: - Share Intent
+
+    /// Free-tier gate before opening the share sheet. Tapes that have
+    /// already been activated (counted) bypass the gate; new ones present
+    /// `PaywallView` if the user has hit the lifetime cap.
+    private func handleShareIntent(for tape: Tape) {
+        if !entitlementManager.isTapeAlreadyActivated(tape.id),
+           !entitlementManager.canActivateNewTape() {
+            showingPaywall = true
+            return
+        }
+        tapeToShare = tape
     }
 
     // MARK: - Title Editing

@@ -16,6 +16,7 @@ struct ShareLinkSection: View {
     @EnvironmentObject private var uploadCoordinator: ShareUploadCoordinator
     @EnvironmentObject private var authManager: AuthManager
     @EnvironmentObject private var tapesStore: TapesStore
+    @EnvironmentObject private var entitlementManager: EntitlementManager
 
     // MARK: - UI state
 
@@ -383,7 +384,13 @@ struct ShareLinkSection: View {
     }
 
     /// After the first successful upload of a collab tape, persist ShareInfo.
+    /// Also marks the tape as activated against the Free-tier cap — runs for
+    /// every successful share (collab *or* view-only) because either path
+    /// makes the tape externally accessible. Idempotent thanks to the set
+    /// semantics in `EntitlementManager`.
     private func finaliseShareInfo(response: TapesAPIClient.CreateTapeResponse) {
+        entitlementManager.markTapeActivated(tape.id)
+
         guard isCollabTape, tape.shareInfo == nil else { return }
         let info = ShareInfo(
             shareId: response.shareIdCollab,
