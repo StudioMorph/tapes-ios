@@ -29,6 +29,12 @@ final class SubscriptionManager: ObservableObject {
     @Published private(set) var isLoading = false
     @Published var purchaseError: String?
 
+    /// Per-product introductory-offer eligibility for the current Apple ID.
+    /// `true` means the user has not yet used their intro / free trial for
+    /// the product's subscription group and the trial copy on the paywall
+    /// should be shown. Refreshed whenever products are loaded.
+    @Published private(set) var introOfferEligibility: [String: Bool] = [:]
+
     // MARK: - Private
 
     private var transactionListener: Task<Void, Never>?
@@ -62,6 +68,13 @@ final class SubscriptionManager: ObservableObject {
 
     var isSubscribed: Bool { activeTier != nil }
 
+    /// Whether the current Apple ID is still eligible for the intro / free
+    /// trial offer on the given billing cycle. Drives whether the paywall
+    /// renders the "7 days Free Trial" line on each card.
+    func isEligibleForTrial(cycle: BillingCycle) -> Bool {
+        introOfferEligibility[Self.productID(cycle: cycle)] ?? false
+    }
+
     // MARK: - Load Products
 
     func loadProducts() async {
@@ -74,12 +87,26 @@ final class SubscriptionManager: ObservableObject {
             var map: [String: Product] = [:]
             for p in loaded { map[p.id] = p }
             products = map
+            await refreshIntroOfferEligibility()
         } catch {
             #if DEBUG
             print("[SubscriptionManager] Failed to load products: \(error)")
             #endif
             purchaseError = "Failed to load subscriptions: \(error.localizedDescription)"
         }
+    }
+
+    /// Asks StoreKit which products the current Apple ID is still eligible
+    /// for an introductory offer on. Eligibility is per *subscription
+    /// group*, not per product, but StoreKit exposes it on each product —
+    /// returning the same answer for every product in the same group.
+    private func refreshIntroOfferEligibility() async {
+        var map: [String: Bool] = [:]
+        for (id, product) in products {
+            guard let subscription = product.subscription else { continue }
+            map[id] = await subscription.isEligibleForIntroOffer
+        }
+        introOfferEligibility = map
     }
 
     // MARK: - Purchase
