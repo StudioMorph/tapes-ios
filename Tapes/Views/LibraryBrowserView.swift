@@ -133,7 +133,11 @@ struct LibraryBrowserView: View {
                 viewModel.requestTrackReload = false
                 Task {
                     guard let api = authManager.apiClient else { return }
-                    await viewModel.loadTracks(api: api, reset: true)
+                    // Refresh both: params (so chip visibility updates with
+                    // the new context) and tracks (the actual list).
+                    async let params: Void = viewModel.loadParams(api: api)
+                    async let list: Void = viewModel.loadTracks(api: api, reset: true)
+                    _ = await (params, list)
                 }
             }
         }
@@ -266,18 +270,24 @@ final class LibraryBrowserViewModel: ObservableObject {
         Self.paramDisplayNames[param] ?? param.capitalized
     }
 
-    /// Filter pills shown in the UI. Hides Mode/Key, replaces BPM values with 3 buckets.
+    /// Filter pills shown in the UI. Hides Mode/Key, replaces BPM values
+    /// with 3 buckets, drops any individual value with `tracksCount == 0`,
+    /// and drops the whole category if no values remain. Re-evaluated
+    /// every time `availableFilters` is refreshed (which happens on each
+    /// filter change), so categories disappear / reappear in step with
+    /// the user's current selection.
     var displayFilters: [TapesAPIClient.LibraryParam] {
         availableFilters
             .filter { !Self.hiddenParams.contains($0.param) }
-            .map { filter in
-                if filter.param == "bpm" {
-                    return TapesAPIClient.LibraryParam(
-                        param: "bpm",
-                        values: Self.bucketedBPMValues(from: filter.values)
-                    )
-                }
-                return filter
+            .compactMap { filter -> TapesAPIClient.LibraryParam? in
+                let trimmed: [TapesAPIClient.LibraryParamValue] = {
+                    if filter.param == "bpm" {
+                        return Self.bucketedBPMValues(from: filter.values)
+                    }
+                    return filter.values.filter { $0.tracksCount > 0 }
+                }()
+                guard !trimmed.isEmpty else { return nil }
+                return TapesAPIClient.LibraryParam(param: filter.param, values: trimmed)
             }
     }
 
