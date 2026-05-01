@@ -70,6 +70,7 @@ actor TapesAPIClient {
         let emailVerified: Bool?
         let deliveryMode: String?
         let timezone: String?
+        let deleteScheduledAt: String?
 
         enum CodingKeys: String, CodingKey {
             case userId = "user_id"
@@ -77,6 +78,7 @@ actor TapesAPIClient {
             case emailVerified = "email_verified"
             case deliveryMode = "delivery_mode"
             case timezone
+            case deleteScheduledAt = "delete_scheduled_at"
         }
     }
 
@@ -545,6 +547,17 @@ actor TapesAPIClient {
     func updateNotificationPreference(deliveryMode: String, timezone: String) async throws -> NotificationPreferenceResponse {
         let body = ["delivery_mode": deliveryMode, "timezone": timezone]
         return try await put(path: "/users/me/notification-preference", body: body)
+    }
+
+    struct DeleteAccountResponse: Decodable {
+        let deleteScheduledAt: String
+        enum CodingKeys: String, CodingKey {
+            case deleteScheduledAt = "delete_scheduled_at"
+        }
+    }
+
+    func requestAccountDeletion() async throws -> DeleteAccountResponse {
+        try await post(path: "/users/me/delete", body: [String: String]())
     }
 
     // MARK: - Music (Mubert proxy)

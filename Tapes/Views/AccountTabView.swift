@@ -5,6 +5,7 @@ struct AccountTabView: View {
     @EnvironmentObject private var entitlementManager: EntitlementManager
     @Binding var showOnboarding: Bool
     @State private var showingPaywall = false
+    @State private var showingDeleteAccount = false
 
     private var isSignedIn: Bool {
         authManager.isSignedIn
@@ -45,6 +46,9 @@ struct AccountTabView: View {
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
+        }
+        .sheet(isPresented: $showingDeleteAccount) {
+            DeleteAccountSheet()
         }
     }
 
@@ -145,7 +149,7 @@ struct AccountTabView: View {
         }
     }
 
-    // MARK: - Sign Out
+    // MARK: - Sign Out & Delete
 
     private var signOutSection: some View {
         Section {
@@ -153,6 +157,14 @@ struct AccountTabView: View {
                 authManager.signOut()
             }
             .frame(maxWidth: .infinity)
+
+            Button(role: .destructive) {
+                showingDeleteAccount = true
+            } label: {
+                Label("Delete Account & Data", systemImage: "trash")
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
     }
 }
