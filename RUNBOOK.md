@@ -368,7 +368,7 @@ The sync system uses a three-layer event-driven architecture:
 - Cloudflare secrets managed via `wrangler secret put` (JWT_SECRET, R2 credentials, `APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`)
 - Backend deployed via `wrangler deploy` from `tapes-api/`
 - D1 migrations live in `tapes-api/migrations/` and are applied via `wrangler d1 migrations apply tapes-db --remote`
-- Latest migration: `0009_shared_assets_expire_at.sql` — adds tape-level R2 retention column for 3-day shared asset expiry
+- Latest migration: `0014_account_deletion.sql` — adds `delete_scheduled_at` to users table for 7-day cooling-off account deletion
 - iOS entitlements: Associated Domains (`applinks:`), Push Notifications
 
 ---
