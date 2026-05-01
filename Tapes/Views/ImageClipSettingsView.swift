@@ -107,7 +107,6 @@ struct ImageClipSettingsView: View {
             if livePhotoIsOn { await loadAndPlayLivePhoto() }
             if hasBackgroundMusic {
                 await bgMusic.prepare(
-                    mood: tape.musicMood,
                     tapeID: tape.id,
                     volume: Float(clipMusicVolume),
                     api: authManager.apiClient

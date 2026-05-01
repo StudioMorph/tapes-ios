@@ -23,22 +23,17 @@ final class BackgroundMusicPlayer: ObservableObject {
 
     // MARK: - Prepare
 
-    /// Loads (or waits for) a background track for the given mood and tape.
-    /// If the track is already cached, loads instantly. If still generating, waits with polling.
-    /// If the video already called syncPlay() before this finishes, playback starts automatically.
-    /// `api` is required when the track isn't cached — generation goes through the backend proxy.
-    ///
-    /// `librarySourceURL` is the durable Mubert URL persisted on the tape for
-    /// library tracks. When set and the local cache is empty, we re-download
-    /// from it — the self-healing path for shared tapes whose first download
-    /// failed (network blip, app force-killed, etc.). Library URLs live for
-    /// several days, so the retry covers the realistic window.
-    func prepare(mood: MubertAPIClient.Mood, tapeID: UUID, volume: Float, librarySourceURL: URL? = nil, api: TapesAPIClient?) async {
+    /// Loads the background track for a tape. The `mood` enum is only needed
+    /// for the (currently dormant) mood-based generation path. Prompt tracks
+    /// and library tracks are already cached locally by the time the player
+    /// opens, so they always hit the cache-first branch. Library tracks also
+    /// carry a `librarySourceURL` for self-healing re-download.
+    func prepare(tapeID: UUID, volume: Float, librarySourceURL: URL? = nil, api: TapesAPIClient?) async {
         isLoading = true
         error = nil
         pendingPlay = false
 
-        log.info("Preparing background music: mood=\(mood.rawValue), tape=\(tapeID.uuidString.prefix(8)), volume=\(volume)")
+        log.info("Preparing background music: tape=\(tapeID.uuidString.prefix(8)), volume=\(volume)")
 
         do {
             let localURL: URL
@@ -49,21 +44,8 @@ final class BackgroundMusicPlayer: ObservableObject {
             } else if let libraryURL = librarySourceURL {
                 log.info("Cache miss, retrying library download from source URL")
                 localURL = try await MubertAPIClient.shared.downloadLibraryTrack(from: libraryURL, tapeID: tapeID)
-            } else if mood != .none {
-                guard let api else {
-                    log.warning("No API client available — skipping music generation")
-                    isLoading = false
-                    return
-                }
-                log.info("Track not cached, generating via proxy...")
-                localURL = try await MubertAPIClient.shared.generateTrack(
-                    mood: mood,
-                    tapeID: tapeID,
-                    api: api,
-                    onProgress: { _ in }
-                )
             } else {
-                log.info("No cached track and no mood — nothing to prepare")
+                log.info("No cached track — nothing to prepare")
                 isLoading = false
                 return
             }

@@ -289,7 +289,6 @@ struct ClipTrimView: View {
     private func prepareMusic() async {
         guard hasBackgroundMusic else { return }
         await musicPlayer.prepare(
-            mood: tape.musicMood,
             tapeID: tape.id,
             volume: Float(clipMusicVolume),
             api: authManager.apiClient

@@ -40,7 +40,7 @@ public final class TapeExportSession: @unchecked Sendable {
         var allAudioParams = components.audioMix?.inputParameters ?? []
         let totalDuration = components.timeline.totalDuration
 
-        log.info("Composition built: videoTracks=\(composition.tracks(withMediaType: .video).count), audioTracks=\(composition.tracks(withMediaType: .audio).count), audioMixParams=\(allAudioParams.count), musicMood=\(tape.musicMood.rawValue)")
+        log.info("Composition built: videoTracks=\(composition.tracks(withMediaType: .video).count), audioTracks=\(composition.tracks(withMediaType: .audio).count), audioMixParams=\(allAudioParams.count), hasMusic=\(tape.hasBackgroundMusic)")
         for (i, clip) in tape.clips.enumerated() {
             let kind = clip.isLivePhoto ? "livePhoto" : (clip.assetLocalId != nil ? "photo/video" : "image")
             log.info("  clip[\(i)] kind=\(kind), isLivePhoto=\(clip.isLivePhoto), duration=\(clip.duration)s, assetId=\(clip.assetLocalId ?? "nil")")

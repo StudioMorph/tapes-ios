@@ -298,6 +298,10 @@ public struct Tape: Identifiable, Codable, Equatable {
         return clips.isEmpty
     }
 
+    /// Returns the mood-enum value when `backgroundMusicMood` is a valid enum
+    /// case. Returns `.none` for prompt and library tracks. Only used by the
+    /// (currently dormant) Moods picker — everything else checks
+    /// `hasBackgroundMusic` instead.
     var musicMood: MubertAPIClient.Mood {
         guard let raw = backgroundMusicMood,
               let mood = MubertAPIClient.Mood(rawValue: raw) else { return .none }

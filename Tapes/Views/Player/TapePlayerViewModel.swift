@@ -170,7 +170,6 @@ final class TapePlayerViewModel: ObservableObject {
         let librarySourceURL: URL? = tape.backgroundMusicSourceURL.flatMap(URL.init(string:))
         let musicTask: Task<Void, Never>? = hasMood ? Task {
             await backgroundMusic.prepare(
-                mood: tape.musicMood,
                 tapeID: tape.id,
                 volume: tape.musicVolume,
                 librarySourceURL: librarySourceURL,
