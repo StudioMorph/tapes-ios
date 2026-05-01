@@ -95,13 +95,22 @@ and symmetrical, with one important asymmetry between music *types*.
 
 **Two transport models, one rule:**
 
-- **Library tracks** are referenced by Mubert track ID. Every Tapes user
-  has equal access to the catalogue via the `/music/tracks/:id` proxy, so
-  there's nothing to re-host. The server stores `track_id`; receivers
-  resolve to a fresh stream URL and download into their own per-tape slot.
+- **Library tracks** never touch our R2. Mubert exposes no single-track
+  lookup endpoint, so the owner's app persists the streaming URL it had
+  at pick time on the local tape (`backgroundMusicSourceURL`) and ships
+  it through the manifest alongside the `track_id`. Receivers download
+  directly from Mubert into their per-tape slot. URLs live for several
+  days — comfortable margin for any realistic share window.
 - **Prompt + mood (generated)** tracks are unique per call — Mubert won't
   reproduce the same audio twice. The owner uploads the mp3 to R2; the
   server stores `url`; receivers download from R2 into their per-tape slot.
+
+**Self-healing retry:** if the cached mp3 is missing when the player opens
+a tape (first share download failed, app force-killed mid-download, cache
+manually cleared), the player re-downloads from `backgroundMusicSourceURL`
+on the spot — for library tracks. Generated audio doesn't get this retry
+because a presigned R2 URL would be expired by then; receivers would need
+to re-fetch the manifest, which we defer until proven necessary.
 
 **Write-once attachment** (applies to both types):
 
@@ -123,10 +132,11 @@ the block is already attached):
 | Route | Purpose |
 |-------|---------|
 | `POST /tapes/:id/music/prepare-upload` | Returns a presigned PUT URL for `music/<tape_id>.mp3` in R2. Used only for prompt/mood. |
-| `POST /tapes/:id/music/confirm` | Persists the music block into `tape_settings.background_music`. Accepts `public_url` (prompt/mood) or `track_id` (library). |
+| `POST /tapes/:id/music/confirm` | Persists the music block into `tape_settings.background_music`. Library type requires `track_id` + `public_url` (Mubert URL); prompt/mood require `public_url` (R2 URL). |
 
-The manifest endpoint signs `background_music.url` per request, the same
-way clip URLs are signed. Library blocks (no `url`) pass through untouched.
+The manifest endpoint signs `background_music.url` per request only when the
+type is prompt/mood (R2-hosted). Library blocks pass the Mubert URL through
+verbatim.
 
 R2 cleanup of `music/<tape_id>.mp3` runs on the hourly shared-asset cron
 and on tape delete. Library tapes never write to R2 in the first place.

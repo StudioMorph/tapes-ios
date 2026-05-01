@@ -27,7 +27,13 @@ final class BackgroundMusicPlayer: ObservableObject {
     /// If the track is already cached, loads instantly. If still generating, waits with polling.
     /// If the video already called syncPlay() before this finishes, playback starts automatically.
     /// `api` is required when the track isn't cached — generation goes through the backend proxy.
-    func prepare(mood: MubertAPIClient.Mood, tapeID: UUID, volume: Float, api: TapesAPIClient?) async {
+    ///
+    /// `librarySourceURL` is the durable Mubert URL persisted on the tape for
+    /// library tracks. When set and the local cache is empty, we re-download
+    /// from it — the self-healing path for shared tapes whose first download
+    /// failed (network blip, app force-killed, etc.). Library URLs live for
+    /// several days, so the retry covers the realistic window.
+    func prepare(mood: MubertAPIClient.Mood, tapeID: UUID, volume: Float, librarySourceURL: URL? = nil, api: TapesAPIClient?) async {
         isLoading = true
         error = nil
         pendingPlay = false
@@ -40,6 +46,9 @@ final class BackgroundMusicPlayer: ObservableObject {
             if let cached = await MubertAPIClient.shared.cachedTrackURL(for: tapeID) {
                 log.info("Track already cached")
                 localURL = cached
+            } else if let libraryURL = librarySourceURL {
+                log.info("Cache miss, retrying library download from source URL")
+                localURL = try await MubertAPIClient.shared.downloadLibraryTrack(from: libraryURL, tapeID: tapeID)
             } else if mood != .none {
                 guard let api else {
                     log.warning("No API client available — skipping music generation")

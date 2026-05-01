@@ -269,6 +269,10 @@ struct LibraryBrowserView: View {
             )
             tape.backgroundMusicMood = "library:\(track.id)"
             tape.backgroundMusicPrompt = nil
+            // Persist the Mubert URL so we can ferry it to receivers when the
+            // tape is shared and re-download locally if the cached mp3 ever
+            // disappears. Library URLs are presigned and live for several days.
+            tape.backgroundMusicSourceURL = streamURL.absoluteString
             if tape.waveColorHue == nil {
                 tape.waveColorHue = Double.random(in: 0...1)
             }

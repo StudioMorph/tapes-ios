@@ -167,9 +167,14 @@ final class TapePlayerViewModel: ObservableObject {
         let startIndex = min(max(startAtClip, 0), tape.clips.count - 1)
         let hasMood = tape.hasBackgroundMusic
 
+        let librarySourceURL: URL? = tape.backgroundMusicSourceURL.flatMap(URL.init(string:))
         let musicTask: Task<Void, Never>? = hasMood ? Task {
             await backgroundMusic.prepare(
-                mood: tape.musicMood, tapeID: tape.id, volume: tape.musicVolume, api: api
+                mood: tape.musicMood,
+                tapeID: tape.id,
+                volume: tape.musicVolume,
+                librarySourceURL: librarySourceURL,
+                api: api
             )
         } : nil
 

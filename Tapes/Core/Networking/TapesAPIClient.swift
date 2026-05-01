@@ -635,17 +635,6 @@ actor TapesAPIClient {
         }
     }
 
-    /// Resolves a Mubert library track ID to a fresh playback URL, used by
-    /// receivers to download a shared library track. Wraps the existing
-    /// `pollMusicTrack` endpoint, which works for any track ID.
-    func resolveLibraryTrackURL(trackId: String) async throws -> URL {
-        let response = try await pollMusicTrack(trackId: trackId)
-        guard let urlStr = response.url, let url = URL(string: urlStr) else {
-            throw APIError.server("Music service returned no URL for track \(trackId).")
-        }
-        return url
-    }
-
     // MARK: - Music Library (12K)
 
     struct LibraryParamValue: Decodable, Identifiable {

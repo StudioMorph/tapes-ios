@@ -258,6 +258,7 @@ struct AIPromptMusicView: View {
 
         tape.backgroundMusicMood = "prompt"
         tape.backgroundMusicPrompt = trackGen.lastPrompt
+        tape.backgroundMusicSourceURL = nil
         if tape.waveColorHue == nil {
             tape.waveColorHue = Double.random(in: 0...1)
         }

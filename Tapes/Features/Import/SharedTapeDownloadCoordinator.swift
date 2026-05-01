@@ -256,23 +256,15 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                     // and detached from the share-success signal so a slow
                     // music download never blocks the user's tape-ready UI.
                     //
-                    // Two paths:
-                    //   • library — manifest carries a Mubert track ID; we
-                    //     resolve it to a fresh stream URL via the worker
-                    //     and download from Mubert directly.
-                    //   • prompt/mood — manifest carries a presigned R2 URL;
-                    //     we download from our own bucket.
-                    if let bg = manifest.tapeSettings.backgroundMusic {
+                    // Both paths use `bg.url` — for library it's the Mubert
+                    // streaming URL the owner had at pick time; for
+                    // prompt/mood it's a freshly-signed R2 URL.
+                    if let bg = manifest.tapeSettings.backgroundMusic,
+                       let bgUrlStr = bg.url, let bgUrl = URL(string: bgUrlStr) {
                         let localTapeID = tape.id
-                        let apiRef = api
                         Task.detached(priority: .utility) {
                             do {
-                                if bg.type == "library", let trackId = bg.trackId, !trackId.isEmpty {
-                                    let url = try await apiRef.resolveLibraryTrackURL(trackId: trackId)
-                                    try await MubertAPIClient.shared.downloadSharedMusic(from: url, tapeID: localTapeID)
-                                } else if let bgUrlStr = bg.url, let bgUrl = URL(string: bgUrlStr) {
-                                    try await MubertAPIClient.shared.downloadSharedMusic(from: bgUrl, tapeID: localTapeID)
-                                }
+                                try await MubertAPIClient.shared.downloadSharedMusic(from: bgUrl, tapeID: localTapeID)
                             } catch {
                                 TapesLog.music.warning("Shared music download failed (non-fatal): \(error.localizedDescription, privacy: .public)")
                             }
@@ -736,6 +728,10 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
         // (`!tape.hasBackgroundMusic`) is redundant here because this branch
         // only runs when there is no existing tape, but kept explicit so the
         // rule is visible in code: never overwrite an existing local choice.
+        //
+        // For library tracks the manifest carries the original Mubert URL;
+        // we persist it locally so the player can re-download if the cached
+        // mp3 ever goes missing (URLs live for several days).
         if let bg = manifest.tapeSettings.backgroundMusic,
            let mood = bg.mood, !mood.isEmpty,
            !tape.hasBackgroundMusic {
@@ -743,6 +739,9 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             tape.backgroundMusicPrompt = bg.prompt
             if let level = bg.level {
                 tape.backgroundMusicVolume = level
+            }
+            if bg.type == "library", let urlStr = bg.url, !urlStr.isEmpty {
+                tape.backgroundMusicSourceURL = urlStr
             }
         }
 

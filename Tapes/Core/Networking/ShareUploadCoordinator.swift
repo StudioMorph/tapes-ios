@@ -1122,12 +1122,16 @@ public class ShareUploadCoordinator: ObservableObject {
                     TapesLog.upload.warning("Library tape missing track ID; skipping music attach.")
                     return
                 }
+                guard let sourceURL = tape.backgroundMusicSourceURL, !sourceURL.isEmpty else {
+                    TapesLog.upload.warning("Library tape missing source URL; skipping music attach.")
+                    return
+                }
                 try await api.confirmBackgroundMusic(
                     tapeId: tapeId,
                     type: type,
                     mood: mood,
                     prompt: nil,
-                    publicUrl: nil,
+                    publicUrl: sourceURL,
                     trackId: trackId,
                     level: level
                 )

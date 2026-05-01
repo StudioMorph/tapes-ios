@@ -83,6 +83,7 @@ struct BackgroundMusicPickerView: View {
         withAnimation(.easeInOut(duration: 0.2)) {
             tape.backgroundMusicMood = mood == .none ? nil : mood.rawValue
             tape.backgroundMusicPrompt = nil
+            tape.backgroundMusicSourceURL = nil
             if mood != .none && tape.waveColorHue == nil {
                 tape.waveColorHue = Double.random(in: 0...1)
             }
