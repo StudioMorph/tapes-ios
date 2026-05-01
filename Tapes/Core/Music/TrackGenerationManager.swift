@@ -186,22 +186,31 @@ final class TrackGenerationManager: ObservableObject {
     }
 
     private func startPreview(volume: Float) {
-        guard let url = scratchTrackURL ?? cachedTrackURL else { return }
+        guard let url = scratchTrackURL ?? cachedTrackURL else {
+            log.warning("startPreview: no scratch or cached URL available")
+            return
+        }
+
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? -1
+        log.info("startPreview: url=\(url.lastPathComponent) exists=\(exists) size=\(fileSize) bytes")
 
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
+            log.info("Audio session: category=\(session.category.rawValue) mode=\(session.mode.rawValue) active=true")
 
             let player = try AVAudioPlayer(contentsOf: url)
             player.numberOfLoops = -1
             player.volume = volume
             player.prepareToPlay()
-            player.play()
+
+            let started = player.play()
+            log.info("Preview play() returned \(started), duration=\(player.duration)s, channels=\(player.numberOfChannels), volume=\(player.volume)")
 
             previewPlayer = player
             isPreviewing = true
-            log.info("Preview started at volume=\(volume)")
         } catch {
             log.error("Preview failed: \(error.localizedDescription)")
         }

@@ -297,13 +297,17 @@ actor MubertAPIClient {
     }
 
     private func downloadToScratch(from remoteURL: URL) async throws -> URL {
-        let (tempURL, _) = try await URLSession.shared.download(from: remoteURL)
+        let (tempURL, response) = try await URLSession.shared.download(from: remoteURL)
         let dir = scratchDir()
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let localURL = dir.appendingPathComponent("\(UUID().uuidString).mp3")
         try FileManager.default.moveItem(at: tempURL, to: localURL)
-        log.info("Downloaded scratch track: \(localURL.lastPathComponent)")
+
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.size] as? Int) ?? -1
+        let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let mime = (response as? HTTPURLResponse)?.mimeType ?? "unknown"
+        log.info("Downloaded scratch: \(localURL.lastPathComponent), \(fileSize) bytes, HTTP \(httpStatus), mime=\(mime, privacy: .public)")
         return localURL
     }
 
