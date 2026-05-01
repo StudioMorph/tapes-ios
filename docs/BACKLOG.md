@@ -181,14 +181,8 @@ The Shared and Collab tabs already show a "Verify your email" prompt with a "Res
 
 ---
 
-### 14. Mubert library track redistribution licensing
+### 14. ~~Mubert library track redistribution licensing~~ — DONE
 
-**Context**: Sharing a tape with a 12K Library track currently re-hosts the mp3 on our R2 and serves it to receivers. Mubert's terms may not permit this for licensed third-party library content (AI/prompt content is generated and should be safe).
-
-**Trigger**: before TestFlight, or sooner if a lawyer flags it.
-
-**Approach**: re-read the Mubert agreement. If library redistribution is forbidden, gate the iOS owner-side music upload on `type != "library"` and surface a one-line UX hint when a library track is selected on a tape the user is about to share.
-
-**Files likely involved**: `Tapes/Core/Networking/ShareUploadCoordinator.swift` (the type-switch at music upload time), possibly `BackgroundMusicSheet.swift` for the UX hint.
+Resolved by referencing library tracks by Mubert track ID instead of re-hosting them on R2. Receivers resolve the ID to a fresh playback URL via the existing `/music/tracks/:id` worker proxy. See `docs/features/BackgroundMusic.md` § Sharing & Sync.
 
 ---

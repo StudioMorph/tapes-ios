@@ -1075,6 +1075,14 @@ public class ShareUploadCoordinator: ObservableObject {
     /// has music (`response.hasBackgroundMusic == true`), this is a
     /// no-op. Best-effort throughout — never throws back into the
     /// share flow.
+    ///
+    /// Two paths by source type:
+    ///   • `library` (Mubert catalogue): we send only the track ID. No R2
+    ///     upload — receivers re-resolve via `/music/tracks/:id`. Same audio
+    ///     for everyone, no third-party content sitting on our infra.
+    ///   • `prompt` / `mood` (our generated audio): owner uploads the mp3
+    ///     to R2, server stores the URL. These are unique per generation
+    ///     and Mubert won't reproduce them, so we have to keep a copy.
     private nonisolated static func uploadBackgroundMusicIfNeeded(
         tape: Tape,
         response: TapesAPIClient.CreateTapeResponse,
@@ -1087,35 +1095,59 @@ public class ShareUploadCoordinator: ObservableObject {
         guard tape.hasBackgroundMusic, let mood = tape.backgroundMusicMood, !mood.isEmpty else {
             return
         }
-        guard let mp3 = await MubertAPIClient.shared.cachedTrackURL(for: tape.id) else {
-            TapesLog.upload.warning("Tape has music selection but no local mp3; skipping share upload.")
-            return
-        }
 
         let tapeId = tape.id.uuidString.lowercased()
         let prompt = tape.backgroundMusicPrompt
         let level = Double(tape.backgroundMusicVolume ?? 0.3)
 
+        let libraryTrackId: String?
         let type: String
-        if let p = prompt, !p.isEmpty {
+        if mood.hasPrefix("library:") {
+            libraryTrackId = String(mood.dropFirst("library:".count))
+            type = "library"
+        } else if let p = prompt, !p.isEmpty {
+            libraryTrackId = nil
             type = "prompt"
         } else if let m = MubertAPIClient.Mood(rawValue: mood), m != .none {
+            libraryTrackId = nil
             type = "mood"
         } else {
+            libraryTrackId = nil
             type = "library"
         }
 
         do {
-            let prep = try await api.prepareBackgroundMusicUpload(tapeId: tapeId)
-            try await uploadToR2(url: prep.uploadUrl, fileURL: mp3, contentType: "audio/mpeg")
-            try await api.confirmBackgroundMusic(
-                tapeId: tapeId,
-                type: type,
-                mood: mood,
-                prompt: prompt,
-                publicUrl: prep.publicUrl,
-                level: level
-            )
+            if type == "library" {
+                guard let trackId = libraryTrackId, !trackId.isEmpty else {
+                    TapesLog.upload.warning("Library tape missing track ID; skipping music attach.")
+                    return
+                }
+                try await api.confirmBackgroundMusic(
+                    tapeId: tapeId,
+                    type: type,
+                    mood: mood,
+                    prompt: nil,
+                    publicUrl: nil,
+                    trackId: trackId,
+                    level: level
+                )
+            } else {
+                guard let mp3 = await MubertAPIClient.shared.cachedTrackURL(for: tape.id) else {
+                    TapesLog.upload.warning("Tape has music selection but no local mp3; skipping share upload.")
+                    return
+                }
+                let prep = try await api.prepareBackgroundMusicUpload(tapeId: tapeId)
+                try await uploadToR2(url: prep.uploadUrl, fileURL: mp3, contentType: "audio/mpeg")
+                try await api.confirmBackgroundMusic(
+                    tapeId: tapeId,
+                    type: type,
+                    mood: mood,
+                    prompt: prompt,
+                    publicUrl: prep.publicUrl,
+                    trackId: nil,
+                    level: level
+                )
+            }
             TapesLog.upload.info("Background music attached to shared tape (type=\(type, privacy: .public)).")
         } catch APIError.musicAlreadySet {
             TapesLog.upload.info("Music attach lost the race; server already has it. OK.")

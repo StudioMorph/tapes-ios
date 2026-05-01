@@ -602,22 +602,25 @@ actor TapesAPIClient {
         try await postEmpty(path: "/tapes/\(tapeId)/music/prepare-upload")
     }
 
-    /// Persists the music block on the tape after a successful R2 upload.
+    /// Persists the music block on the tape. For `prompt`/`mood` (R2-hosted)
+    /// pass `publicUrl`. For `library` (Mubert-hosted) pass `trackId`.
     /// Idempotent backstop: server returns 409 (mapped to `musicAlreadySet`)
     /// if the block was set in a parallel race.
     func confirmBackgroundMusic(tapeId: String,
                                 type: String,
                                 mood: String,
                                 prompt: String?,
-                                publicUrl: String,
+                                publicUrl: String?,
+                                trackId: String?,
                                 level: Double) async throws {
         var body: [String: Any] = [
             "type": type,
             "mood": mood,
-            "public_url": publicUrl,
             "level": level,
         ]
         if let prompt { body["prompt"] = prompt }
+        if let publicUrl { body["public_url"] = publicUrl }
+        if let trackId { body["track_id"] = trackId }
 
         var request = try buildRequest(method: "POST", path: "/tapes/\(tapeId)/music/confirm")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -630,6 +633,17 @@ actor TapesAPIClient {
         if http.statusCode >= 400 {
             throw APIError.from(status: http.statusCode, body: data)
         }
+    }
+
+    /// Resolves a Mubert library track ID to a fresh playback URL, used by
+    /// receivers to download a shared library track. Wraps the existing
+    /// `pollMusicTrack` endpoint, which works for any track ID.
+    func resolveLibraryTrackURL(trackId: String) async throws -> URL {
+        let response = try await pollMusicTrack(trackId: trackId)
+        guard let urlStr = response.url, let url = URL(string: urlStr) else {
+            throw APIError.server("Music service returned no URL for track \(trackId).")
+        }
+        return url
     }
 
     // MARK: - Music Library (12K)

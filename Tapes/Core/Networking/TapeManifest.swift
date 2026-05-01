@@ -138,8 +138,17 @@ struct ManifestBackgroundMusic: Codable {
     let type: String?
     let mood: String?
     let prompt: String?
+    /// Set for `prompt` and `mood` types — receivers download from R2.
     let url: String?
+    /// Set for `library` type — receivers resolve to a fresh stream URL via
+    /// `GET /music/tracks/:id` and then download.
+    let trackId: String?
     let level: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case type, mood, prompt, url, level
+        case trackId = "track_id"
+    }
 }
 
 struct ManifestMergeSettings: Codable {

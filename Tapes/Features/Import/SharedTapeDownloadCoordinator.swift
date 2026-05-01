@@ -251,16 +251,28 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                     tapeStore.associateClipsWithAlbum(tapeID: tape.id, clips: clips)
                     self.resultTape = tape
 
-                    // First-time receive: pull the owner's music mp3 into the
+                    // First-time receive: pull the owner's music into the
                     // per-tape slot the player already reads from. Best-effort
                     // and detached from the share-success signal so a slow
                     // music download never blocks the user's tape-ready UI.
-                    if let bgUrlStr = manifest.tapeSettings.backgroundMusic?.url,
-                       let bgUrl = URL(string: bgUrlStr) {
+                    //
+                    // Two paths:
+                    //   • library — manifest carries a Mubert track ID; we
+                    //     resolve it to a fresh stream URL via the worker
+                    //     and download from Mubert directly.
+                    //   • prompt/mood — manifest carries a presigned R2 URL;
+                    //     we download from our own bucket.
+                    if let bg = manifest.tapeSettings.backgroundMusic {
                         let localTapeID = tape.id
+                        let apiRef = api
                         Task.detached(priority: .utility) {
                             do {
-                                try await MubertAPIClient.shared.downloadSharedMusic(from: bgUrl, tapeID: localTapeID)
+                                if bg.type == "library", let trackId = bg.trackId, !trackId.isEmpty {
+                                    let url = try await apiRef.resolveLibraryTrackURL(trackId: trackId)
+                                    try await MubertAPIClient.shared.downloadSharedMusic(from: url, tapeID: localTapeID)
+                                } else if let bgUrlStr = bg.url, let bgUrl = URL(string: bgUrlStr) {
+                                    try await MubertAPIClient.shared.downloadSharedMusic(from: bgUrl, tapeID: localTapeID)
+                                }
                             } catch {
                                 TapesLog.music.warning("Shared music download failed (non-fatal): \(error.localizedDescription, privacy: .public)")
                             }

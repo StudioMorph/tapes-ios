@@ -91,37 +91,45 @@ Playback starts → BackgroundMusicPlayer.prepare(mood, tapeID, volume)
 ## Sharing & Sync (write-once per tape)
 
 Background music travels with shared tapes. The rule is deliberately simple
-and symmetrical:
+and symmetrical, with one important asymmetry between music *types*.
 
-- **Server is write-once.** The first share that includes a track attaches
-  the music block to the tape. After that the block is frozen on the server
-  until the tape is deleted. There is no update endpoint.
-- **Owner iOS** uploads the local mp3 once, on the first share that has
-  music set. Driven by `has_background_music` on the `POST /tapes` response —
-  no extra round trip. Best-effort: a music upload failure never fails the
-  share itself. Subsequent shares and any contribution path skip the music
-  upload entirely.
+**Two transport models, one rule:**
+
+- **Library tracks** are referenced by Mubert track ID. Every Tapes user
+  has equal access to the catalogue via the `/music/tracks/:id` proxy, so
+  there's nothing to re-host. The server stores `track_id`; receivers
+  resolve to a fresh stream URL and download into their own per-tape slot.
+- **Prompt + mood (generated)** tracks are unique per call — Mubert won't
+  reproduce the same audio twice. The owner uploads the mp3 to R2; the
+  server stores `url`; receivers download from R2 into their per-tape slot.
+
+**Write-once attachment** (applies to both types):
+
+- The first share that includes a track attaches the music block to the
+  tape. After that the block is frozen on the server until the tape is
+  deleted. There is no update endpoint.
+- **Owner iOS** attaches music once, on the first share that has music
+  set. Driven by `has_background_music` on the `POST /tapes` response —
+  no extra round trip. Best-effort: a music attach failure never fails
+  the share itself. Subsequent shares and any contribution path skip
+  music entirely.
 - **Receiver iOS** applies the manifest's music block only when the local
-  tape has no track of its own. This protects local user customisation and
-  also lets a tape that started without music acquire it later (owner picks
-  music on share #2 → server attaches → next receiver who has no local
-  track gets it).
+  tape has no track of its own. Protects local user customisation and
+  lets a tape that started without music acquire it later.
 
-Server endpoints (owner-only, both return `409 MUSIC_ALREADY_SET` if the
-block is already attached):
+**Server endpoints** (owner-only, both return `409 MUSIC_ALREADY_SET` if
+the block is already attached):
 
 | Route | Purpose |
 |-------|---------|
-| `POST /tapes/:id/music/prepare-upload` | Returns a presigned PUT URL for `music/<tape_id>.mp3` in R2 |
-| `POST /tapes/:id/music/confirm` | Persists `{ type, mood, prompt, url, level }` into `tape_settings.background_music` |
+| `POST /tapes/:id/music/prepare-upload` | Returns a presigned PUT URL for `music/<tape_id>.mp3` in R2. Used only for prompt/mood. |
+| `POST /tapes/:id/music/confirm` | Persists the music block into `tape_settings.background_music`. Accepts `public_url` (prompt/mood) or `track_id` (library). |
 
 The manifest endpoint signs `background_music.url` per request, the same
-way clip URLs are signed. Receivers download the mp3 into the same per-tape
-slot they already use locally — no playback-side changes needed.
+way clip URLs are signed. Library blocks (no `url`) pass through untouched.
 
-R2 cleanup of `music/<tape_id>.mp3` is handled by the hourly shared-asset
-cleanup cron (when a tape's `shared_assets_expire_at` passes) and by the
-tape-delete handler.
+R2 cleanup of `music/<tape_id>.mp3` runs on the hourly shared-asset cron
+and on tape delete. Library tapes never write to R2 in the first place.
 
 ## Storage Strategy
 
