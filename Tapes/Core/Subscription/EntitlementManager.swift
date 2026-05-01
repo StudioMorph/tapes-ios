@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -50,12 +51,25 @@ final class EntitlementManager: ObservableObject {
         case plus
     }
 
+    // MARK: - Private
+
+    /// Holds the Combine subscription that mirrors
+    /// `SubscriptionManager.activeTier` into our `accessLevel`. Without this
+    /// the tier flag flipped on purchase but every consumer of
+    /// `EntitlementManager` (Account screen, paywall gates, music tabs)
+    /// kept reading the stale value until the next app launch.
+    private var tierObservation: AnyCancellable?
+
     // MARK: - Lifecycle
 
     init(subscriptionManager: SubscriptionManager? = nil) {
         self.subscriptionManager = subscriptionManager ?? SubscriptionManager()
         loadActivatedTapeIDs()
         refresh()
+
+        tierObservation = self.subscriptionManager.$activeTier
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refresh() }
     }
 
     // MARK: - Tier helpers

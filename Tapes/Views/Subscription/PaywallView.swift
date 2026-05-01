@@ -54,6 +54,19 @@ struct PaywallView: View {
         } message: {
             Text(subManager.purchaseError ?? "")
         }
+        // Catches the sandbox edge case where the user is already subscribed
+        // (Apple shows a native "you are currently subscribed" alert and the
+        // purchase call returns without a transaction). It also catches
+        // background renewals and any subscription state that flipped while
+        // the app was in the background.
+        .task {
+            await subManager.refreshSubscriptionStatus()
+        }
+        // Auto-dismiss as soon as the entitlement flips to Plus, whether
+        // that came from a purchase, a restore, or the on-appear refresh.
+        .onChange(of: entitlementManager.isPremium) { _, isPremium in
+            if isPremium { dismiss() }
+        }
     }
 
     // MARK: - Header
