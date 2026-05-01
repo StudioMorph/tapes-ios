@@ -559,7 +559,8 @@ struct ShareLinkSection: View {
                 shareUrl: shareUrl,
                 deepLink: "tapes://t/\(info.shareId)",
                 createdAt: info.createdAt,
-                clipsUploaded: true
+                clipsUploaded: true,
+                hasBackgroundMusic: nil
             )
             uploadCoordinator.seedCreateResponse(response, for: tape)
             await reloadCollaborators(using: api, tapeId: remoteTapeId)

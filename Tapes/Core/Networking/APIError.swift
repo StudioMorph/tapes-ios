@@ -18,6 +18,7 @@ enum APIError: LocalizedError {
     case tierRequired(String)
     case rateLimited(String)
     case validation(String)
+    case musicAlreadySet
     case server(String)
     case network(Error)
     case decodingFailed(Error)
@@ -32,6 +33,7 @@ enum APIError: LocalizedError {
         case .tierRequired(let msg): return msg
         case .rateLimited(let msg): return msg
         case .validation(let msg): return msg
+        case .musicAlreadySet: return "Background music for this tape is already set on the server."
         case .server(let msg): return msg
         case .network(let err): return "Network error: \(err.localizedDescription)"
         case .decodingFailed(let err): return "Failed to process response: \(err.localizedDescription)"
@@ -54,6 +56,7 @@ enum APIError: LocalizedError {
             case "TIER_REQUIRED": return .tierRequired(msg)
             case "RATE_LIMITED": return .rateLimited(msg)
             case "VALIDATION_ERROR", "EMAIL_EXISTS", "INVALID_TOKEN", "TOKEN_EXPIRED": return .validation(msg)
+            case "MUSIC_ALREADY_SET": return .musicAlreadySet
             default: return .server(msg)
             }
         }

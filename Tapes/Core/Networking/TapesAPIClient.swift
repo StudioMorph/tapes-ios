@@ -169,6 +169,10 @@ actor TapesAPIClient {
         let deepLink: String
         let createdAt: String
         let clipsUploaded: Bool?
+        /// True when the server already has a background music block
+        /// attached to this tape. The owner uses this to decide whether
+        /// to upload their local mp3 — music is write-once per tape.
+        let hasBackgroundMusic: Bool?
 
         enum CodingKeys: String, CodingKey {
             case tapeId = "tape_id"
@@ -180,6 +184,7 @@ actor TapesAPIClient {
             case deepLink = "deep_link"
             case createdAt = "created_at"
             case clipsUploaded = "clips_uploaded"
+            case hasBackgroundMusic = "has_background_music"
         }
 
         func shareId(for variant: ShareVariant) -> String {
@@ -574,6 +579,57 @@ actor TapesAPIClient {
 
     func pollMusicTrack(trackId: String) async throws -> MusicGenerateResponse {
         try await get(path: "/music/tracks/\(trackId)")
+    }
+
+    // MARK: - Music Share (per-tape, write-once)
+
+    struct BackgroundMusicUpload: Decodable {
+        let uploadUrl: String
+        let publicUrl: String
+        let expiresAt: String
+
+        enum CodingKeys: String, CodingKey {
+            case uploadUrl = "upload_url"
+            case publicUrl = "public_url"
+            case expiresAt = "expires_at"
+        }
+    }
+
+    /// Asks the server for a presigned PUT URL for the tape's music file.
+    /// Throws `APIError.musicAlreadySet` if the server already has a music
+    /// block for this tape — the owner-side flow swallows that as a no-op.
+    func prepareBackgroundMusicUpload(tapeId: String) async throws -> BackgroundMusicUpload {
+        try await postEmpty(path: "/tapes/\(tapeId)/music/prepare-upload")
+    }
+
+    /// Persists the music block on the tape after a successful R2 upload.
+    /// Idempotent backstop: server returns 409 (mapped to `musicAlreadySet`)
+    /// if the block was set in a parallel race.
+    func confirmBackgroundMusic(tapeId: String,
+                                type: String,
+                                mood: String,
+                                prompt: String?,
+                                publicUrl: String,
+                                level: Double) async throws {
+        var body: [String: Any] = [
+            "type": type,
+            "mood": mood,
+            "public_url": publicUrl,
+            "level": level,
+        ]
+        if let prompt { body["prompt"] = prompt }
+
+        var request = try buildRequest(method: "POST", path: "/tapes/\(tapeId)/music/confirm")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.network(URLError(.badServerResponse))
+        }
+        if http.statusCode >= 400 {
+            throw APIError.from(status: http.statusCode, body: data)
+        }
     }
 
     // MARK: - Music Library (12K)

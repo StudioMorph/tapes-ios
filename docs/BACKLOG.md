@@ -166,3 +166,29 @@ The Shared and Collab tabs already show a "Verify your email" prompt with a "Res
 **Trigger**: post-launch, once we have evidence that the per-install cap is being routinely bypassed.
 
 ---
+
+## Background music sharing
+
+### 13. Owner can update background music after first share
+
+**Context**: Background music is write-once on the server (`docs/features/BackgroundMusic.md` § Sharing & Sync). Once attached, the owner cannot change the track for receivers — only the local copy mutates. The server has no update endpoint deliberately.
+
+**Trigger to revisit**: real users complain "I changed the music but my collaborators still hear the old one."
+
+**Approach**: add `PUT /tapes/:id/music` (owner-only) that re-runs the prepare/confirm flow without the 409 backstop. iOS would call it whenever the owner mutates `tape.backgroundMusicMood` on a tape whose `shareInfo` is non-nil. Receiver guard stays as-is — local customisation still wins.
+
+**Files likely involved**: `tapes-api/src/routes/music-share.ts`, `Tapes/Core/Networking/TapesAPIClient.swift`, somewhere in the music-selection flow on iOS to detect "this tape is shared, push the change".
+
+---
+
+### 14. Mubert library track redistribution licensing
+
+**Context**: Sharing a tape with a 12K Library track currently re-hosts the mp3 on our R2 and serves it to receivers. Mubert's terms may not permit this for licensed third-party library content (AI/prompt content is generated and should be safe).
+
+**Trigger**: before TestFlight, or sooner if a lawyer flags it.
+
+**Approach**: re-read the Mubert agreement. If library redistribution is forbidden, gate the iOS owner-side music upload on `type != "library"` and surface a one-line UX hint when a library track is selected on a tape the user is about to share.
+
+**Files likely involved**: `Tapes/Core/Networking/ShareUploadCoordinator.swift` (the type-switch at music upload time), possibly `BackgroundMusicSheet.swift` for the UX hint.
+
+---

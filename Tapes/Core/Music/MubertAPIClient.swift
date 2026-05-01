@@ -402,4 +402,15 @@ actor MubertAPIClient {
         return localURL
     }
 
+    /// Downloads a shared-tape music file from a signed R2 URL into the
+    /// durable per-tape slot the player already reads from. No-op when
+    /// the file is already present, so it's safe to call repeatedly.
+    func downloadSharedMusic(from remoteURL: URL, tapeID: UUID) async throws {
+        if cachedTrackURL(for: tapeID) != nil {
+            log.info("Shared music already present for tape=\(tapeID.uuidString.prefix(8))")
+            return
+        }
+        _ = try await downloadTrack(from: remoteURL, tapeID: tapeID)
+    }
+
 }

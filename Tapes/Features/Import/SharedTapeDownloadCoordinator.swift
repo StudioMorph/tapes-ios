@@ -223,6 +223,10 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                 }
 
                 if existingTape != nil {
+                    // Receiver-side guard: returning sync never touches the
+                    // local music block. Owner-side music is write-once on
+                    // the server and the local user may have customised
+                    // their copy — both reasons to leave it alone here.
                     tapeStore.mergeClipsIntoSharedTape(remoteTapeId: tapeId, newClips: clips)
                     if let updated = tapeStore.sharedTape(forRemoteId: tapeId) {
                         tapeStore.associateClipsWithAlbum(tapeID: updated.id, clips: clips)
@@ -246,6 +250,22 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
                     tapeStore.addSharedTape(tape)
                     tapeStore.associateClipsWithAlbum(tapeID: tape.id, clips: clips)
                     self.resultTape = tape
+
+                    // First-time receive: pull the owner's music mp3 into the
+                    // per-tape slot the player already reads from. Best-effort
+                    // and detached from the share-success signal so a slow
+                    // music download never blocks the user's tape-ready UI.
+                    if let bgUrlStr = manifest.tapeSettings.backgroundMusic?.url,
+                       let bgUrl = URL(string: bgUrlStr) {
+                        let localTapeID = tape.id
+                        Task.detached(priority: .utility) {
+                            do {
+                                try await MubertAPIClient.shared.downloadSharedMusic(from: bgUrl, tapeID: localTapeID)
+                            } catch {
+                                TapesLog.music.warning("Shared music download failed (non-fatal): \(error.localizedDescription, privacy: .public)")
+                            }
+                        }
+                    }
                 }
 
                 self.finishDownload(success: true)
@@ -691,7 +711,7 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             remoteTapeId: manifest.tapeId
         )
 
-        return Tape(
+        var tape = Tape(
             title: manifest.title,
             transition: transitionType,
             transitionDuration: transitionDuration,
@@ -699,5 +719,21 @@ public class SharedTapeDownloadCoordinator: ObservableObject {
             hasReceivedFirstContent: true,
             shareInfo: info
         )
+
+        // Background music attaches on first download. Receiver-side guard
+        // (`!tape.hasBackgroundMusic`) is redundant here because this branch
+        // only runs when there is no existing tape, but kept explicit so the
+        // rule is visible in code: never overwrite an existing local choice.
+        if let bg = manifest.tapeSettings.backgroundMusic,
+           let mood = bg.mood, !mood.isEmpty,
+           !tape.hasBackgroundMusic {
+            tape.backgroundMusicMood = mood
+            tape.backgroundMusicPrompt = bg.prompt
+            if let level = bg.level {
+                tape.backgroundMusicVolume = level
+            }
+        }
+
+        return tape
     }
 }

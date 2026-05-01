@@ -137,6 +137,7 @@ struct ManifestTransition: Codable {
 struct ManifestBackgroundMusic: Codable {
     let type: String?
     let mood: String?
+    let prompt: String?
     let url: String?
     let level: Double?
 }

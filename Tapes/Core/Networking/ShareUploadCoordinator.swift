@@ -208,6 +208,17 @@ public class ShareUploadCoordinator: ObservableObject {
                     }
                 }
 
+                // 1b. If the owner has a local track and the server doesn't yet
+                // have music for this tape, upload the mp3 once. Music is
+                // write-once on the server; subsequent shares (and any
+                // contribution path) skip this entirely. Best-effort — never
+                // fails the share if music upload itself fails.
+                await Self.uploadBackgroundMusicIfNeeded(
+                    tape: tape,
+                    response: response,
+                    api: api
+                )
+
                 // 2. Compute delta: compare local clips vs server clips
                 let localClips = tape.clips.filter { !$0.isPlaceholder }
                 let localClipIds = Set(localClips.map { $0.id.uuidString.lowercased() })
@@ -338,7 +349,8 @@ public class ShareUploadCoordinator: ObservableObject {
                     shareUrl: response.shareUrl,
                     deepLink: response.deepLink,
                     createdAt: response.createdAt,
-                    clipsUploaded: true
+                    clipsUploaded: true,
+                    hasBackgroundMusic: response.hasBackgroundMusic
                 )
 
                 let finalResponse = self.pendingCreateResponse ?? response
@@ -1054,6 +1066,62 @@ public class ShareUploadCoordinator: ObservableObject {
         }
 
         throw lastError
+    }
+
+    // MARK: - Background Music Share
+
+    /// First-share music attachment. Owner-only via server enforcement
+    /// (403 → silent skip). Write-once per tape: if the server already
+    /// has music (`response.hasBackgroundMusic == true`), this is a
+    /// no-op. Best-effort throughout — never throws back into the
+    /// share flow.
+    private nonisolated static func uploadBackgroundMusicIfNeeded(
+        tape: Tape,
+        response: TapesAPIClient.CreateTapeResponse,
+        api: TapesAPIClient
+    ) async {
+        guard response.hasBackgroundMusic != true else {
+            TapesLog.upload.info("Music already attached server-side; skipping upload.")
+            return
+        }
+        guard tape.hasBackgroundMusic, let mood = tape.backgroundMusicMood, !mood.isEmpty else {
+            return
+        }
+        guard let mp3 = await MubertAPIClient.shared.cachedTrackURL(for: tape.id) else {
+            TapesLog.upload.warning("Tape has music selection but no local mp3; skipping share upload.")
+            return
+        }
+
+        let tapeId = tape.id.uuidString.lowercased()
+        let prompt = tape.backgroundMusicPrompt
+        let level = Double(tape.backgroundMusicVolume ?? 0.3)
+
+        let type: String
+        if let p = prompt, !p.isEmpty {
+            type = "prompt"
+        } else if let m = MubertAPIClient.Mood(rawValue: mood), m != .none {
+            type = "mood"
+        } else {
+            type = "library"
+        }
+
+        do {
+            let prep = try await api.prepareBackgroundMusicUpload(tapeId: tapeId)
+            try await uploadToR2(url: prep.uploadUrl, fileURL: mp3, contentType: "audio/mpeg")
+            try await api.confirmBackgroundMusic(
+                tapeId: tapeId,
+                type: type,
+                mood: mood,
+                prompt: prompt,
+                publicUrl: prep.publicUrl,
+                level: level
+            )
+            TapesLog.upload.info("Background music attached to shared tape (type=\(type, privacy: .public)).")
+        } catch APIError.musicAlreadySet {
+            TapesLog.upload.info("Music attach lost the race; server already has it. OK.")
+        } catch {
+            TapesLog.upload.warning("Background music share upload failed (non-fatal): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Retry Helper
