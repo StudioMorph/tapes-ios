@@ -15,35 +15,34 @@ struct DeleteAccountSheet: View {
 
                 TapesLogo(height: 36)
 
-                Text("We take your data rights seriously.")
+                Text("Are you sure you want to delete your account and all associated data?")
                     .font(Tokens.Typography.title)
                     .fontWeight(.semibold)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Tokens.Colors.primaryText)
                     .padding(.top, Tokens.Spacing.m)
 
-                VStack(spacing: Tokens.Spacing.s) {
-                    Text("Are you sure you want to delete your account and all associated data?")
-                        .multilineTextAlignment(.center)
-
+                VStack(spacing: Tokens.Spacing.m) {
                     Text("You will be signed out immediately. Your account and data will be permanently deleted after a 7-day cooling-off period.")
+                        .font(Tokens.Typography.body)
+                        .foregroundStyle(Tokens.Colors.primaryText)
                         .multilineTextAlignment(.center)
 
                     Text("If you sign back in during those 7 days, the deletion will be cancelled automatically.")
+                        .font(.system(.body, design: .default, weight: .medium))
+                        .foregroundStyle(Tokens.Colors.primaryText)
                         .multilineTextAlignment(.center)
-                        .fontWeight(.medium)
                 }
-                .font(Tokens.Typography.body)
-                .foregroundStyle(Tokens.Colors.secondaryText)
                 .padding(.horizontal, Tokens.Spacing.l)
+                .padding(.bottom, Tokens.Spacing.l)
 
                 VStack(spacing: Tokens.Spacing.xs) {
                     Image(systemName: "apple.logo")
                         .font(.body)
                         .foregroundStyle(Tokens.Colors.secondaryText)
                     Text("To cancel a subscription, go to Settings > Apple ID > Subscriptions on your device.")
-                        .font(Tokens.Typography.caption)
-                        .foregroundStyle(Tokens.Colors.tertiaryText)
+                        .font(.subheadline)
+                        .foregroundStyle(Tokens.Colors.secondaryText)
                         .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, Tokens.Spacing.xl)

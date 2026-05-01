@@ -26,7 +26,7 @@ struct AccountTabView: View {
                 hotTipsSection.listRowBackground(Tokens.Colors.secondaryBackground)
 
                 if isSignedIn {
-                    signOutSection.listRowBackground(Tokens.Colors.secondaryBackground)
+                    signOutAndDeleteButtons
                 }
             }
             .scrollContentBackground(.hidden)
@@ -151,20 +151,31 @@ struct AccountTabView: View {
 
     // MARK: - Sign Out & Delete
 
-    private var signOutSection: some View {
+    @ViewBuilder
+    private var signOutAndDeleteButtons: some View {
         Section {
-            Button("Sign Out", role: .destructive) {
-                authManager.signOut()
+            VStack(spacing: Tokens.Spacing.xl) {
+                Button {
+                    authManager.signOut()
+                } label: {
+                    Text("Sign Out")
+                        .frame(maxWidth: .infinity, minHeight: Tokens.HitTarget.minimum)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    showingDeleteAccount = true
+                } label: {
+                    Label("Delete Account & Data", systemImage: "trash")
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                .frame(minHeight: Tokens.HitTarget.minimum)
             }
             .frame(maxWidth: .infinity)
-
-            Button(role: .destructive) {
-                showingDeleteAccount = true
-            } label: {
-                Label("Delete Account & Data", systemImage: "trash")
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: Tokens.Spacing.m, leading: 0, bottom: Tokens.Spacing.m, trailing: 0))
         }
     }
 }
