@@ -30,7 +30,7 @@ struct AIPromptMusicView: View {
             }
         }
         .onDisappear {
-            trackGen.cancel()
+            trackGen.stopPreview()
         }
     }
 
