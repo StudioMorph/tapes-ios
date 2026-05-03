@@ -1,13 +1,13 @@
 {
-  "originHash" : "2f6e2779c208bec08a17cd25dd0c88002e9d6b9f1a8f514d712db9914575a42e",
+  "originHash" : "5462ca6b176fc9611b99fbf0d9984055848db121fa11f11eb5dd93232720158d",
   "pins" : [
     {
-      "identity" : "swift-package-manager-google-interactive-media-ads-ios",
+      "identity" : "swift-package-manager-google-mobile-ads",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/googleads/swift-package-manager-google-interactive-media-ads-ios.git",
+      "location" : "https://github.com/googleads/swift-package-manager-google-mobile-ads.git",
       "state" : {
-        "revision" : "3ab3dee61922cf4e024b9086f324f0737bc73339",
-        "version" : "3.31.0"
+        "revision" : "7778cc1ab037c10dbbe026959e51e616bd961be9",
+        "version" : "11.13.0"
       }
     },
     {

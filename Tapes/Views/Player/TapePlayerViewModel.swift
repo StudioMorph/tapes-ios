@@ -124,7 +124,6 @@ final class TapePlayerViewModel: ObservableObject {
     private var dragWasPlaying = false
     private var skipToastWorkItem: DispatchWorkItem?
     private var wasPlayingBeforeBackground = false
-    private var wasAdPlayingBeforeBackground = false
     private var airplayObservation: NSKeyValueObservation?
     private var isAirPlayActive = false
     private var preRenderedImageURLs: [Int: URL] = [:]
@@ -139,8 +138,6 @@ final class TapePlayerViewModel: ObservableObject {
 
     private var cumulativePlaybackTime: TimeInterval = 0
     private var isFreeUser = true
-    private weak var adContainerView: UIView?
-    private weak var adContainerViewController: UIViewController?
 
     // MARK: - Init
 
@@ -311,12 +308,6 @@ final class TapePlayerViewModel: ObservableObject {
         resetControlsTimer()
     }
 
-    /// Provide the IMA ad container references so the ad manager can render into them.
-    func setAdContainer(view: UIView?, viewController: UIViewController?) {
-        adContainerView = view
-        adContainerViewController = viewController
-    }
-
     func retryLoading() async {
         loadError = nil
         await prepare()
@@ -347,18 +338,11 @@ final class TapePlayerViewModel: ObservableObject {
         switch phase {
         case .background, .inactive:
             wasPlayingBeforeBackground = isPlaying
-            wasAdPlayingBeforeBackground = isAdPlaying
             if isPlaying {
                 pausePlayers()
                 backgroundMusic.syncPause()
             }
         case .active:
-            if wasAdPlayingBeforeBackground {
-                wasAdPlayingBeforeBackground = false
-                wasPlayingBeforeBackground = false
-                AdManager.shared.completeAdAfterClick()
-                return
-            }
             if wasPlayingBeforeBackground {
                 activePlayer()?.play()
                 if isTransitioning { inactivePlayer()?.play() }
@@ -1373,20 +1357,10 @@ final class TapePlayerViewModel: ObservableObject {
         let online = NetworkMonitor.shared.isConnected
 
         if online {
-            guard let containerView = adContainerView,
-                  let containerVC = adContainerViewController,
-                  let contentPlayer = activePlayer()
-            else { return false }
-
-            isAdPlaying = true
             backgroundMusic.syncPause()
-            showingControls = true
+            isAdPlaying = true
 
-            let success = await AdManager.shared.requestAndPlayAd(
-                in: containerView,
-                viewController: containerVC,
-                contentPlayer: contentPlayer
-            )
+            let success = await AdManager.shared.showAd()
 
             isAdPlaying = false
             return success

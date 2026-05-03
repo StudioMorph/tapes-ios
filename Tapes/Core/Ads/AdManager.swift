@@ -1,6 +1,4 @@
-import UIKit
-import AVFoundation
-import GoogleInteractiveMediaAds
+import GoogleMobileAds
 import os
 
 @MainActor
@@ -9,15 +7,10 @@ final class AdManager: NSObject, ObservableObject {
     static let shared = AdManager()
 
     @Published private(set) var isAdPlaying = false
-    private(set) var userClickedAd = false
 
     private let log = Logger(subsystem: "com.studiomorph.tapes", category: "Ads")
 
-    private var adsLoader: IMAAdsLoader?
-    private var adsManager: IMAAdsManager?
-    private var adDisplayContainer: IMAAdDisplayContainer?
-    private var contentPlayhead: IMAAVPlayerContentPlayhead?
-
+    private var interstitialAd: GADInterstitialAd?
     private var adCompletion: ((Bool) -> Void)?
 
     private override init() {
@@ -26,171 +19,110 @@ final class AdManager: NSObject, ObservableObject {
 
     // MARK: - Lifecycle
 
-    /// Call once at app launch to initialise the IMA ads loader.
-    func preWarm() {
-        guard adsLoader == nil else { return }
-
-        let settings = IMASettings()
-        settings.sameAppKeyEnabled = true
-
-        adsLoader = IMAAdsLoader(settings: settings)
-        adsLoader?.delegate = self
-        log.info("IMA SDK pre-warmed")
+    /// Call once at app launch to initialise the Google Mobile Ads SDK
+    /// and begin preloading the first interstitial.
+    func start() {
+        GADMobileAds.sharedInstance().start { [weak self] _ in
+            self?.log.info("Google Mobile Ads SDK initialised")
+        }
+        Task { await loadAd() }
     }
 
-    /// Request and play a single ad in the given container view.
-    ///
-    /// - Parameters:
-    ///   - containerView: The UIView that will host the ad.
-    ///   - viewController: The UIViewController presenting the ad.
-    ///   - contentPlayer: The content AVPlayer (used for playhead tracking).
-    /// - Returns: `true` if an ad played successfully, `false` if it was skipped.
-    func requestAndPlayAd(
-        in containerView: UIView,
-        viewController: UIViewController,
-        contentPlayer: AVPlayer
-    ) async -> Bool {
-        guard let adsLoader else {
-            log.warning("Ads loader not initialised — skipping ad")
+    // MARK: - Loading
+
+    /// Preloads an interstitial ad so it's ready when needed.
+    /// Ads expire after one hour; the SDK handles cache invalidation.
+    private func loadAd() async {
+        do {
+            interstitialAd = try await GADInterstitialAd.load(
+                withAdUnitID: AdConfig.interstitialAdUnitID,
+                request: GADRequest()
+            )
+            interstitialAd?.fullScreenContentDelegate = self
+            log.info("Interstitial ad loaded")
+        } catch {
+            log.error("Interstitial ad load failed: \(error.localizedDescription)")
+            interstitialAd = nil
+        }
+    }
+
+    // MARK: - Presentation
+
+    /// Shows a preloaded interstitial ad. Returns `true` if the ad was
+    /// presented and dismissed normally, `false` if no ad was available
+    /// or presentation failed.
+    func showAd() async -> Bool {
+        guard let ad = interstitialAd else {
+            log.warning("No interstitial ready — skipping ad slot")
             return false
         }
-
-        tearDownCurrentAd()
-
-        let playhead = IMAAVPlayerContentPlayhead(avPlayer: contentPlayer)
-        contentPlayhead = playhead
-
-        let displayContainer = IMAAdDisplayContainer(
-            adContainer: containerView,
-            viewController: viewController
-        )
-        adDisplayContainer = displayContainer
-
-        let request = IMAAdsRequest(
-            adTagUrl: AdConfig.adTagURL,
-            adDisplayContainer: displayContainer,
-            contentPlayhead: playhead,
-            userContext: nil
-        )
 
         return await withCheckedContinuation { continuation in
             adCompletion = { success in
                 continuation.resume(returning: success)
             }
-            adsLoader.requestAds(with: request)
-            log.info("Ad request sent")
+            isAdPlaying = true
+            ad.present(fromRootViewController: nil)
         }
     }
 
-    /// Clean up the current ad manager. Call when the player is dismissed.
-    func tearDownCurrentAd() {
-        adsManager?.destroy()
-        adsManager = nil
-        adDisplayContainer = nil
-        contentPlayhead = nil
+    /// Clean up any pending state. Call when the player is dismissed.
+    func tearDown() {
         isAdPlaying = false
-        userClickedAd = false
+        interstitialAd = nil
 
         let pending = adCompletion
         adCompletion = nil
         pending?(false)
-
-        adsLoader?.contentComplete()
-    }
-
-    /// Call when returning from background after a CTA click.
-    /// Completes the ad early so the tape plays immediately.
-    func completeAdAfterClick() {
-        guard userClickedAd else { return }
-        log.info("Completing ad after CTA return")
-        isAdPlaying = false
-        let completion = adCompletion
-        adCompletion = nil
-        tearDownCurrentAd()
-        completion?(true)
     }
 }
 
-// MARK: - IMAAdsLoaderDelegate
+// MARK: - GADFullScreenContentDelegate
 
-extension AdManager: IMAAdsLoaderDelegate {
+extension AdManager: GADFullScreenContentDelegate {
 
-    nonisolated func adsLoader(_ loader: IMAAdsLoader, adsLoadedWith adsLoadedData: IMAAdsLoadedData) {
+    nonisolated func adDidDismissFullScreenContent(_ ad: GADFullScreenPresentingAd) {
         Task { @MainActor in
-            let manager = adsLoadedData.adsManager
-            manager?.delegate = self
-            adsManager = manager
-
-            let renderingSettings = IMAAdsRenderingSettings()
-            renderingSettings.enablePreloading = true
-
-            manager?.initialize(with: renderingSettings)
-            log.info("Ads manager initialised")
-        }
-    }
-
-    nonisolated func adsLoader(_ loader: IMAAdsLoader, failedWith adErrorData: IMAAdLoadingErrorData) {
-        Task { @MainActor in
-            log.error("Ad load failed: \(adErrorData.adError.message ?? "unknown")")
-            adCompletion?(false)
-            adCompletion = nil
-        }
-    }
-}
-
-// MARK: - IMAAdsManagerDelegate
-
-extension AdManager: IMAAdsManagerDelegate {
-
-    nonisolated func adsManager(_ adsManager: IMAAdsManager, didReceive event: IMAAdEvent) {
-        Task { @MainActor in
-            switch event.type {
-            case .LOADED:
-                adsManager.start()
-                log.info("Ad loaded — starting playback")
-
-            case .STARTED:
-                isAdPlaying = true
-                log.info("Ad started")
-
-            case .CLICKED:
-                userClickedAd = true
-                log.info("Ad clicked — will skip remainder on return")
-
-            case .COMPLETE:
-                isAdPlaying = false
-                log.info("Ad completed")
-                adCompletion?(true)
-                adCompletion = nil
-
-            case .ALL_ADS_COMPLETED:
-                tearDownCurrentAd()
-
-            default:
-                break
-            }
-        }
-    }
-
-    nonisolated func adsManager(_ adsManager: IMAAdsManager, didReceive error: IMAAdError) {
-        Task { @MainActor in
-            log.error("Ad playback error: \(error.message ?? "unknown")")
+            log.info("Interstitial dismissed")
             isAdPlaying = false
-            adCompletion?(false)
+            let completion = adCompletion
             adCompletion = nil
-            tearDownCurrentAd()
+            interstitialAd = nil
+            completion?(true)
+            await loadAd()
         }
     }
 
-    nonisolated func adsManagerDidRequestContentPause(_ adsManager: IMAAdsManager) {
+    nonisolated func ad(
+        _ ad: GADFullScreenPresentingAd,
+        didFailToPresentFullScreenContentWithError error: Error
+    ) {
         Task { @MainActor in
-            isAdPlaying = true
-        }
-    }
-
-    nonisolated func adsManagerDidRequestContentResume(_ adsManager: IMAAdsManager) {
-        Task { @MainActor in
+            log.error("Interstitial present failed: \(error.localizedDescription)")
             isAdPlaying = false
+            let completion = adCompletion
+            adCompletion = nil
+            interstitialAd = nil
+            completion?(false)
+            await loadAd()
+        }
+    }
+
+    nonisolated func adWillPresentFullScreenContent(_ ad: GADFullScreenPresentingAd) {
+        Task { @MainActor in
+            log.info("Interstitial will present")
+        }
+    }
+
+    nonisolated func adDidRecordImpression(_ ad: GADFullScreenPresentingAd) {
+        Task { @MainActor in
+            log.info("Interstitial impression recorded")
+        }
+    }
+
+    nonisolated func adDidRecordClick(_ ad: GADFullScreenPresentingAd) {
+        Task { @MainActor in
+            log.info("Interstitial click recorded")
         }
     }
 }

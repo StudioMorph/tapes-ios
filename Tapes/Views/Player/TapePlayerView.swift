@@ -10,9 +10,6 @@ struct TapePlayerView: View {
     let onDismiss: () -> Void
     let onSave: ((Tape) -> Void)?
 
-    @State private var adContainerView: UIView?
-    @State private var adContainerViewController: UIViewController?
-
     private let startAtClip: Int
 
     init(tape: Tape, startAtClip: Int = 0, onDismiss: @escaping () -> Void, onSave: ((Tape) -> Void)? = nil) {
@@ -36,7 +33,6 @@ struct TapePlayerView: View {
                 if !vm.isAdPlaying { vm.toggleControls() }
             }
             .gesture(vm.isAdPlaying ? nil : swipeGesture)
-            .overlay { adLayer }
             .overlay { vm.isAdPlaying ? nil : controlsOverlay }
             .overlay { adCloseButton }
             .overlay { toastLayer }
@@ -46,30 +42,12 @@ struct TapePlayerView: View {
                 startPlayback(from: startAtClip)
             }
             .onDisappear {
-                AdManager.shared.tearDownCurrentAd()
+                AdManager.shared.tearDown()
                 vm.shutdown()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 vm.handleScenePhaseChange(newPhase)
             }
-            .onChange(of: adContainerView) { _, newView in
-                vm.setAdContainer(view: newView, viewController: adContainerViewController)
-            }
-            .onChange(of: adContainerViewController) { _, newVC in
-                vm.setAdContainer(view: adContainerView, viewController: newVC)
-            }
-    }
-
-    // MARK: - Ad Layer
-
-    private var adLayer: some View {
-        AdContainerRepresentable(
-            containerView: $adContainerView,
-            containerViewController: $adContainerViewController
-        )
-        .ignoresSafeArea()
-        .opacity(vm.isAdPlaying ? 1 : 0)
-        .allowsHitTesting(vm.isAdPlaying)
     }
 
     @ViewBuilder

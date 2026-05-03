@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		053E47662F9D147D00B291E4 /* GoogleInteractiveMediaAds in Frameworks */ = {isa = PBXBuildFile; productRef = F1A0AD012F0C100000000001 /* GoogleInteractiveMediaAds */; };
+		053E47662F9D147D00B291E4 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = F1A0AD012F0C100000000001 /* GoogleMobileAds */; };
 		053E47672F9D147D00B291E4 /* GoogleUserMessagingPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = F1A0AD032F0C100000000003 /* GoogleUserMessagingPlatform */; };
 /* End PBXBuildFile section */
 
@@ -58,7 +58,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				053E47672F9D147D00B291E4 /* GoogleUserMessagingPlatform in Frameworks */,
-				053E47662F9D147D00B291E4 /* GoogleInteractiveMediaAds in Frameworks */,
+				053E47662F9D147D00B291E4 /* GoogleMobileAds in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,7 +119,7 @@
 			);
 			name = Tapes;
 			packageProductDependencies = (
-				F1A0AD012F0C100000000001 /* GoogleInteractiveMediaAds */,
+				F1A0AD012F0C100000000001 /* GoogleMobileAds */,
 				F1A0AD032F0C100000000003 /* GoogleUserMessagingPlatform */,
 			);
 			productName = Tapes;
@@ -205,7 +205,7 @@
 			mainGroup = 05CD6DAC2E85ABD900FBD32E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				F1A0AD002F0C100000000000 /* XCRemoteSwiftPackageReference "swift-package-manager-google-interactive-media-ads-ios" */,
+				F1A0AD002F0C100000000000 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
 				F1A0AD022F0C100000000002 /* XCRemoteSwiftPackageReference "swift-package-manager-google-user-messaging-platform" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -593,12 +593,12 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		F1A0AD002F0C100000000000 /* XCRemoteSwiftPackageReference "swift-package-manager-google-interactive-media-ads-ios" */ = {
+		F1A0AD002F0C100000000000 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/googleads/swift-package-manager-google-interactive-media-ads-ios.git";
+			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 3.23.0;
+				minimumVersion = 11.0.0;
 			};
 		};
 		F1A0AD022F0C100000000002 /* XCRemoteSwiftPackageReference "swift-package-manager-google-user-messaging-platform" */ = {
@@ -612,10 +612,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		F1A0AD012F0C100000000001 /* GoogleInteractiveMediaAds */ = {
+		F1A0AD012F0C100000000001 /* GoogleMobileAds */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = F1A0AD002F0C100000000000 /* XCRemoteSwiftPackageReference "swift-package-manager-google-interactive-media-ads-ios" */;
-			productName = GoogleInteractiveMediaAds;
+			package = F1A0AD002F0C100000000000 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */;
+			productName = GoogleMobileAds;
 		};
 		F1A0AD032F0C100000000003 /* GoogleUserMessagingPlatform */ = {
 			isa = XCSwiftPackageProductDependency;

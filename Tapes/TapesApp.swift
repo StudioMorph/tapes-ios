@@ -143,7 +143,7 @@ struct TapesApp: App {
                     PushNotificationManager.shared.navigationCoordinator = navigationCoordinator
                     PushNotificationManager.shared.requestAuthorisation()
 
-                    AdManager.shared.preWarm()
+                    AdManager.shared.start()
 
                     // One-time grandfather pass: seed the activation set with
                     // every tape that was already shared/collab before the
