@@ -39,9 +39,12 @@ struct TapePlayerView: View {
             .overlay { loadingLayer }
             .overlay { offlineAdLayer }
             .onAppear {
-                startPlayback(from: startAtClip)
+                if !vm.isPrepared {
+                    startPlayback(from: startAtClip)
+                }
             }
             .onDisappear {
+                guard !vm.isAdPlaying else { return }
                 AdManager.shared.tearDown()
                 vm.shutdown()
             }

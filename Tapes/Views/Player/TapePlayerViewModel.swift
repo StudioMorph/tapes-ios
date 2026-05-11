@@ -138,6 +138,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     private var cumulativePlaybackTime: TimeInterval = 0
     private var isFreeUser = true
+    private(set) var isPrepared = false
 
     // MARK: - Init
 
@@ -153,7 +154,7 @@ final class TapePlayerViewModel: ObservableObject {
         entitlementManager: EntitlementManager? = nil,
         startAtClip: Int = 0
     ) async {
-        guard !isLoading, !tape.clips.isEmpty else { return }
+        guard !isLoading, !isPrepared, !tape.clips.isEmpty else { return }
 
         resetState()
         isFreeUser = !(entitlementManager?.isPremium ?? false)
@@ -186,6 +187,7 @@ final class TapePlayerViewModel: ObservableObject {
             }
 
             isLoading = false
+            isPrepared = true
 
             let adPlayed = await playAdSlotIfNeeded()
 
