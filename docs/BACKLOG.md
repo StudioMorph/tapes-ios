@@ -123,6 +123,18 @@ Items to revisit when time allows. Not urgent, not blocking — just worth doing
 
 ## Authentication
 
+### 15. Implement refresh tokens for silent session renewal
+
+**Context**: JWT session tokens now last 1 year (extended from 7 days). This is a pragmatic shortcut so users stay signed in indefinitely, matching consumer-app expectations (Instagram, TikTok, etc.). The trade-off is that a stolen token is valid for up to a year.
+
+**Proper approach**: split into a short-lived access token (15 min–1 hour) + a long-lived refresh token (6–12 months, stored in Keychain). When the access token expires, the app silently hits a `/refresh` endpoint, gets a new access token, and retries the original request. The user never sees a sign-in screen. Refresh tokens can be revoked server-side (account deletion, security incident) without invalidating all sessions globally.
+
+**Files likely involved**: `tapes-api/src/lib/jwt.ts`, `tapes-api/src/routes/auth.ts` (new `/refresh` endpoint, refresh token minting on login/register), `Tapes/Core/Networking/TapesAPIClient.swift` (401 interception + automatic retry with refresh), `Tapes/Core/Auth/AuthManager.swift` (Keychain storage for refresh token, auto-sign-out on refresh failure).
+
+**Trigger**: post-launch. The 1-year token is fine for now. Revisit if/when we have reason to believe tokens are being stolen or when we need server-side session revocation.
+
+---
+
 ### 7. ~~`validateResetToken` response shape mismatch~~ — DONE
 
 Fixed: Worker now returns `{ message: "Valid" }` to match the iOS `MessageResponse` type.
