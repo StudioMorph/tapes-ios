@@ -157,6 +157,7 @@ final class TapePlayerViewModel: ObservableObject {
         guard !isLoading, !isPrepared, !tape.clips.isEmpty else { return }
 
         resetState()
+        tape.watchedClipCount = nil
         isFreeUser = !(entitlementManager?.isPremium ?? false)
         isLoading = true
         configureAudioSession()
@@ -302,6 +303,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     func replay() {
         cumulativePlaybackTime = 0
+        tape.watchedClipCount = nil
         Task {
             let _ = await playAdSlotIfNeeded()
             await jumpToClip(index: 0, autoplay: true)
@@ -1092,12 +1094,8 @@ final class TapePlayerViewModel: ObservableObject {
 
     private func updateWatchedProgress(throughClip index: Int) {
         let newCount = index + 1
-        let current = tape.watchedClipCount ?? 0
-        print("🔍 [DIAG] updateWatchedProgress — clipIndex=\(index), newCount=\(newCount), current=\(current), willUpdate=\(newCount > current)")
-        if newCount > current {
-            tape.watchedClipCount = newCount
-            print("🔍 [DIAG] watchedClipCount now = \(tape.watchedClipCount ?? -1)")
-        }
+        print("🔍 [DIAG] updateWatchedProgress — clipIndex=\(index), newCount=\(newCount), previous=\(tape.watchedClipCount ?? -1)")
+        tape.watchedClipCount = newCount
     }
 
     private func handleClipFailure(_ error: Error?) {
