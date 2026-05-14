@@ -301,10 +301,9 @@ final class TapePlayerViewModel: ObservableObject {
     }
 
     func replay() {
-        isFinished = false
         cumulativePlaybackTime = 0
         Task {
-            let adPlayed = await playAdSlotIfNeeded()
+            let _ = await playAdSlotIfNeeded()
             await jumpToClip(index: 0, autoplay: true)
         }
         resetControlsTimer()
@@ -312,6 +311,7 @@ final class TapePlayerViewModel: ObservableObject {
 
     func retryLoading() async {
         loadError = nil
+        isPrepared = false
         await prepare()
     }
 
@@ -1063,6 +1063,7 @@ final class TapePlayerViewModel: ObservableObject {
     // MARK: - Clip Event Handlers
 
     private func handleClipFinished() {
+        print("🔍 [DIAG] handleClipFinished — currentClipIndex=\(currentClipIndex), isTransitioning=\(isTransitioning), isInteractiveDragging=\(isInteractiveDragging)")
         guard !isTransitioning, !isInteractiveDragging else { return }
 
         cumulativePlaybackTime += clipDuration
@@ -1092,8 +1093,10 @@ final class TapePlayerViewModel: ObservableObject {
     private func updateWatchedProgress(throughClip index: Int) {
         let newCount = index + 1
         let current = tape.watchedClipCount ?? 0
+        print("🔍 [DIAG] updateWatchedProgress — clipIndex=\(index), newCount=\(newCount), current=\(current), willUpdate=\(newCount > current)")
         if newCount > current {
             tape.watchedClipCount = newCount
+            print("🔍 [DIAG] watchedClipCount now = \(tape.watchedClipCount ?? -1)")
         }
     }
 
@@ -1351,32 +1354,30 @@ final class TapePlayerViewModel: ObservableObject {
 
     // MARK: - Ad Slot
 
-    /// Returns `true` if an ad (or offline countdown) was shown.
+    /// Returns `true` if an ad (or fallback countdown) was shown.
     @discardableResult
     private func playAdSlotIfNeeded() async -> Bool {
         guard isFreeUser else { return false }
 
-        let online = NetworkMonitor.shared.isConnected
+        backgroundMusic.syncPause()
+        isAdPlaying = true
 
-        if online {
-            backgroundMusic.syncPause()
-            isAdPlaying = true
+        let adShown = await AdManager.shared.showAd()
 
-            let success = await AdManager.shared.showAd()
-
+        if adShown {
             isAdPlaying = false
-            return success
-        } else {
-            showOfflineAdView = true
-            backgroundMusic.syncPause()
-
-            await withCheckedContinuation { continuation in
-                offlineCountdownContinuation = continuation
-            }
-
-            showOfflineAdView = false
             return true
         }
+
+        showOfflineAdView = true
+
+        await withCheckedContinuation { continuation in
+            offlineCountdownContinuation = continuation
+        }
+
+        showOfflineAdView = false
+        isAdPlaying = false
+        return true
     }
 
     private var offlineCountdownContinuation: CheckedContinuation<Void, Never>?

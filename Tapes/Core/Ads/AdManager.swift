@@ -1,4 +1,5 @@
 import GoogleMobileAds
+import UIKit
 import os
 
 @MainActor
@@ -76,6 +77,20 @@ final class AdManager: NSObject, ObservableObject {
             return false
         }
 
+        guard var presentingVC = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow })?
+            .rootViewController else {
+            log.warning("No root view controller — skipping ad slot")
+            Task { await loadAd() }
+            return false
+        }
+
+        while let presented = presentingVC.presentedViewController {
+            presentingVC = presented
+        }
+
         interstitialAd = nil
         isPresenting = true
 
@@ -84,7 +99,7 @@ final class AdManager: NSObject, ObservableObject {
                 continuation.resume(returning: success)
             }
             isAdPlaying = true
-            ad.present(fromRootViewController: nil)
+            ad.present(fromRootViewController: presentingVC)
         }
     }
 

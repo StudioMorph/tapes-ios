@@ -39,11 +39,13 @@ struct TapePlayerView: View {
             .overlay { loadingLayer }
             .overlay { offlineAdLayer }
             .onAppear {
+                print("🔍 [DIAG] playerContent.onAppear — isPrepared=\(vm.isPrepared), isAdPlaying=\(vm.isAdPlaying)")
                 if !vm.isPrepared {
                     startPlayback(from: startAtClip)
                 }
             }
             .onDisappear {
+                print("🔍 [DIAG] playerContent.onDisappear — isAdPlaying=\(vm.isAdPlaying), watchedClipCount=\(vm.tape.watchedClipCount ?? -1)")
                 guard !vm.isAdPlaying else { return }
                 AdManager.shared.tearDown()
                 vm.shutdown()
@@ -282,6 +284,7 @@ struct TapePlayerView: View {
     // MARK: - Dismiss
 
     private func dismissPlayer() {
+        print("🔍 [DIAG] dismissPlayer — watchedClipCount=\(vm.tape.watchedClipCount ?? -1), totalClips=\(vm.tape.clips.count), resumeClipIndex=\(vm.tape.resumeClipIndex ?? -1)")
         onSave?(vm.tape)
         vm.shutdown()
         onDismiss()
